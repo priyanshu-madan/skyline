@@ -1,0 +1,1130 @@
+//
+//  WebViewGlobeView.swift
+//  SkyLine
+//
+//  Globe.gl WebView implementation matching original Expo app functionality
+//
+
+import SwiftUI
+import WebKit
+import CoreLocation
+
+struct WebViewGlobeView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var flightStore: FlightStore
+    
+    @StateObject private var webViewCoordinator = WebViewCoordinator()
+    @State private var isGlobeReady = false
+    @State private var isAutoRotating = true
+    @State private var lastFlightDataHash: String = ""
+    
+    
+    // Globe background color matching the WebGL globe theme
+    private var globeBackgroundColor: Color {
+        return themeManager.currentTheme == .light ? 
+            Color(red: 240/255, green: 240/255, blue: 240/255) :  // #F0F0F0
+            Color(red: 0/255, green: 0/255, blue: 17/255)        // #000011
+    }
+    
+    var body: some View {
+        ZStack {
+            // Globe.gl WebView - Full Screen with Status Bar
+            WebView(coordinator: webViewCoordinator)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                .onAppear {
+                    if !isGlobeReady {
+                        setupWebView()
+                    } else {
+                        updateGlobeTheme()
+                    }
+                }
+                .onChange(of: themeManager.currentTheme) { _ in
+                    updateGlobeTheme()
+                }
+                .onChange(of: flightStore.flights) { newFlights in
+                    let newFlightHash = createFlightDataHash(flights: newFlights)
+                    
+                    if newFlightHash != lastFlightDataHash {
+                        lastFlightDataHash = newFlightHash
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            updateFlightData()
+                        }
+                    }
+                }
+                .onReceive(AirportService.shared.coordinatesUpdated) { airportCode in
+                    let matchingFlights = flightStore.flights.filter { flight in
+                        flight.departure.code.uppercased() == airportCode || 
+                        flight.arrival.code.uppercased() == airportCode
+                    }
+                    
+                    for flight in matchingFlights {
+                        flightStore.updateFlightCoordinates(flight.id)
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        updateFlightData()
+                    }
+                }
+            
+            // Status bar background overlay
+            VStack {
+                Rectangle()
+                    .fill(globeBackgroundColor)
+                    .frame(maxWidth: .infinity, maxHeight: 0)
+                    .background(globeBackgroundColor)
+                    .ignoresSafeArea(.container, edges: [.top])
+                Spacer()
+            }
+            
+            // Control Panel
+            VStack {
+                HStack {
+                    Spacer()
+                    controlPanel
+                        .padding(.top, 50) // Move buttons down to avoid status bar
+                }
+                
+                Spacer()
+            }
+            .padding()
+            
+        }
+        .background(globeBackgroundColor)
+        .ignoresSafeArea(.container, edges: [.top, .horizontal, .bottom])
+    }
+    
+    // MARK: - Control Panel
+    
+    private var controlPanel: some View {
+        VStack(spacing: 12) {
+            // Theme Toggle
+            Button(action: {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                themeManager.toggleTheme()
+            }) {
+                Image(systemName: themeManager.currentTheme == .light ? "moon.fill" : "sun.max.fill")
+                    .font(AppTypography.flightNumber)
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(themeManager.currentTheme.colors.primary)
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+            }
+            
+            // Auto-Rotation Toggle
+            Button(action: toggleAutoRotation) {
+                Image(systemName: isAutoRotating ? "pause.circle.fill" : "play.circle.fill")
+                    .font(AppTypography.flightNumber)
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(isAutoRotating ? themeManager.currentTheme.colors.success : themeManager.currentTheme.colors.primary)
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+            }
+            
+            
+            
+            // Reset Globe View
+            Button(action: resetGlobe) {
+                Image(systemName: "globe")
+                    .font(AppTypography.flightNumber)
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(themeManager.currentTheme.colors.textSecondary)
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+            }
+        }
+    }
+    
+    // MARK: - Flight Data Change Detection
+    
+    private func createFlightDataHash(flights: [Flight]) -> String {
+        let flightIds = flights.map { flight in
+            "\(flight.id)-\(flight.flightNumber)-\(flight.departure.code)-\(flight.arrival.code)"
+        }.sorted().joined(separator: "|")
+        
+        return flightIds
+    }
+    
+    // MARK: - WebView Setup and Communication
+    
+    private func setupWebView() {
+        webViewCoordinator.onMessageReceived = handleWebViewMessage
+        
+        if !isGlobeReady {
+            webViewCoordinator.webView?.reload()
+        }
+        
+        // Set initial theme immediately
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let themeString = self.themeManager.currentTheme == .light ? "light" : "dark"
+            self.webViewCoordinator.evaluateJavaScript("""
+                if (window.setTheme) {
+                    window.setTheme('\(themeString)');
+                } else {
+                    window.initialTheme = '\(themeString)';
+                }
+            """)
+        }
+        
+        // Test for globe functions and mark ready when available
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.webViewCoordinator.evaluateJavaScript("""
+                if (typeof window.updateFlightData === 'function') {
+                    console.log('Globe functions ready');
+                    window.ReactNativeWebView?.postMessage('Globe functions ready');
+                } else {
+                    console.log('Globe functions NOT ready');
+                    window.ReactNativeWebView?.postMessage('Globe functions NOT ready');
+                }
+            """)
+        }
+        
+        // Mark as ready after delay to ensure globe.gl is fully loaded
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            if !self.isGlobeReady {
+                self.isGlobeReady = true
+                self.updateGlobeTheme()
+                self.updateFlightData()
+                self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
+            }
+        }
+    }
+    
+    private func handleWebViewMessage(_ message: String) {
+        // Handle simple string messages
+        if message == "Globe ready" || message == "Globe ready (fallback)" {
+            DispatchQueue.main.async {
+                if !self.isGlobeReady {
+                    self.isGlobeReady = true
+                    self.updateGlobeTheme()
+                }
+                // Wait a bit longer to ensure everything is settled
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.updateFlightData()
+                    self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
+                }
+            }
+            return
+        }
+        
+        if message == "Globe functions ready" {
+            DispatchQueue.main.async {
+                if !self.isGlobeReady {
+                    self.isGlobeReady = true
+                    self.updateGlobeTheme()
+                    self.updateFlightData()
+                }
+            }
+            return
+        }
+        
+        // Try to parse JSON messages
+        guard let data = message.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = json["type"] as? String else {
+            return
+        }
+        
+        switch type {
+        case "AUTO_ROTATE_TOGGLED":
+            if let autoRotate = json["autoRotate"] as? Bool {
+                isAutoRotating = autoRotate
+            }
+        default:
+            break
+        }
+    }
+    
+    private func updateGlobeTheme() {
+        guard isGlobeReady else { return }
+        
+        let themeString = themeManager.currentTheme == .light ? "light" : "dark"
+        webViewCoordinator.evaluateJavaScript("""
+            if (window.setTheme) {
+                window.setTheme('\(themeString)');
+            }
+        """)
+    }
+    
+    private func updateFlightData() {
+        guard isGlobeReady else { return }
+        
+        let flightPaths = flightStore.flights.compactMap { flight -> [String: Any]? in
+            guard let depLat = flight.departure.coordinate?.latitude,
+                  let depLng = flight.departure.coordinate?.longitude,
+                  let arrLat = flight.arrival.coordinate?.latitude,
+                  let arrLng = flight.arrival.coordinate?.longitude else {
+                return nil
+            }
+            
+            return [
+                "startLat": depLat,
+                "startLng": depLng,
+                "endLat": arrLat,
+                "endLng": arrLng,
+                "flightNumber": flight.flightNumber,
+                "status": flight.status.rawValue,
+                "departureCode": flight.departure.code,
+                "arrivalCode": flight.arrival.code
+            ]
+        }
+        
+        // Collect departure airports
+        let departureAirports = flightStore.flights.compactMap { flight -> [String: Any]? in
+            guard let coordinate = flight.departure.coordinate else { return nil }
+            return [
+                "lat": coordinate.latitude,
+                "lng": coordinate.longitude,
+                "name": flight.departure.code,
+                "color": "#007AFF"
+            ]
+        }
+        
+        // Collect arrival airports
+        let arrivalAirports = flightStore.flights.compactMap { flight -> [String: Any]? in
+            guard let coordinate = flight.arrival.coordinate else { return nil }
+            return [
+                "lat": coordinate.latitude,
+                "lng": coordinate.longitude,
+                "name": flight.arrival.code,
+                "color": "#007AFF"
+            ]
+        }
+        
+        // Combine and remove duplicates manually
+        var airportsDict: [String: [String: Any]] = [:]
+        for airport in departureAirports + arrivalAirports {
+            if let name = airport["name"] as? String {
+                airportsDict[name] = airport
+            }
+        }
+        let airports = Array(airportsDict.values)
+        
+        guard let flightPathsData = try? JSONSerialization.data(withJSONObject: flightPaths),
+              let airportsData = try? JSONSerialization.data(withJSONObject: airports),
+              let flightPathsJson = String(data: flightPathsData, encoding: .utf8),
+              let airportsJson = String(data: airportsData, encoding: .utf8) else {
+            return
+        }
+        
+        // Use the same pattern as Expo - detailed logging and checking
+        let jsCode = """
+            console.log('About to call updateFlightData with:', {
+                flightPaths: \(flightPathsJson),
+                airports: \(airportsJson)
+            });
+            
+            if (window.updateFlightData) {
+                console.log('Calling updateFlightData function...');
+                window.updateFlightData(\(flightPathsJson), \(airportsJson));
+                console.log('updateFlightData called successfully');
+            } else {
+                console.error('window.updateFlightData not found!');
+            }
+        """
+        
+        webViewCoordinator.evaluateJavaScript(jsCode)
+    }
+    
+    // MARK: - Control Actions
+    
+    private func toggleAutoRotation() {
+        webViewCoordinator.evaluateJavaScript("""
+            if (window.toggleAutoRotate) {
+                window.toggleAutoRotate();
+            }
+        """)
+    }
+    
+    
+    private func resetGlobe() {
+        webViewCoordinator.evaluateJavaScript("""
+            if (window.resetRotation) {
+                window.resetRotation();
+            }
+        """)
+    }
+    
+    
+    private func statusColor(for status: FlightStatus) -> Color {
+        switch status {
+        case .boarding: return themeManager.currentTheme.colors.statusBoarding
+        case .departed: return themeManager.currentTheme.colors.statusDeparted
+        case .inAir: return themeManager.currentTheme.colors.statusInAir
+        case .landed: return themeManager.currentTheme.colors.statusLanded
+        case .delayed: return themeManager.currentTheme.colors.statusDelayed
+        case .cancelled: return themeManager.currentTheme.colors.statusCancelled
+        }
+    }
+}
+
+// MARK: - WebView Coordinator
+
+class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKScriptMessageHandler {
+    var webView: WKWebView?
+    var onMessageReceived: ((String) -> Void)?
+    
+    override init() {
+        super.init()
+        setupWebView()
+    }
+    
+    private func setupWebView() {
+        let configuration = WKWebViewConfiguration()
+        
+        // Add message handler for JavaScript communication
+        configuration.userContentController.add(self, name: "reactNativeWebView")
+        
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        webView?.navigationDelegate = self
+        
+        let htmlString = getSimpleTestHTML()
+        webView?.loadHTMLString(htmlString, baseURL: nil)
+    }
+    
+    private func getSimpleTestHTML() -> String {
+        return """
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { 
+      margin: 0; 
+      padding: 0;
+      background: #000011;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    #globeViz {
+      width: 100vw;
+      height: 100vh;
+    }
+    .status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Starting...</div>
+  <div id="globeViz"></div>
+  
+  <script>
+    console.log('🚀 HTML loaded');
+    document.getElementById('status').innerHTML = 'HTML loaded, testing basic JS...';
+    
+    // Test basic functionality
+    setTimeout(() => {
+      document.getElementById('status').innerHTML = 'Basic JS working, loading Globe.gl...';
+      console.log('✅ Basic JavaScript working');
+    }, 1000);
+    
+    setTimeout(() => {
+      document.getElementById('status').innerHTML = 'Loading Globe.gl library...';
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/globe.gl';
+      script.onload = function() {
+        console.log('✅ Globe.gl loaded successfully');
+        document.getElementById('status').innerHTML = 'Globe.gl loaded, creating globe...';
+        
+        try {
+          const world = new Globe(document.getElementById('globeViz'))
+            .globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=')
+            .backgroundColor('#000011')
+            .showAtmosphere(true)
+            .atmosphereColor('#4F94CD')
+            .enablePointerInteraction(true);
+            
+          world.controls().autoRotate = true;
+          world.controls().autoRotateSpeed = 0.3;
+          
+          // Set initial zoom level (higher = more zoomed out)
+          world.pointOfView({ altitude: 4.0 });
+          
+          // Initialize empty flight data
+          let arcsData = [];
+          let pointsData = [];
+          
+          // Setup flight paths
+          world
+            .arcsData(arcsData)
+            .arcStartLat(d => d.startLat)
+            .arcStartLng(d => d.startLng)
+            .arcEndLat(d => d.endLat)
+            .arcEndLng(d => d.endLng)
+            .arcLabel(d => d.flightNumber + ': ' + (d.status || 'Unknown'))
+            .arcColor(() => ['#006bff', 'rgba(0, 107, 255, 0.8)'])
+            .arcStroke(2.0)
+            .arcDashLength(0.4)
+            .arcDashGap(0.05)
+            .arcDashAnimateTime(3000);
+          
+          // Add theme switching function
+          window.setTheme = function(theme) {
+            console.log('🎨 Setting theme to:', theme);
+            if (theme === 'light') {
+              world.globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=');
+              world.backgroundColor('#FFFFFF');
+              world.atmosphereColor('#CCE7FF');
+              world.hexPolygonColor(() => '#000000'); // Black dots on white globe
+              document.body.style.background = 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)';
+            } else {
+              world.globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=');
+              world.backgroundColor('#000011');
+              world.atmosphereColor('#4F94CD');
+              world.hexPolygonColor(() => '#ffffff'); // Light polygons on dark background
+              document.body.style.background = 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)';
+            }
+          };
+          
+          // Add performance monitoring
+          window.monitorPerformance = function() {
+            const startTime = performance.now();
+            setTimeout(() => {
+              const renderTime = performance.now() - startTime;
+              if (renderTime > 100) {
+                console.log('⚠️ Slow rendering detected:', renderTime.toFixed(2), 'ms');
+              }
+            }, 0);
+          };
+          
+          // Add flight data update function
+          window.updateFlightData = function(flightPaths, airports) {
+            console.log('🎯 updateFlightData called with:', flightPaths?.length, 'flights');
+            if (flightPaths && flightPaths.length > 0) {
+              arcsData = flightPaths.slice(0, 20); // Limit to 20 flights for performance
+              world.arcsData(arcsData);
+              console.log('✅ Flight paths updated:', arcsData.length);
+              
+              // Create airport code overlays from flight paths
+              const airportLabels = [];
+              flightPaths.forEach(flight => {
+                // Add departure airport
+                airportLabels.push({
+                  lat: flight.startLat,
+                  lng: flight.startLng,
+                  code: flight.departureCode || 'DEP'
+                });
+                // Add arrival airport  
+                airportLabels.push({
+                  lat: flight.endLat,
+                  lng: flight.endLng,
+                  code: flight.arrivalCode || 'ARR'
+                });
+              });
+              
+              // Remove duplicates based on location
+              const uniqueLabels = [];
+              airportLabels.forEach(label => {
+                const exists = uniqueLabels.find(existing => 
+                  Math.abs(existing.lat - label.lat) < 0.1 && 
+                  Math.abs(existing.lng - label.lng) < 0.1
+                );
+                if (!exists) {
+                  uniqueLabels.push(label);
+                }
+              });
+              
+              // Add airport code labels as HTML elements
+              world.htmlElementsData(uniqueLabels.slice(0, 30))
+                .htmlLat(d => d.lat)
+                .htmlLng(d => d.lng)
+                .htmlAltitude(0.01)
+                .htmlElement(d => {
+                  const el = document.createElement('div');
+                  el.innerHTML = d.code;
+                  el.style.cssText = `
+                    color: #007AFF;
+                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                    font-size: 10px;
+                    font-weight: bold;
+                    background: rgba(255, 255, 255, 0.9);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    border: 1px solid #007AFF;
+                    text-align: center;
+                    pointer-events: none;
+                    white-space: nowrap;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                    transform: translate(-50%, -50%);
+                  `;
+                  return el;
+                });
+            }
+            if (airports && airports.length > 0) {
+              pointsData = airports.slice(0, 50); // Limit to 50 airports
+              world.pointsData(pointsData)
+                .pointColor(() => '#007AFF')
+                .pointAltitude(0)
+                .pointRadius(0.05)
+                .pointLabel(d => d.name);
+              console.log('✅ Airport points updated:', pointsData.length);
+            }
+          };
+          
+          // Add auto-rotation toggle
+          window.toggleAutoRotate = function() {
+            const controls = world.controls();
+            controls.autoRotate = !controls.autoRotate;
+            return controls.autoRotate;
+          };
+          
+          // Add reset function
+          window.resetRotation = function() {
+            world.pointOfView({ lat: 0, lng: 0, altitude: 4.0 }, 1000);
+            world.controls().autoRotate = true;
+          };
+          
+          document.getElementById('status').innerHTML = 'Globe ready, loading countries...';
+          console.log('🌍 Globe with flight support created successfully');
+          console.log('📋 Available functions:', typeof window.updateFlightData, typeof window.setTheme);
+          
+          // Try to load countries data with timeout and error handling
+          const loadCountries = () => {
+            const timeoutId = setTimeout(() => {
+              console.log('⚠️ Countries data fetch timeout, using basic globe');
+              document.getElementById('status').innerHTML = 'Globe ready (basic mode)';
+              
+              // Signal ready even on timeout
+              setTimeout(() => {
+                console.log('✅ Globe ready (timeout), signaling to Swift');
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+                  window.webkit.messageHandlers.reactNativeWebView.postMessage('Globe ready (fallback)');
+                }
+                document.getElementById('status').style.display = 'none';
+              }, 1000);
+            }, 10000); // 10 second timeout
+            
+            fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
+              .then(res => {
+                clearTimeout(timeoutId);
+                if (!res.ok) throw new Error('Failed to fetch countries data');
+                return res.json();
+              })
+              .then(countries => {
+                console.log('✅ Countries data loaded, adding hexagons...');
+                document.getElementById('status').innerHTML = 'Adding countries...';
+                
+                // Debug: Check sample coordinates
+                const sampleCountry = countries.features.find(f => f.properties.NAME === 'United States of America' || f.properties.NAME_EN === 'United States');
+                if (sampleCountry) {
+                  console.log('🇺🇸 Found USA coordinates sample:', sampleCountry.geometry.coordinates[0]?.slice(0, 3));
+                }
+                
+                // Add hexagonal polygons with all countries for accurate positioning
+                console.log('📊 Total countries loaded:', countries.features.length);
+                
+                try {
+                  world
+                    .hexPolygonsData(countries.features) // Use ALL countries for accurate positioning
+                    .hexPolygonResolution(3) // Medium resolution for hexagons
+                    .hexPolygonMargin(0.5) // Even larger margin for very small hexagons
+                    .hexPolygonUseDots(true) // Use dots instead of solid polygons
+                    .hexPolygonColor(() => '#ffffff')
+                    .hexPolygonAltitude(0.01) // Elevated from globe surface
+                    .hexPolygonLabel(() => null);
+                } catch (error) {
+                  console.log('⚠️ Full dataset failed, trying reduced set:', error.message);
+                  // Fallback to reduced dataset if full one causes issues
+                  world
+                    .hexPolygonsData(countries.features.slice(0, 200))
+                    .hexPolygonResolution(3)
+                    .hexPolygonMargin(0.5)
+                    .hexPolygonUseDots(true)
+                    .hexPolygonColor(() => '#ffffff')
+                    .hexPolygonAltitude(0.01)
+                    .hexPolygonLabel(() => null);
+                }
+                
+                console.log('🗺️ Countries added successfully');
+                document.getElementById('status').innerHTML = 'Globe with countries ready!';
+                
+                // Monitor performance after adding countries
+                window.monitorPerformance();
+                
+                // Signal that globe is fully ready for flight data
+                setTimeout(() => {
+                  console.log('✅ Globe fully ready, signaling to Swift');
+                  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+                    window.webkit.messageHandlers.reactNativeWebView.postMessage('Globe ready');
+                  }
+                  document.getElementById('status').style.display = 'none';
+                }, 1000);
+              })
+              .catch(error => {
+                clearTimeout(timeoutId);
+                console.log('⚠️ Failed to load countries:', error.message);
+                document.getElementById('status').innerHTML = 'Globe ready (basic mode)';
+                
+                // Signal ready even in fallback mode
+                setTimeout(() => {
+                  console.log('✅ Globe ready (fallback), signaling to Swift');
+                  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+                    window.webkit.messageHandlers.reactNativeWebView.postMessage('Globe ready (fallback)');
+                  }
+                  document.getElementById('status').style.display = 'none';
+                }, 1000);
+              });
+          };
+          
+          // Load countries after a brief delay to ensure globe is stable
+          setTimeout(loadCountries, 1000);
+          
+        } catch (error) {
+          console.error('❌ Error creating globe:', error);
+          document.getElementById('status').innerHTML = 'Error: ' + error.message;
+          document.getElementById('status').style.color = 'red';
+        }
+      };
+      script.onerror = function() {
+        console.error('❌ Failed to load Globe.gl');
+        document.getElementById('status').innerHTML = 'Failed to load Globe.gl library';
+        document.getElementById('status').style.color = 'red';
+      };
+      document.head.appendChild(script);
+    }, 2000);
+  </script>
+</body>
+</html>
+"""
+    }
+    
+    private func getGlobeHTML() -> String {
+        return """
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { 
+      margin: 0; 
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    #globeViz {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/globe.gl"></script>
+</head>
+<body>
+  <div id="globeViz"></div>
+  <script>
+    console.log('🌍 Globe script started');
+    window.INITIAL_ZOOM = 15.0;
+    
+    // Load countries data and create hexagonal polygons
+    console.log('📡 Fetching countries data...');
+    fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
+      .then(res => res.json())
+      .then(countries => {
+        console.log('✅ Countries data loaded');
+        const initialTheme = window.initialTheme || 'dark';
+        console.log('🎨 Initial theme:', initialTheme);
+        
+        let currentTheme;
+        if (initialTheme === 'light') {
+          currentTheme = {
+            globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=',
+            backgroundColor: '#F0F0F0',
+            atmosphereColor: '#CCE7FF',
+            countryColor: '#000000',
+            flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+            spaceBackground: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)'
+          };
+        } else {
+          currentTheme = {
+            globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=',
+            backgroundColor: '#000011',
+            atmosphereColor: '#4F94CD',
+            countryColor: '#ffffff',
+            flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+            spaceBackground: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)'
+          };
+        }
+
+        document.body.style.background = currentTheme.spaceBackground;
+        
+        console.log('🌍 Creating Globe instance...');
+        const world = new Globe(document.getElementById('globeViz'))
+          .globeImageUrl(currentTheme.globeImage)
+          .backgroundColor(currentTheme.backgroundColor)
+          .showAtmosphere(false)
+          .atmosphereColor(currentTheme.atmosphereColor)
+          .atmosphereAltitude(0.15)
+          .hexPolygonsData(countries.features)
+          .hexPolygonResolution(3)
+          .hexPolygonMargin(0.5)
+          .hexPolygonUseDots(true)
+          .hexPolygonColor(() => currentTheme.countryColor)
+          .hexPolygonAltitude(0.01) // Elevated from globe surface
+          .hexPolygonLabel(() => null)
+          .enablePointerInteraction(true);
+          
+        // Set auto-rotation
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.3;
+        world.controls().enableDamping = true;
+        world.controls().dampingFactor = 0.05;
+        
+        let updateTimeout;
+        function updateVisualsDebounced() {
+          clearTimeout(updateTimeout);
+          updateTimeout = setTimeout(() => {
+            const pov = world.pointOfView();
+            const altitude = pov.altitude || 4.0;
+            const strokeWidth = Math.max(0.3, Math.min(3.0, altitude * 0.4));
+            world.arcStroke(strokeWidth);
+            
+            if (pointsData && pointsData.length > 0) {
+              const processedAirports = processAirportLabels(pointsData);
+              world.htmlElementsData(processedAirports);
+            }
+          }, 200);
+        }
+        
+        // Add debounced listener - only fires when interaction ends
+        world.controls().addEventListener('end', updateVisualsDebounced);
+        
+        world.pointOfView({ altitude: window.INITIAL_ZOOM || 15.0 });
+        
+        const highlightedCities = [
+          { lat: 40.7128, lng: -74.0060, name: 'NYC' },
+          { lat: 51.5074, lng: -0.1278, name: 'LON' },
+          { lat: 35.6762, lng: 139.6503, name: 'TYO' },
+          { lat: -33.8688, lng: 151.2093, name: 'SYD' },
+          { lat: 34.0522, lng: -118.2437, name: 'LAX' }
+        ];
+        
+        // Add highlighted cities as small points with labels  
+        world
+          .pointsData(highlightedCities)
+          .pointColor(() => 'orange')
+          .pointAltitude(0)
+          .pointRadius(0.04)
+          .pointLabel(d => d.name)
+          .pointsMerge(true);
+        
+        // Function to process airport labels with zoom-based visibility
+        function processAirportLabels(airports) {
+          if (!airports || airports.length === 0) return [];
+          
+          const pov = world.pointOfView();
+          const altitude = pov.altitude || 4.0;
+          
+          // Dynamic distance threshold based on zoom level
+          // Zoomed out: larger threshold (fewer airports), Zoomed in: smaller threshold (more airports)
+          let DISTANCE_THRESHOLD;
+          if (altitude > 5.0) {
+            DISTANCE_THRESHOLD = 8.0; // Very far: only show well-spaced airports
+          } else if (altitude > 3.0) {
+            DISTANCE_THRESHOLD = 4.0; // Medium: show more airports
+          } else if (altitude > 2.0) {
+            DISTANCE_THRESHOLD = 2.0; // Close: show most airports
+          } else {
+            DISTANCE_THRESHOLD = 1.0; // Very close: show nearly all airports
+          }
+          
+          const processed = [];
+          
+          // Sort airports by some priority (could be by importance or just keep original order)
+          const sortedAirports = [...airports];
+          
+          for (let i = 0; i < sortedAirports.length; i++) {
+            const airport = sortedAirports[i];
+            let shouldShow = true;
+            
+            // Check if this airport is too close to any already processed airport
+            for (let j = 0; j < processed.length; j++) {
+              const existingAirport = processed[j];
+              const distance = Math.sqrt(
+                Math.pow(airport.lat - existingAirport.lat, 2) + 
+                Math.pow(airport.lng - existingAirport.lng, 2)
+              );
+              
+              if (distance < DISTANCE_THRESHOLD) {
+                shouldShow = false;
+                break;
+              }
+            }
+            
+            if (shouldShow) {
+              processed.push(airport);
+            }
+          }
+          
+          return processed;
+        }
+        
+        
+        // Initialize flight data
+        let arcsData = [];
+        let pointsData = highlightedCities;
+        
+        world
+          .arcsData(arcsData)
+          .arcStartLat(d => d.startLat)
+          .arcStartLng(d => d.startLng)
+          .arcEndLat(d => d.endLat)
+          .arcEndLng(d => d.endLng)
+          .arcLabel(d => d.flightNumber + ': ' + (d.status || 'Unknown'))
+          .arcColor(() => currentTheme.flightPathColors)
+          .arcStroke(2.0) // Initial stroke, will be updated by debounced function
+          .arcDashLength(0.4)
+          .arcDashGap(0.05)
+          .arcDashAnimateTime(3000)
+          .arcCircularResolution(64)
+          .onArcClick(arc => {
+            world.controls().autoRotate = false;
+            
+            const midLat = (arc.startLat + arc.endLat) / 2;
+            const midLng = (arc.startLng + arc.endLng) / 2;
+            const latDiff = Math.abs(arc.endLat - arc.startLat);
+            const lngDiff = Math.abs(arc.endLng - arc.startLng);
+            const maxDiff = Math.max(latDiff, lngDiff);
+            
+            let altitude = 15.0;
+            if (maxDiff > 50) altitude = 18.0;
+            else if (maxDiff < 20) altitude = 12.0;
+            
+            world.pointOfView({ lat: midLat, lng: midLng, altitude: altitude }, 1500);
+            setTimeout(updateVisualsDebounced, 1700);
+            
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+              window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
+                type: 'FLIGHT_SELECTED',
+                flight: arc
+              }));
+            }
+            
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+              window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
+                type: 'AUTO_ROTATE_TOGGLED',
+                autoRotate: false
+              }));
+            }
+          });
+
+        window.updateFlightData = function(newFlightData, newAirportData) {
+          console.log('🎯 updateFlightData called with:', newFlightData?.length, 'flights');
+          if (newFlightData && newFlightData.length > 0) {
+            const validFlights = newFlightData.filter(flight => 
+              flight.startLat && flight.startLng && flight.endLat && flight.endLng
+            );
+            
+            arcsData = validFlights.slice(0, 50);
+            world.arcsData(arcsData);
+            
+            setTimeout(() => {
+              world.arcStroke(world.arcStroke());
+            }, 100);
+          }
+          
+          if (newAirportData && newAirportData.length > 0) {
+            pointsData = newAirportData;
+            const processedAirports = processAirportLabels(newAirportData);
+            
+            world
+              .htmlElementsData(processedAirports)
+              .htmlLat(d => d.lat)
+              .htmlLng(d => d.lng)
+              .htmlAltitude(0.01)
+              .htmlElement(d => {
+                const el = document.createElement('div');
+                el.innerHTML = d.name;
+                
+                const isDark = currentTheme.backgroundColor === '#000011';
+                const labelStyles = isDark ? {
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  background: 'rgba(0, 0, 0, 0.7)',
+                  border: '0.5px solid rgba(255, 255, 255, 0.3)',
+                  shadow: '0 1px 3px rgba(0, 0, 0, 0.4)'
+                } : {
+                  color: 'rgba(0, 0, 0, 0.9)',
+                  background: 'rgba(255, 255, 255, 0.8)',
+                  border: '0.5px solid rgba(0, 0, 0, 0.2)',
+                  shadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                };
+                
+                el.style.cssText = `
+                  color: ${labelStyles.color};
+                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                  font-size: 9px;
+                  font-weight: 500;
+                  background: ${labelStyles.background};
+                  padding: 1px 4px;
+                  border-radius: 2px;
+                  border: ${labelStyles.border};
+                  text-align: center;
+                  pointer-events: none;
+                  white-space: nowrap;
+                  box-shadow: ${labelStyles.shadow};
+                  transform: translate(-50%, -50%);
+                `;
+                return el;
+              });
+          }
+        };
+
+        // Control functions
+        window.setTheme = function(theme) {
+          if (theme === 'light') {
+            currentTheme = {
+              globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=',
+              backgroundColor: '#F0F0F0',
+              atmosphereColor: '#CCE7FF',
+              countryColor: '#000000',
+              flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+              spaceBackground: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)'
+            };
+          } else {
+            currentTheme = {
+              globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=',
+              backgroundColor: '#000011',
+              atmosphereColor: '#4F94CD',
+              countryColor: '#ffffff',
+              flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+              spaceBackground: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)'
+            };
+          }
+          
+          document.body.style.background = currentTheme.spaceBackground;
+          world
+            .globeImageUrl(currentTheme.globeImage)
+            .backgroundColor(currentTheme.backgroundColor)
+            .atmosphereColor(currentTheme.atmosphereColor)
+            .hexPolygonColor(() => currentTheme.countryColor)
+            .arcColor(() => currentTheme.flightPathColors);
+          
+          if (pointsData && pointsData.length > 0) {
+            const processedAirports = processAirportLabels(pointsData);
+            world.htmlElementsData(processedAirports);
+          }
+        };
+        
+        window.toggleAutoRotate = function() {
+          const controls = world.controls();
+          controls.autoRotate = !controls.autoRotate;
+          return controls.autoRotate;
+        };
+        
+        
+        window.resetRotation = function() {
+          world.pointOfView({ lat: 0, lng: 0, altitude: 15.0 }, 1000);
+          world.controls().autoRotate = true;
+          setTimeout(updateVisualsDebounced, 1200);
+        };
+        
+        window.focusOnFlight = function(flightIndex) {
+          if (arcsData[flightIndex]) {
+            const flight = arcsData[flightIndex];
+            const lat = (flight.startLat + flight.endLat) / 2;
+            const lng = (flight.startLng + flight.endLng) / 2;
+            world.pointOfView({ lat, lng, altitude: 15.0 }, 1000);
+            setTimeout(updateVisualsDebounced, 1200);
+          }
+        };
+        
+        window.clearFlightPaths = function() {
+          arcsData = [];
+          world.arcsData(arcsData);
+          world.htmlElementsData([]);
+        };
+        
+        setTimeout(() => {
+          updateVisualsDebounced();
+        }, 300);
+        
+        // Globe initialization complete
+        console.log('🎉 Globe initialized successfully');
+        console.log('📋 Available functions:', typeof window.updateFlightData, typeof window.setTheme);
+      })
+      .catch(error => {
+        const world = new Globe(document.getElementById('globeViz'))
+          .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg')
+          .backgroundColor('#000011')
+          .showAtmosphere(false)
+          .atmosphereColor('#4F94CD')
+          .enablePointerInteraction(true);
+          
+        world.controls().autoRotate = true;
+        
+        console.log('Globe fallback initialized');
+      });</an_parameter>
+</invoke>
+  </script>
+</body>
+</html>
+"""
+    }
+    
+    func evaluateJavaScript(_ script: String) {
+        webView?.evaluateJavaScript(script, completionHandler: nil)
+    }
+    
+    // MARK: - WKScriptMessageHandler
+    
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "reactNativeWebView",
+           let messageBody = message.body as? String {
+            onMessageReceived?(messageBody)
+        }
+    }
+    
+    // MARK: - WKNavigationDelegate
+    
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // WebView finished loading
+    }
+    
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        // WebView started loading content
+    }
+    
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        // WebView failed to load
+    }
+}
+
+// MARK: - WebView SwiftUI Bridge
+
+struct WebView: UIViewRepresentable {
+    let coordinator: WebViewCoordinator
+    
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = coordinator.webView ?? WKWebView()
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.bounces = false
+        webView.isOpaque = false
+        return webView
+    }
+    
+    func updateUIView(_ uiView: WKWebView, context: Context) {
+        uiView.scrollView.contentInsetAdjustmentBehavior = .never
+    }
+}
+
+#Preview {
+    WebViewGlobeView()
+        .environmentObject(ThemeManager())
+        .environmentObject(FlightStore())
+}

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Photo Library Access -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Access photos to scan boarding passes from Apple Wallet screenshots for automatic flight import</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Take photos of boarding passes for automatic flight information import</string>
+    
+    <!-- Background Processing -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>processing</string>
+    </array>
+    
+    <!-- Status Bar Configuration -->
+    <key>UIStatusBarHidden</key>
+    <false/>
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <true/>
+    
+    <!-- Custom Fonts - Using system monospace font instead -->
+    <!-- <key>UIAppFonts</key>
+    <array>
+        <string>GeistMono-Regular.ttf</string>
+        <string>GeistMono-Medium.ttf</string>
+        <string>GeistMono-Bold.ttf</string>
+    </array> -->
+    
+    <!-- App Transport Security for HTTPS APIs -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+        <key>NSExceptionDomains</key>
+        <dict>
+            <key>api.aviationstack.com</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <false/>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <false/>
+            </dict>
+            <key>opensky-network.org</key>
+            <dict>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <false/>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <false/>
+            </dict>
+        </dict>
+    </dict>
+</dict>
+</plist>
