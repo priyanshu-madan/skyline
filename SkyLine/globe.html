@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @font-face {
+      font-family: 'GeistMono-Regular';
+      src: url('data:font/truetype;charset=utf-8;base64,') format('truetype');
+    }
+    
+    body { 
+      margin: 0; 
+      padding: 0;
+      background: #000;
+      overflow: hidden;
+      transition: background 0.3s ease;
+    }
+    #globeViz {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/globe.gl"></script>
+</head>
+
+<body>
+  <div id="globeViz"></div>
+
+  <script>
+    // Load countries data and create hexagonal polygons
+    fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
+      .then(res => res.json())
+      .then(countries => {
+        // Get initial theme from global variable set by React Native or default to light
+        const initialTheme = window.initialTheme || 'light';
+        
+        // Set theme based on initial value
+        let currentTheme;
+        if (initialTheme === 'light') {
+          currentTheme = {
+            globeImage: null, // No background texture to avoid z-fighting with dots
+            backgroundColor: 'rgba(0,0,0,0)', // Completely transparent to avoid z-fighting
+            atmosphereColor: '#CCE7FF',
+            countryColor: 'rgba(0, 0, 0, 0.8)', // Semi-transparent for softer dots
+            flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+            spaceBackground: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)'
+          };
+        } else {
+          currentTheme = {
+            globeImage: null, // No background texture to avoid z-fighting with dots
+            backgroundColor: 'rgba(0,0,0,0)', // Completely transparent to avoid z-fighting
+            atmosphereColor: '#4F94CD',
+            countryColor: 'rgba(255, 255, 255, 0.85)', // Semi-transparent white dots
+            flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+            spaceBackground: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)'
+          };
+        }
+
+        // Apply space background
+        document.body.style.background = currentTheme.spaceBackground;
+        
+        // Performance setting: Detect mobile devices and adjust quality
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const performanceMode = isMobile ? 'low' : 'high';
+        console.log('🚀 Globe performance mode:', performanceMode, '| Mobile detected:', isMobile);
+        
+        const world = new Globe(document.getElementById('globeViz'))
+          .globeImageUrl(currentTheme.globeImage)
+          .backgroundColor(currentTheme.backgroundColor)
+          .showAtmosphere(false) // Disable atmosphere to eliminate any potential z-fighting
+          .atmosphereColor(currentTheme.atmosphereColor)
+          .atmosphereAltitude(performanceMode === 'high' ? 0.15 : 0.1)
+          .hexPolygonsData(countries.features)
+          .hexPolygonResolution(1) // Simplest resolution to test
+          .hexPolygonMargin(0.5) // Standard margin
+          .hexPolygonUseDots(true) // Enable the signature dotted look
+          .hexPolygonColor('#000000') // Solid color instead of function
+          .hexPolygonAltitude(0.1) // Keep elevated
+          .hexPolygonDotResolution(4) // Lower resolution to test
+          .hexPolygonLabel(() => null)
+          .enablePointerInteraction(true);
+          
+        // Set auto-rotation with improved performance
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.15; // Even slower for better performance
+        world.controls().enableDamping = true;
+        world.controls().dampingFactor = 0.15; // Higher damping for smoother manual interactions
+        world.controls().enablePan = true;
+        world.controls().enableZoom = true;
+        world.controls().maxDistance = 800; // Limit zoom out
+        world.controls().minDistance = 150; // Limit zoom in
+        world.controls().rotateSpeed = 0.5; // Slower rotation for smoother manual control
+        world.controls().zoomSpeed = 0.8; // Slower zoom for better control
+        
+        // Set initial zoom level (zoom out more)
+        world.pointOfView({ altitude: 3.5 }); // Higher altitude = more zoomed out
+        
+        // Disable anti-aliasing optimizations to test if they're causing flicker
+        // setTimeout(() => {
+        //   // Apply anti-aliasing and smoothing settings after globe loads
+        //   const canvas = world.renderer().domElement;
+        //   const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        //   
+        //   if (gl) {
+        //     // Enable anti-aliasing and smooth rendering
+        //     gl.enable(gl.BLEND);
+        //     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        //     console.log('🎯 Anti-aliasing enabled for smoother dots');
+        //   }
+        //   
+        //   // Set render quality for smoother dots
+        //   world.renderer().setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Limit to 2x for performance
+        //   world.renderer().antialias = true;
+        //   
+        // }, 1000);
+        
+        // Add highlighted cities
+        const highlightedCities = [
+          { lat: 40.7128, lng: -74.0060, name: 'New York', color: '#ff0000' },
+          { lat: 51.5074, lng: -0.1278, name: 'London', color: '#ff0000' },
+          { lat: 35.6762, lng: 139.6503, name: 'Tokyo', color: '#ff0000' },
+          { lat: -33.8688, lng: 151.2093, name: 'Sydney', color: '#ff0000' },
+          { lat: 34.0522, lng: -118.2437, name: 'Los Angeles', color: '#ff0000' }
+        ];
+        
+        // Disable all point dots to eliminate flickering
+        world
+          .pointsData([]) // Empty array - no points at all
+          .htmlElementsData([]); // No HTML elements either
+        
+        // Start with empty flight data (will be populated by real data)
+        let arcsData = [];
+
+        // Default highlighted cities (will be replaced by real airports)
+        let pointsData = highlightedCities;
+        
+        // Flight path configuration optimized for performance
+        const OPACITY = 0.8; // Increased opacity from 0.4 to 0.8
+        const MAX_RENDERED_ARCS = performanceMode === 'high' ? 20 : 15; // Mobile gets fewer arcs
+        const ANIMATION_FRAME_DELAY = performanceMode === 'high' ? 16 : 33; // Mobile gets 30fps, desktop 60fps
+        
+        world
+          .arcsData(arcsData)
+          .arcStartLat(d => d.startLat)
+          .arcStartLng(d => d.startLng)
+          .arcEndLat(d => d.endLat)
+          .arcEndLng(d => d.endLng)
+          .arcLabel(d => `${d.flightNumber}: ${d.status || 'Unknown'}`)
+          .arcColor(() => currentTheme.flightPathColors)
+          .arcStroke(performanceMode === 'high' ? 1.2 : 1.0) // Thinner lines on mobile
+          .arcDashLength(performanceMode === 'high' ? 0.8 : 1.0) // Simpler dashes on mobile
+          .arcDashGap(performanceMode === 'high' ? 0.2 : 0.3) // Larger gaps on mobile 
+          .arcDashAnimateTime(performanceMode === 'high' ? 5000 : 6000) // Slower on mobile
+          .arcCircularResolution(performanceMode === 'high' ? 24 : 16) // Much lower resolution on mobile
+          // Disable hover effects to improve performance with many paths
+          .onArcHover(null)
+          // Remove click interaction to improve performance
+          .onArcClick(null);
+
+        // Function to process airport labels to avoid overlapping
+        let lastProcessedAirports = null;
+        let lastAirportHash = '';
+        
+        function processAirportLabels(airports) {
+          if (!airports || airports.length === 0) return [];
+          
+          // Create a simple hash to avoid unnecessary processing
+          const airportHash = airports.map(a => `${a.lat}-${a.lng}-${a.name}`).join('|');
+          if (airportHash === lastAirportHash && lastProcessedAirports) {
+            return lastProcessedAirports; // Return cached result
+          }
+          
+          const DISTANCE_THRESHOLD = 4; // Increased minimum distance to show fewer labels
+          const processed = [];
+          
+          // Sort airports by some priority (could be by importance or just keep original order)
+          const sortedAirports = [...airports];
+          
+          for (let i = 0; i < sortedAirports.length; i++) {
+            const airport = sortedAirports[i];
+            let shouldShow = true;
+            
+            // Check if this airport is too close to any already processed airport
+            for (let j = 0; j < processed.length; j++) {
+              const existingAirport = processed[j];
+              const distance = Math.sqrt(
+                Math.pow(airport.lat - existingAirport.lat, 2) + 
+                Math.pow(airport.lng - existingAirport.lng, 2)
+              );
+              
+              if (distance < DISTANCE_THRESHOLD) {
+                shouldShow = false;
+                break;
+              }
+            }
+            
+            if (shouldShow) {
+              processed.push(airport);
+            }
+          }
+          
+          // Cache the result
+          lastAirportHash = airportHash;
+          lastProcessedAirports = processed;
+          
+          console.log(`🏷️ Airport labels: ${airports.length} airports, ${processed.length} labels shown`);
+          return processed;
+        }
+        
+        // Function to update flight data from Swift
+        window.updateFlightData = function(newFlightData, newAirportData) {
+          console.log('🎯 updateFlightData called with:', {
+            flightData: newFlightData,
+            airportData: newAirportData,
+            flightCount: newFlightData?.length || 0,
+            airportCount: newAirportData?.length || 0
+          });
+          
+          if (newFlightData && newFlightData.length > 0) {
+            console.log('🛫 Setting arcs data:', newFlightData);
+            
+            // Validate flight data before setting
+            const validFlights = newFlightData.filter(flight => {
+              const isValid = !!(flight.startLat && flight.startLng && flight.endLat && flight.endLng);
+              if (!isValid) {
+                console.error('❌ Invalid flight data:', flight);
+              }
+              return isValid;
+            });
+            
+            // Smart flight limiting based on performance mode and current flight count
+            let flightLimit = MAX_RENDERED_ARCS;
+            
+            // Reduce flight limit even more if user is interacting for smoother experience
+            if (isUserInteracting) {
+              flightLimit = Math.min(flightLimit, performanceMode === 'high' ? 10 : 5);
+              console.log('🎛️ User interacting - reducing flight limit to', flightLimit);
+            }
+            
+            // Limit flights for performance and sort by importance
+            const limitedFlights = validFlights
+              .sort((a, b) => {
+                // Prioritize flights that are currently in air or boarding
+                const statusPriority = { 'in_air': 3, 'boarding': 2, 'departed': 1 };
+                return (statusPriority[b.status] || 0) - (statusPriority[a.status] || 0);
+              })
+              .slice(0, flightLimit);
+            
+            // Dynamic quality adjustment based on flight count
+            const flightCount = limitedFlights.length;
+            let arcStroke, arcResolution, dashLength, dashGap, animateTime;
+            
+            if (flightCount > 15) {
+              // Many flights - lowest quality
+              arcStroke = performanceMode === 'high' ? 0.8 : 0.6;
+              arcResolution = performanceMode === 'high' ? 16 : 12;
+              dashLength = 1.2;
+              dashGap = 0.4;
+              animateTime = performanceMode === 'high' ? 6000 : 8000;
+            } else if (flightCount > 8) {
+              // Medium flights - medium quality
+              arcStroke = performanceMode === 'high' ? 1.0 : 0.8;
+              arcResolution = performanceMode === 'high' ? 20 : 14;
+              dashLength = 1.0;
+              dashGap = 0.3;
+              animateTime = performanceMode === 'high' ? 5500 : 7000;
+            } else {
+              // Few flights - higher quality
+              arcStroke = performanceMode === 'high' ? 1.2 : 1.0;
+              arcResolution = performanceMode === 'high' ? 24 : 16;
+              dashLength = performanceMode === 'high' ? 0.8 : 1.0;
+              dashGap = performanceMode === 'high' ? 0.2 : 0.3;
+              animateTime = performanceMode === 'high' ? 5000 : 6000;
+            }
+            
+            // Apply dynamic quality settings
+            world
+              .arcStroke(arcStroke)
+              .arcCircularResolution(arcResolution)
+              .arcDashLength(dashLength)
+              .arcDashGap(dashGap)
+              .arcDashAnimateTime(animateTime);
+            
+            // Update arcs data
+            arcsData = limitedFlights;
+            world.arcsData(arcsData);
+            
+            console.log(`✅ Arcs updated: ${arcsData.length} flights, stroke=${arcStroke}, resolution=${arcResolution}, animate=${animateTime}ms`);
+          } else {
+            console.log('⚠️ No flight data to display');
+          }
+          
+          if (newAirportData && newAirportData.length > 0) {
+            console.log('🏢 Airport data received but skipping point rendering to prevent flicker');
+            pointsData = newAirportData;
+            // Keep points and HTML elements disabled to eliminate all flickering
+            console.log('✅ Airport data stored (visual dots disabled for smooth experience)');
+          }
+        };
+
+        // Function to add a single flight path
+        window.addFlightPath = function(flight) {
+          console.log('Adding flight path:', flight.flightNumber);
+          arcsData.push(flight);
+          world.arcsData([...arcsData]);
+        };
+
+        // Function to clear all flight paths
+        window.clearFlightPaths = function() {
+          console.log('Clearing all flight paths');
+          arcsData = [];
+          world.arcsData(arcsData);
+          // Keep all dots disabled to prevent flickering
+          world.htmlElementsData([]);
+          world.pointsData([]); // Keep empty to prevent dots
+        };
+        
+        // Function to clear flight selection
+        window.clearFlightSelection = function() {
+          console.log('🧹 Clearing flight selection');
+          // Just log that selection was cleared - no color changes needed
+          console.log('✅ Flight selection cleared');
+        };
+
+        // Function to get current flights (for debugging)
+        window.getCurrentFlights = function() {
+          return arcsData;
+        };
+
+        // Zoom control functions
+        window.zoomIn = function() {
+          const camera = world.camera();
+          const currentDistance = camera.position.distanceTo(world.scene().position);
+          const newDistance = Math.max(currentDistance * 0.8, 150); // Min zoom limit
+          
+          const direction = camera.position.clone().normalize();
+          camera.position.copy(direction.multiplyScalar(newDistance));
+          world.controls().update();
+        };
+        
+        window.zoomOut = function() {
+          const camera = world.camera();
+          const currentDistance = camera.position.distanceTo(world.scene().position);
+          const newDistance = Math.min(currentDistance * 1.25, 800); // Max zoom limit
+          
+          const direction = camera.position.clone().normalize();
+          camera.position.copy(direction.multiplyScalar(newDistance));
+          world.controls().update();
+        };
+        
+        window.toggleAutoRotate = function() {
+          const controls = world.controls();
+          controls.autoRotate = !controls.autoRotate;
+          
+          // If enabling auto-rotate, log the change
+          if (controls.autoRotate) {
+            console.log('🔄 Auto-rotate enabled');
+          }
+          
+          return controls.autoRotate;
+        };
+        
+        window.focusOnFlight = function(flightIndex) {
+          if (arcsData[flightIndex]) {
+            const flight = arcsData[flightIndex];
+            const lat = (flight.startLat + flight.endLat) / 2;
+            const lng = (flight.startLng + flight.endLng) / 2;
+            
+            world.pointOfView({ lat, lng, altitude: 2 }, 1000);
+          }
+        };
+        
+        window.resetRotation = function() {
+          console.log('🏠 Resetting globe rotation to default');
+          
+          // Reset to default view - centered on Earth with good zoom
+          world.pointOfView({ lat: 0, lng: 0, altitude: 3.5 }, 1000);
+          
+          // Enable auto-rotation
+          const controls = world.controls();
+          controls.autoRotate = true;
+          controls.autoRotateSpeed = 0.3;
+          
+          console.log('✅ Globe rotation reset to default with auto-rotate enabled');
+          return true;
+        };
+        
+        // Function to switch theme
+        window.setTheme = function(theme) {
+          console.log('🎨 Switching globe theme to:', theme);
+          
+          if (theme === 'light') {
+            currentTheme = {
+              globeImage: null, // No background texture to avoid z-fighting with dots
+              backgroundColor: 'rgba(0,0,0,0)', // Completely transparent to avoid z-fighting
+              atmosphereColor: '#CCE7FF',
+              countryColor: 'rgba(0, 0, 0, 0.8)', // Semi-transparent for softer dots
+              flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+              spaceBackground: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)'
+            };
+          } else {
+            currentTheme = {
+              globeImage: null, // No background texture to avoid z-fighting with dots
+              backgroundColor: 'rgba(0,0,0,0)', // Completely transparent to avoid z-fighting
+              atmosphereColor: '#4F94CD',
+              countryColor: 'rgba(255, 255, 255, 0.85)', // Semi-transparent white dots
+              flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
+              spaceBackground: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)'
+            };
+          }
+          
+          // Apply theme changes
+          document.body.style.background = currentTheme.spaceBackground;
+          
+          world
+            .globeImageUrl(currentTheme.globeImage)
+            .backgroundColor(currentTheme.backgroundColor)
+            .atmosphereColor(currentTheme.atmosphereColor)
+            .hexPolygonColor(() => currentTheme.countryColor)
+            .arcColor(() => currentTheme.flightPathColors);
+            
+          // Hover effects disabled for performance
+          
+          // Keep all dots disabled during theme changes to prevent flickering
+          world.htmlElementsData([]);
+          world.pointsData([]);
+          console.log('🎨 Theme changed - keeping dots disabled for smooth experience');
+        };
+        
+        // Performance optimization: Throttle resize events
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(() => {
+            world.width(window.innerWidth).height(window.innerHeight);
+          }, 100); // Debounce resize to 100ms
+        });
+
+        // Performance monitoring and frame rate limiting
+        let lastFrameTime = 0;
+        const targetFrameRate = performanceMode === 'high' ? 60 : 30; // 60fps desktop, 30fps mobile
+        const frameInterval = 1000 / targetFrameRate;
+        
+        function throttleAnimation() {
+          const now = performance.now();
+          if (now - lastFrameTime >= frameInterval) {
+            lastFrameTime = now;
+            // Allow globe to render
+            return true;
+          }
+          return false;
+        }
+
+        // Performance optimization: Reduce arc animations during user interaction
+        let isUserInteracting = false;
+        let interactionTimeout;
+        
+        const controls = world.controls();
+        
+        // Detect when user starts interacting
+        controls.addEventListener('start', () => {
+          isUserInteracting = true;
+          // Pause auto-rotation during manual interaction for smoother experience
+          controls.autoRotate = false;
+          console.log('🖐️ User interaction started - pausing auto-rotation');
+        });
+        
+        // Detect when user stops interacting
+        controls.addEventListener('end', () => {
+          clearTimeout(interactionTimeout);
+          interactionTimeout = setTimeout(() => {
+            isUserInteracting = false;
+            // Resume auto-rotation after 2 seconds of no interaction
+            controls.autoRotate = true;
+            console.log('🔄 User interaction ended - resuming auto-rotation');
+          }, 2000);
+          
+          // Disable dynamic dot optimization to test if it's causing flicker
+          // optimizeDotsForZoom();
+        });
+
+        // Function to optimize dot quality based on zoom level
+        function optimizeDotsForZoom() {
+          const pov = world.pointOfView();
+          const altitude = pov.altitude || 3.5;
+          
+          let hexResolution, hexMargin, dotResolution;
+          
+          if (altitude > 5.0) {
+            // Very far - use lower resolution to reduce flicker
+            hexResolution = performanceMode === 'high' ? 2 : 1;
+            hexMargin = 0.8; // Larger margin for less dense dots
+            dotResolution = 4; // Lower dot resolution
+            console.log('🔍 Far zoom - reducing dot density to prevent flicker');
+          } else if (altitude > 3.0) {
+            // Medium distance - balanced quality
+            hexResolution = performanceMode === 'high' ? 3 : 2;
+            hexMargin = 0.7;
+            dotResolution = 6;
+            console.log('🔍 Medium zoom - balanced dot quality');
+          } else {
+            // Close up - highest quality
+            hexResolution = performanceMode === 'high' ? 4 : 3;
+            hexMargin = 0.6; // Smaller margin for denser dots when close
+            dotResolution = 8; // Higher dot resolution
+            console.log('🔍 Close zoom - high quality dots');
+          }
+          
+          // Apply settings smoothly with debouncing
+          clearTimeout(world._dotUpdateTimeout);
+          world._dotUpdateTimeout = setTimeout(() => {
+            world
+              .hexPolygonResolution(hexResolution)
+              .hexPolygonMargin(hexMargin)
+              .hexPolygonDotResolution(dotResolution);
+            console.log(`🎯 Dot quality updated: res=${hexResolution}, margin=${hexMargin}, dotRes=${dotResolution}`);
+          }, 150); // Slightly longer delay for smoother transitions
+        }
+
+        // Disable initial dot optimization to test if it's causing flicker
+        // setTimeout(() => {
+        //   optimizeDotsForZoom();
+        // }, 1500);
+
+        // Disable custom render loop throttling to test if it's causing flicker
+        // const originalAnimate = world.onRender;
+        // world.onRender = function() {
+        //   if (throttleAnimation()) {
+        //     if (originalAnimate) originalAnimate();
+        //   }
+        // };
+      })
+      .catch(error => {
+        console.error('Error loading countries data:', error);
+        // Fallback to simple globe if data fails to load
+        const world = new Globe(document.getElementById('globeViz'))
+          .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg')
+          .backgroundColor('#000011')
+          .showAtmosphere(true)
+          .atmosphereColor('#4F94CD')
+          .atmosphereAltitude(0.15)
+          .enablePointerInteraction(true);
+          
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.5;
+      });
+  </script>
+</body>
+</html>

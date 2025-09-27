@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { 
+      margin: 0; 
+      padding: 0;
+      background: #000011;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    #globeViz {
+      width: 100vw;
+      height: 100vh;
+    }
+    .status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="status" id="status">Starting...</div>
+  <div id="globeViz"></div>
+  
+  <script>
+    console.log('🚀 HTML loaded');
+    document.getElementById('status').innerHTML = 'HTML loaded, loading Globe.gl...';
+    
+    // Test basic functionality
+    setTimeout(() => {
+      document.getElementById('status').innerHTML = 'Testing basic JS...';
+      console.log('✅ Basic JavaScript working');
+    }, 100);
+  </script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/globe.gl" onload="globeLoaded()" onerror="globeError()"></script>
+  
+  <script>
+    function globeLoaded() {
+      console.log('✅ Globe.gl loaded successfully');
+      document.getElementById('status').innerHTML = 'Globe.gl loaded, creating globe...';
+      
+      try {
+        const world = new Globe(document.getElementById('globeViz'))
+          .globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=')
+          .backgroundColor('#000011')
+          .showAtmosphere(true)
+          .atmosphereColor('#4F94CD')
+          .enablePointerInteraction(true);
+          
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.3;
+        
+        document.getElementById('status').innerHTML = 'Globe created successfully!';
+        console.log('🌍 Globe created successfully');
+        
+        // Hide status after 3 seconds
+        setTimeout(() => {
+          document.getElementById('status').style.display = 'none';
+        }, 3000);
+        
+      } catch (error) {
+        console.error('❌ Error creating globe:', error);
+        document.getElementById('status').innerHTML = 'Error: ' + error.message;
+        document.getElementById('status').style.color = 'red';
+      }
+    }
+    
+    function globeError() {
+      console.error('❌ Failed to load Globe.gl');
+      document.getElementById('status').innerHTML = 'Failed to load Globe.gl library';
+      document.getElementById('status').style.color = 'red';
+    }
+  </script>
+</body>
+</html>

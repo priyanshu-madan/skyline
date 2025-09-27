@@ -1,0 +1,531 @@
+//
+//  CloudKitService.swift
+//  SkyLine
+//
+//  CloudKit integration for cross-device flight data synchronization
+//
+
+import Foundation
+import CloudKit
+import Combine
+
+// MARK: - CloudKit Service
+class CloudKitService: ObservableObject {
+    static let shared = CloudKitService()
+    
+    private let container: CKContainer
+    private let database: CKDatabase
+    
+    @Published var isSyncing = false
+    @Published var syncError: String?
+    
+    // CloudKit Record Types
+    private let flightRecordType = "Flight"
+    private let searchHistoryRecordType = "SearchHistory"
+    
+    private init() {
+        // Use the specific container configured in Xcode
+        container = CKContainer(identifier: "iCloud.com.skyline.flighttracker")
+        database = container.privateCloudDatabase
+    }
+    
+    // MARK: - Schema Initialization
+    
+    private func initializeSchema() async {
+        // Create a sample flight record to establish the schema
+        let sampleRecord = CKRecord(recordType: flightRecordType)
+        sampleRecord["flightNumber"] = "SCHEMA_INIT"
+        sampleRecord["airline"] = "Schema Initialization"
+        sampleRecord["status"] = "boarding"
+        sampleRecord["dataSource"] = "manual"
+        
+        do {
+            let _ = try await database.save(sampleRecord)
+            // Delete the sample record immediately
+            try await database.deleteRecord(withID: sampleRecord.recordID)
+            print("✅ CloudKit schema initialized")
+        } catch {
+            print("⚠️ Schema initialization: \(error)")
+        }
+        
+        // Initialize search history schema
+        let sampleSearchRecord = CKRecord(recordType: searchHistoryRecordType)
+        sampleSearchRecord["query"] = "SCHEMA_INIT"
+        sampleSearchRecord["order"] = 0
+        
+        do {
+            let _ = try await database.save(sampleSearchRecord)
+            try await database.deleteRecord(withID: sampleSearchRecord.recordID)
+            print("✅ Search history schema initialized")
+        } catch {
+            print("⚠️ Search schema initialization: \(error)")
+        }
+    }
+    
+    // MARK: - Account Status
+    
+    func checkAccountStatus() async -> Bool {
+        do {
+            let status = try await container.accountStatus()
+            switch status {
+            case .available:
+                print("✅ CloudKit account available")
+                // Initialize schema on first access
+                await initializeSchema()
+                return true
+            case .noAccount:
+                print("❌ No iCloud account")
+                return false
+            case .restricted:
+                print("❌ CloudKit account restricted")
+                return false
+            case .couldNotDetermine:
+                print("❌ Could not determine CloudKit account status")
+                return false
+            case .temporarilyUnavailable:
+                print("⏳ CloudKit temporarily unavailable")
+                return false
+            @unknown default:
+                print("❌ Unknown CloudKit account status")
+                return false
+            }
+        } catch {
+            print("❌ Error checking CloudKit account status: \(error)")
+            return false
+        }
+    }
+    
+    // MARK: - Flight Operations
+    
+    func saveFlights(_ flights: [Flight]) async -> Result<Void, CloudKitError> {
+        guard await checkAccountStatus() else {
+            return .failure(.accountNotAvailable)
+        }
+        
+        await MainActor.run { isSyncing = true }
+        
+        do {
+            // Convert flights to CKRecords
+            let records = flights.map { createFlightRecord(from: $0) }
+            
+            // Save records in batches
+            let batchSize = 100
+            for i in stride(from: 0, to: records.count, by: batchSize) {
+                let endIndex = min(i + batchSize, records.count)
+                let batch = Array(records[i..<endIndex])
+                
+                let operation = CKModifyRecordsOperation(recordsToSave: batch)
+                operation.savePolicy = .changedKeys
+                operation.qualityOfService = .userInitiated
+                
+                try await database.add(operation)
+            }
+            
+            await MainActor.run { 
+                isSyncing = false
+                syncError = nil
+            }
+            
+            print("✅ Saved \(flights.count) flights to CloudKit")
+            return .success(())
+            
+        } catch {
+            await MainActor.run { 
+                isSyncing = false
+                syncError = error.localizedDescription
+            }
+            print("❌ Failed to save flights to CloudKit: \(error)")
+            return .failure(.saveFailed)
+        }
+    }
+    
+    func fetchFlights() async -> Result<[Flight], CloudKitError> {
+        guard await checkAccountStatus() else {
+            return .failure(.accountNotAvailable)
+        }
+        
+        await MainActor.run { isSyncing = true }
+        
+        do {
+            // Use a simpler query approach that works with CloudKit
+            let query = CKQuery(recordType: flightRecordType, predicate: NSPredicate(format: "flightNumber != %@", ""))
+            
+            let (matchResults, _) = try await database.records(matching: query)
+            
+            let flights = matchResults.compactMap { (recordID, result) -> Flight? in
+                switch result {
+                case .success(let record):
+                    return createFlight(from: record)
+                case .failure(let error):
+                    print("❌ Failed to fetch record \(recordID): \(error)")
+                    return nil
+                }
+            }
+            
+            await MainActor.run { 
+                isSyncing = false
+                syncError = nil
+            }
+            
+            print("✅ Fetched \(flights.count) flights from CloudKit")
+            return .success(flights)
+            
+        } catch {
+            await MainActor.run { 
+                isSyncing = false
+                syncError = error.localizedDescription
+            }
+            print("❌ Failed to fetch flights from CloudKit: \(error)")
+            return .failure(.fetchFailed)
+        }
+    }
+    
+    func deleteFlight(with id: String) async -> Result<Void, CloudKitError> {
+        guard await checkAccountStatus() else {
+            return .failure(.accountNotAvailable)
+        }
+        
+        do {
+            let recordID = CKRecord.ID(recordName: id)
+            try await database.deleteRecord(withID: recordID)
+            
+            print("✅ Deleted flight \(id) from CloudKit")
+            return .success(())
+            
+        } catch {
+            print("❌ Failed to delete flight from CloudKit: \(error)")
+            return .failure(.deleteFailed)
+        }
+    }
+    
+    // MARK: - Search History Operations
+    
+    func saveSearchHistory(_ searches: [String]) async -> Result<Void, CloudKitError> {
+        guard await checkAccountStatus() else {
+            return .failure(.accountNotAvailable)
+        }
+        
+        // Don't save empty search history to avoid CloudKit schema issues
+        guard !searches.isEmpty else {
+            print("📝 Skipping empty search history save")
+            return .success(())
+        }
+        
+        do {
+            // Use a single record to store all search history as an array
+            let recordID = CKRecord.ID(recordName: "user_search_history")
+            let record = CKRecord(recordType: searchHistoryRecordType, recordID: recordID)
+            record["searchQueries"] = searches
+            record["lastUpdated"] = Date()
+            
+            try await database.save(record)
+            
+            print("✅ Saved \(searches.count) search queries to CloudKit")
+            return .success(())
+            
+        } catch {
+            print("❌ Failed to save search history to CloudKit: \(error)")
+            return .failure(.saveFailed)
+        }
+    }
+    
+    func fetchSearchHistory() async -> Result<[String], CloudKitError> {
+        guard await checkAccountStatus() else {
+            return .failure(.accountNotAvailable)
+        }
+        
+        do {
+            // Fetch the single search history record directly
+            let recordID = CKRecord.ID(recordName: "user_search_history")
+            let record = try await database.record(for: recordID)
+            
+            let searches = record["searchQueries"] as? [String] ?? []
+            
+            print("✅ Fetched \(searches.count) search queries from CloudKit")
+            return .success(searches)
+            
+        } catch {
+            // If record doesn't exist yet, return empty array
+            if let ckError = error as? CKError, ckError.code == .unknownItem {
+                print("📝 No search history found in CloudKit yet")
+                return .success([])
+            }
+            
+            print("❌ Failed to fetch search history from CloudKit: \(error)")
+            return .failure(.fetchFailed)
+        }
+    }
+    
+    // MARK: - Record Conversion
+    
+    private func createFlightRecord(from flight: Flight) -> CKRecord {
+        let record = CKRecord(recordType: flightRecordType, recordID: CKRecord.ID(recordName: flight.id))
+        
+        // Basic flight info
+        record["flightNumber"] = flight.flightNumber
+        record["airline"] = flight.airline
+        record["status"] = flight.status.rawValue
+        record["progress"] = flight.progress ?? 0.0
+        record["flightDate"] = flight.flightDate
+        record["dataSource"] = flight.dataSource.rawValue
+        
+        // Departure airport
+        record["departureAirport"] = flight.departure.airport
+        record["departureCode"] = flight.departure.code
+        record["departureLatitude"] = flight.departure.latitude
+        record["departureLongitude"] = flight.departure.longitude
+        record["departureTime"] = flight.departure.time
+        record["departureActualTime"] = flight.departure.actualTime
+        record["departureTerminal"] = flight.departure.terminal
+        record["departureGate"] = flight.departure.gate
+        record["departureDelay"] = flight.departure.delay
+        
+        // Arrival airport
+        record["arrivalAirport"] = flight.arrival.airport
+        record["arrivalCode"] = flight.arrival.code
+        record["arrivalLatitude"] = flight.arrival.latitude
+        record["arrivalLongitude"] = flight.arrival.longitude
+        record["arrivalTime"] = flight.arrival.time
+        record["arrivalActualTime"] = flight.arrival.actualTime
+        record["arrivalTerminal"] = flight.arrival.terminal
+        record["arrivalGate"] = flight.arrival.gate
+        record["arrivalDelay"] = flight.arrival.delay
+        
+        // Aircraft info
+        if let aircraft = flight.aircraft {
+            record["aircraftType"] = aircraft.type
+            record["aircraftRegistration"] = aircraft.registration
+            record["aircraftIcao24"] = aircraft.icao24
+        }
+        
+        // Current position
+        if let position = flight.currentPosition {
+            record["positionLatitude"] = position.latitude
+            record["positionLongitude"] = position.longitude
+            record["positionAltitude"] = position.altitude
+            record["positionSpeed"] = position.speed
+            record["positionHeading"] = position.heading
+            record["positionIsGround"] = position.isGround
+            record["positionLastUpdate"] = position.lastUpdate
+        }
+        
+        return record
+    }
+    
+    private func createFlight(from record: CKRecord) -> Flight? {
+        guard let flightNumber = record["flightNumber"] as? String,
+              let airline = record["airline"] as? String,
+              let statusRaw = record["status"] as? String,
+              let status = FlightStatus(rawValue: statusRaw),
+              let dataSourceRaw = record["dataSource"] as? String,
+              let dataSource = DataSource(rawValue: dataSourceRaw) else {
+            return nil
+        }
+        
+        // Create departure airport
+        let departure = Airport(
+            airport: record["departureAirport"] as? String ?? "",
+            code: record["departureCode"] as? String ?? "",
+            latitude: record["departureLatitude"] as? Double,
+            longitude: record["departureLongitude"] as? Double,
+            time: record["departureTime"] as? String ?? "",
+            actualTime: record["departureActualTime"] as? String,
+            terminal: record["departureTerminal"] as? String,
+            gate: record["departureGate"] as? String,
+            delay: record["departureDelay"] as? Int
+        )
+        
+        // Create arrival airport
+        let arrival = Airport(
+            airport: record["arrivalAirport"] as? String ?? "",
+            code: record["arrivalCode"] as? String ?? "",
+            latitude: record["arrivalLatitude"] as? Double,
+            longitude: record["arrivalLongitude"] as? Double,
+            time: record["arrivalTime"] as? String ?? "",
+            actualTime: record["arrivalActualTime"] as? String,
+            terminal: record["arrivalTerminal"] as? String,
+            gate: record["arrivalGate"] as? String,
+            delay: record["arrivalDelay"] as? Int
+        )
+        
+        // Create aircraft if data exists
+        var aircraft: Aircraft? = nil
+        if let type = record["aircraftType"] as? String,
+           let registration = record["aircraftRegistration"] as? String,
+           let icao24 = record["aircraftIcao24"] as? String {
+            aircraft = Aircraft(type: type, registration: registration, icao24: icao24)
+        }
+        
+        // Create current position if data exists
+        var currentPosition: FlightPosition? = nil
+        if let lat = record["positionLatitude"] as? Double,
+           let lng = record["positionLongitude"] as? Double,
+           let altitude = record["positionAltitude"] as? Double,
+           let speed = record["positionSpeed"] as? Double,
+           let heading = record["positionHeading"] as? Double {
+            currentPosition = FlightPosition(
+                latitude: lat,
+                longitude: lng,
+                altitude: altitude,
+                speed: speed,
+                heading: heading,
+                isGround: record["positionIsGround"] as? Bool,
+                lastUpdate: record["positionLastUpdate"] as? String
+            )
+        }
+        
+        return Flight(
+            id: record.recordID.recordName,
+            flightNumber: flightNumber,
+            airline: airline,
+            departure: departure,
+            arrival: arrival,
+            status: status,
+            aircraft: aircraft,
+            currentPosition: currentPosition,
+            progress: record["progress"] as? Double,
+            flightDate: record["flightDate"] as? String,
+            dataSource: dataSource
+        )
+    }
+    
+    // MARK: - Conflict Resolution & Offline Support
+    
+    func handleConflictResolution(localFlights: [Flight], cloudFlights: [Flight]) -> [Flight] {
+        var resolvedFlights: [String: Flight] = [:]
+        
+        // Start with local flights
+        for flight in localFlights {
+            resolvedFlights[flight.id] = flight
+        }
+        
+        // Merge with cloud flights using timestamp-based resolution
+        for cloudFlight in cloudFlights {
+            if let localFlight = resolvedFlights[cloudFlight.id] {
+                // Conflict detected - use most recent modification
+                // For now, prefer CloudKit data (server wins)
+                resolvedFlights[cloudFlight.id] = cloudFlight
+                print("🔄 Conflict resolved for flight \(cloudFlight.flightNumber): using CloudKit version")
+            } else {
+                // New flight from cloud
+                resolvedFlights[cloudFlight.id] = cloudFlight
+            }
+        }
+        
+        return Array(resolvedFlights.values)
+    }
+    
+    func isOffline() async -> Bool {
+        do {
+            // Try a simple CloudKit operation to test connectivity
+            let query = CKQuery(recordType: flightRecordType, predicate: NSPredicate(value: true))
+            
+            let (_, _) = try await database.records(matching: query, resultsLimit: 1)
+            return false // Online
+        } catch {
+            if let ckError = error as? CKError {
+                switch ckError.code {
+                case .networkUnavailable, .networkFailure:
+                    return true // Offline
+                default:
+                    return false // Other error, assume online
+                }
+            }
+            return true // Unknown error, assume offline
+        }
+    }
+    
+    func syncWhenOnline() async {
+        // Check if we're online
+        let offline = await isOffline()
+        guard !offline else {
+            print("📱 Device is offline - sync will be retried later")
+            return
+        }
+        
+        // Perform sync operations
+        print("🌐 Device is online - performing sync")
+    }
+    
+    // MARK: - Background Sync
+    
+    func enableBackgroundSync() {
+        // Subscribe to CloudKit notifications for real-time sync
+        let subscription = CKQuerySubscription(
+            recordType: flightRecordType,
+            predicate: NSPredicate(value: true),
+            options: [.firesOnRecordCreation, .firesOnRecordUpdate, .firesOnRecordDeletion]
+        )
+        
+        let notification = CKSubscription.NotificationInfo()
+        notification.shouldSendContentAvailable = true
+        subscription.notificationInfo = notification
+        
+        Task {
+            do {
+                try await database.save(subscription)
+                print("✅ CloudKit background sync subscription created")
+            } catch {
+                print("❌ Failed to create CloudKit subscription: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Sync Operations
+    
+    func performFullSync() async -> Result<[Flight], CloudKitError> {
+        guard await checkAccountStatus() else {
+            return .failure(.accountNotAvailable)
+        }
+        
+        await MainActor.run { 
+            isSyncing = true
+            syncError = nil
+        }
+        
+        // Fetch all flights from CloudKit
+        let result = await fetchFlights()
+        
+        await MainActor.run { isSyncing = false }
+        
+        return result
+    }
+    
+    func syncSearchHistory(local: [String]) async -> Result<[String], CloudKitError> {
+        // First save local history to CloudKit
+        let saveResult = await saveSearchHistory(local)
+        guard case .success = saveResult else {
+            return .failure(.saveFailed)
+        }
+        
+        // Then fetch merged history
+        return await fetchSearchHistory()
+    }
+}
+
+// MARK: - CloudKit Error Types
+enum CloudKitError: LocalizedError {
+    case accountNotAvailable
+    case saveFailed
+    case fetchFailed
+    case deleteFailed
+    case networkError
+    case quotaExceeded
+    
+    var errorDescription: String? {
+        switch self {
+        case .accountNotAvailable:
+            return "iCloud account not available. Please sign in to iCloud in Settings."
+        case .saveFailed:
+            return "Failed to save data to iCloud"
+        case .fetchFailed:
+            return "Failed to fetch data from iCloud"
+        case .deleteFailed:
+            return "Failed to delete data from iCloud"
+        case .networkError:
+            return "Network connection error"
+        case .quotaExceeded:
+            return "iCloud storage quota exceeded"
+        }
+    }
+}
