@@ -13,7 +13,7 @@ struct WebViewGlobeView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var flightStore: FlightStore
     
-    @StateObject private var webViewCoordinator = WebViewCoordinator()
+    @ObservedObject var coordinator: WebViewCoordinator
     @State private var isGlobeReady = false
     @State private var isAutoRotating = true
     @State private var lastFlightDataHash: String = ""
@@ -29,7 +29,7 @@ struct WebViewGlobeView: View {
     var body: some View {
         ZStack {
             // Globe.gl WebView - Full Screen with Status Bar
-            WebView(coordinator: webViewCoordinator)
+            WebView(coordinator: coordinator)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                 .onAppear {
@@ -152,16 +152,16 @@ struct WebViewGlobeView: View {
     // MARK: - WebView Setup and Communication
     
     private func setupWebView() {
-        webViewCoordinator.onMessageReceived = handleWebViewMessage
+        coordinator.onMessageReceived = handleWebViewMessage
         
         if !isGlobeReady {
-            webViewCoordinator.webView?.reload()
+            coordinator.webView?.reload()
         }
         
         // Set initial theme immediately
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             let themeString = self.themeManager.currentTheme == .light ? "light" : "dark"
-            self.webViewCoordinator.evaluateJavaScript("""
+            self.coordinator.evaluateJavaScript("""
                 if (window.setTheme) {
                     window.setTheme('\(themeString)');
                 } else {
@@ -172,7 +172,7 @@ struct WebViewGlobeView: View {
         
         // Test for globe functions and mark ready when available
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            self.webViewCoordinator.evaluateJavaScript("""
+            self.coordinator.evaluateJavaScript("""
                 if (typeof window.updateFlightData === 'function') {
                     console.log('Globe functions ready');
                     window.ReactNativeWebView?.postMessage('Globe functions ready');
@@ -226,16 +226,55 @@ struct WebViewGlobeView: View {
         guard let data = message.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else {
+            print("❌ Failed to parse WebView message: \(message)")
             return
         }
+        
+        print("📨 WebView message received: \(type)")
         
         switch type {
         case "AUTO_ROTATE_TOGGLED":
             if let autoRotate = json["autoRotate"] as? Bool {
-                isAutoRotating = autoRotate
+                DispatchQueue.main.async {
+                    self.isAutoRotating = autoRotate
+                }
             }
+            
+        case "FLIGHT_FOCUS_SUCCESS":
+            if let flightNumber = json["flightNumber"] as? String,
+               let flightIndex = json["flightIndex"] as? Int {
+                print("✅ Flight focus successful: \(flightNumber) at index \(flightIndex)")
+            }
+            
+        case "FLIGHT_FOCUS_RETRY_NEEDED":
+            if let flightNumber = json["flightNumber"] as? String,
+               let flightIndex = json["flightIndex"] as? Int {
+                print("🔄 Retrying flight focus for: \(flightNumber) at index \(flightIndex)")
+                // Retry the focus after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.coordinator.evaluateJavaScript("""
+                        if (window.focusOnFlight) {
+                            console.log('Retry: Focusing on flight at index \(flightIndex)');
+                            window.focusOnFlight(\(flightIndex));
+                        }
+                    """)
+                }
+            }
+            
+        case "FLIGHT_FOCUS_ERROR":
+            if let error = json["error"] as? String,
+               let flightNumber = json["flightNumber"] as? String {
+                print("❌ Flight focus error for \(flightNumber): \(error)")
+            }
+            
+        case "FLIGHT_SELECTED":
+            if let flight = json["flight"] as? [String: Any],
+               let flightNumber = flight["flightNumber"] as? String {
+                print("🎯 Flight selected from globe: \(flightNumber)")
+            }
+            
         default:
-            break
+            print("⚠️ Unknown WebView message type: \(type)")
         }
     }
     
@@ -243,7 +282,7 @@ struct WebViewGlobeView: View {
         guard isGlobeReady else { return }
         
         let themeString = themeManager.currentTheme == .light ? "light" : "dark"
-        webViewCoordinator.evaluateJavaScript("""
+        coordinator.evaluateJavaScript("""
             if (window.setTheme) {
                 window.setTheme('\(themeString)');
             }
@@ -327,13 +366,13 @@ struct WebViewGlobeView: View {
             }
         """
         
-        webViewCoordinator.evaluateJavaScript(jsCode)
+        coordinator.evaluateJavaScript(jsCode)
     }
     
     // MARK: - Control Actions
     
     private func toggleAutoRotation() {
-        webViewCoordinator.evaluateJavaScript("""
+        coordinator.evaluateJavaScript("""
             if (window.toggleAutoRotate) {
                 window.toggleAutoRotate();
             }
@@ -342,7 +381,7 @@ struct WebViewGlobeView: View {
     
     
     private func resetGlobe() {
-        webViewCoordinator.evaluateJavaScript("""
+        coordinator.evaluateJavaScript("""
             if (window.resetRotation) {
                 window.resetRotation();
             }
@@ -1124,7 +1163,7 @@ struct WebView: UIViewRepresentable {
 }
 
 #Preview {
-    WebViewGlobeView()
+    WebViewGlobeView(coordinator: WebViewCoordinator())
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
 }
