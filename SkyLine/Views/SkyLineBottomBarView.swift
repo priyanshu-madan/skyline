@@ -56,6 +56,14 @@ struct SkyLineBottomBarView: View {
     @State private var activeTab: SkyLineTab = .globe
     @State private var addFlightView: Bool = false
     @State private var refreshID = UUID()
+    @State private var selectedFlightId: String? = nil
+    
+    // Callback to communicate with parent ContentView
+    let onFlightSelected: ((Flight) -> Void)?
+    
+    init(onFlightSelected: ((Flight) -> Void)? = nil) {
+        self.onFlightSelected = onFlightSelected
+    }
     
     var body: some View {
         GeometryReader {
@@ -248,8 +256,17 @@ struct SkyLineBottomBarView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(flightStore.sortedFlights) { flight in
-                        FlightRowView(flight: flight)
-                            .id("\(flight.id)-\(refreshID)")
+                        FlightRowView(
+                            flight: flight,
+                            isSelected: selectedFlightId == flight.id,
+                            onTap: {
+                                handleFlightTap(flight)
+                            },
+                            onDelete: {
+                                handleFlightDelete(flight)
+                            }
+                        )
+                        .id("\(flight.id)-\(refreshID)")
                     }
                 }
                 .padding(.horizontal, 20)
@@ -310,8 +327,37 @@ struct SkyLineBottomBarView: View {
         .frame(maxWidth: .infinity)
     }
     
+    // MARK: - Flight Action Handlers
+    
+    private func handleFlightTap(_ flight: Flight) {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+        impactFeedback.impactOccurred()
+        
+        withAnimation(.easeInOut(duration: 0.3)) {
+            selectedFlightId = flight.id
+        }
+        
+        // Call the callback to communicate with ContentView
+        onFlightSelected?(flight)
+        
+        // Auto-collapse to show more of the globe after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            // This would require parent view handling to collapse the sheet
+            // For now, we'll just maintain the selection state
+        }
+    }
+    
+    private func handleFlightDelete(_ flight: Flight) {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+        impactFeedback.impactOccurred()
+        
+        Task {
+            let _ = await flightStore.removeFlight(flight.id)
+        }
+    }
+    
     @ViewBuilder
-    func FlightRowView(flight: Flight) -> some View {
+    func FlightRowView(flight: Flight, isSelected: Bool = false, onTap: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
         VStack(spacing: 0) {
             // Flight date
             HStack {
@@ -410,13 +456,111 @@ struct SkyLineBottomBarView: View {
             .cornerRadius(8)
         }
         .padding(12)
-        .background(themeManager.currentTheme == .light ? .white : themeManager.currentTheme.colors.surface)
+        .background(isSelected ? 
+            themeManager.currentTheme.colors.primary.opacity(0.1) : 
+            (themeManager.currentTheme == .light ? .white : themeManager.currentTheme.colors.surface))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(themeManager.currentTheme == .light ? Color(.systemGray4) : themeManager.currentTheme.colors.border, lineWidth: 1)
+                .stroke(
+                    isSelected ? 
+                        themeManager.currentTheme.colors.primary : 
+                        (themeManager.currentTheme == .light ? Color(.systemGray4) : themeManager.currentTheme.colors.border),
+                    lineWidth: isSelected ? 2 : 1
+                )
         )
-        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        .shadow(
+            color: isSelected ? themeManager.currentTheme.colors.primary.opacity(0.3) : .black.opacity(0.05),
+            radius: isSelected ? 8 : 2,
+            x: 0,
+            y: isSelected ? 4 : 1
+        )
+        .scaleEffect(isSelected ? 1.02 : 1.0)
+        .onTapGesture {
+            onTap()
+        }
+        .contextMenu {
+            Button {
+                onTap()
+            } label: {
+                Label("Focus on Globe", systemImage: "globe")
+            }
+            
+            Button {
+                // Copy flight info to clipboard
+                let flightInfo = "\(flight.flightNumber): \(flight.departure.code) → \(flight.arrival.code)"
+                UIPasteboard.general.string = flightInfo
+                
+                let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                impactFeedback.impactOccurred()
+            } label: {
+                Label("Copy Info", systemImage: "doc.on.doc")
+            }
+            
+            Divider()
+            
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("Delete Flight", systemImage: "trash")
+            }
+        } preview: {
+            // Preview content for the context menu
+            VStack(alignment: .leading, spacing: 8) {
+                Text(flight.flightNumber)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                HStack {
+                    VStack(alignment: .leading) {
+                        Text(flight.departure.code)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text(flight.departure.city)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: "airplane")
+                        .foregroundColor(.blue)
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .trailing) {
+                        Text(flight.arrival.code)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text(flight.arrival.city)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Text("Status: \(flight.status.displayName)")
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(getStatusColor(for: flight.status))
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+            }
+            .padding()
+            .background(.regularMaterial)
+            .cornerRadius(12)
+        }
+    }
+    
+    private func getStatusColor(for status: FlightStatus) -> Color {
+        switch status {
+        case .boarding: return themeManager.currentTheme.colors.statusBoarding
+        case .departed: return themeManager.currentTheme.colors.statusDeparted
+        case .inAir: return themeManager.currentTheme.colors.statusInAir
+        case .landed: return themeManager.currentTheme.colors.statusLanded
+        case .delayed: return themeManager.currentTheme.colors.statusDelayed
+        case .cancelled: return themeManager.currentTheme.colors.statusCancelled
+        }
     }
 }
 
@@ -472,7 +616,7 @@ fileprivate struct TabViewHelper: UIViewRepresentable {
 }
 
 #Preview {
-    SkyLineBottomBarView()
+    SkyLineBottomBarView(onFlightSelected: nil)
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
         .environmentObject(AuthenticationService.shared)
