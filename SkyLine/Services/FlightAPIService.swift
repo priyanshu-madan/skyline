@@ -186,6 +186,7 @@ class FlightAPIService: ObservableObject {
             departure: Airport(
                 airport: departureAirport,
                 code: departureIATA,
+                city: departureAirport, // Use airport name as city for now
                 latitude: depCoordinates?.latitude,
                 longitude: depCoordinates?.longitude,
                 time: aviationFlight.departure.scheduled ?? "",
@@ -197,6 +198,7 @@ class FlightAPIService: ObservableObject {
             arrival: Airport(
                 airport: arrivalAirport,
                 code: arrivalIATA,
+                city: arrivalAirport, // Use airport name as city for now
                 latitude: arrCoordinates?.latitude,
                 longitude: arrCoordinates?.longitude,
                 time: aviationFlight.arrival.scheduled ?? "",
@@ -226,7 +228,8 @@ class FlightAPIService: ObservableObject {
             },
             progress: nil,
             flightDate: aviationFlight.flight_date,
-            dataSource: .aviationstack
+            dataSource: .aviationstack,
+            date: Flight.extractFlightDate(from: aviationFlight.departure.scheduled ?? "")
         )
     }
     
@@ -245,6 +248,7 @@ class FlightAPIService: ObservableObject {
             departure: Airport(
                 airport: "Unknown",
                 code: "UNK",
+                city: "Unknown",
                 latitude: nil,
                 longitude: nil,
                 time: ISO8601DateFormatter().string(from: Date()),
@@ -256,6 +260,7 @@ class FlightAPIService: ObservableObject {
             arrival: Airport(
                 airport: "Unknown",
                 code: "UNK",
+                city: "Unknown",
                 latitude: nil,
                 longitude: nil,
                 time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(14400)),
@@ -281,7 +286,8 @@ class FlightAPIService: ObservableObject {
             ),
             progress: nil,
             flightDate: ISO8601DateFormatter().string(from: Date()),
-            dataSource: .opensky
+            dataSource: .opensky,
+            date: Calendar.current.startOfDay(for: Date())
         )
     }
     

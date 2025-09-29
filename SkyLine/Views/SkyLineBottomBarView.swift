@@ -7,6 +7,27 @@
 
 import SwiftUI
 
+// MARK: - DateFormatter Extensions
+extension DateFormatter {
+    static let flightCardDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE, MMMM d, yyyy"
+        return formatter
+    }()
+    
+    static let flightTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
+    
+    static let flightTimeArrival: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        return formatter
+    }()
+}
+
 /// Tab Enum for SkyLine
 enum SkyLineTab: String, CaseIterable {
     case globe = "Globe"
@@ -34,6 +55,7 @@ struct SkyLineBottomBarView: View {
     @EnvironmentObject var authService: AuthenticationService
     @State private var activeTab: SkyLineTab = .globe
     @State private var addFlightView: Bool = false
+    @State private var refreshID = UUID()
     
     var body: some View {
         GeometryReader {
@@ -63,6 +85,7 @@ struct SkyLineBottomBarView: View {
                 CustomTabBar()
                     .padding(.bottom, bottomPadding)
             }
+            .background(themeManager.currentTheme.colors.background)
             .ignoresSafeArea(.all, edges: .bottom)
         }
         .interactiveDismissDisabled()
@@ -137,7 +160,7 @@ struct SkyLineBottomBarView: View {
                         .font(.caption2)
                         .fontWeight(.semibold)
                 }
-                .foregroundStyle(activeTab == tab ? .blue : .gray)
+                .foregroundStyle(activeTab == tab ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
                 .frame(maxWidth: .infinity)
                 .contentShape(.rect)
                 .onTapGesture {
@@ -152,6 +175,20 @@ struct SkyLineBottomBarView: View {
         .padding(.bottom, 16)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(themeManager.currentTheme == .light ? .white : Color.black.opacity(0.6))
+                .shadow(
+                    color: themeManager.currentTheme == .light ? .black.opacity(0.1) : .white.opacity(0.05),
+                    radius: 10,
+                    x: 0,
+                    y: -2
+                )
+        )
+        .id(refreshID)
+        .onReceive(themeManager.$currentTheme) { _ in
+            refreshID = UUID()
+        }
     }
     
     // MARK: - Tab Content Views
@@ -165,7 +202,8 @@ struct SkyLineBottomBarView: View {
             VStack(spacing: 16) {
                 Image(systemName: "globe.americas.fill")
                     .font(.system(size: 48))
-                    .foregroundColor(.blue)
+                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                 
                 Text("SkyLine")
                     .font(.title2)
@@ -190,7 +228,8 @@ struct SkyLineBottomBarView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "airplane")
                         .font(.system(size: 48))
-                        .foregroundColor(.blue)
+                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                        .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                     
                     Text("No Flights")
                         .font(.title2)
@@ -210,6 +249,7 @@ struct SkyLineBottomBarView: View {
                 LazyVStack(spacing: 12) {
                     ForEach(flightStore.sortedFlights) { flight in
                         FlightRowView(flight: flight)
+                            .id("\(flight.id)-\(refreshID)")
                     }
                 }
                 .padding(.horizontal, 20)
@@ -226,7 +266,8 @@ struct SkyLineBottomBarView: View {
             VStack(spacing: 16) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 48))
-                    .foregroundColor(.blue)
+                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                 
                 Text("Search Flights")
                     .font(.title2)
@@ -251,7 +292,8 @@ struct SkyLineBottomBarView: View {
             VStack(spacing: 16) {
                 Image(systemName: "location.slash")
                     .font(.system(size: 48))
-                    .foregroundColor(.blue)
+                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                 
                 Text(authService.authenticationState.user?.displayName ?? "Profile")
                     .font(.title2)
@@ -270,33 +312,111 @@ struct SkyLineBottomBarView: View {
     
     @ViewBuilder
     func FlightRowView(flight: Flight) -> some View {
-        HStack(spacing: 12) {
-            // Route
-            HStack(spacing: 8) {
-                Text(flight.departure.code)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+        VStack(spacing: 0) {
+            // Flight date
+            HStack {
+                Text(DateFormatter.flightCardDate.string(from: flight.date))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                
-                Text(flight.arrival.code)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
+                Spacer()
             }
+            .padding(.bottom, 12)
             
-            Spacer()
+            // Main flight info section
+            HStack(spacing: 16) {
+                // Departure
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(DateFormatter.flightTime.string(from: flight.date))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    
+                    Text(flight.departure.code)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                    
+                    Text(flight.departure.city)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .lineLimit(1)
+                }
+                
+                Spacer()
+                
+                // Center airplane icon and duration
+                VStack(spacing: 4) {
+                    ZStack {
+                        Circle()
+                            .fill(themeManager.currentTheme.colors.text)
+                            .frame(width: 32, height: 32)
+                        
+                        Image(systemName: "airplane")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(themeManager.currentTheme.colors.background)
+                            .rotationEffect(.degrees(90))
+                    }
+                    
+                    Text("2h 30m")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                
+                Spacer()
+                
+                // Arrival
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(DateFormatter.flightTimeArrival.string(from: Calendar.current.date(byAdding: .hour, value: 2, to: flight.date) ?? flight.date))
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    
+                    Text(flight.arrival.code)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                    
+                    Text(flight.arrival.city)
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.bottom, 16)
             
-            // Flight Number
-            Text(flight.flightNumber)
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+            // Bottom section with flight details
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Airlines")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    
+                    Text(flight.airline ?? "Unknown")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Flight no")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    
+                    Text(flight.flightNumber)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                }
+            }
+            .padding(12)
+            .background(themeManager.currentTheme == .light ? Color(.systemGray6) : Color(.systemGray6).opacity(0.3))
+            .cornerRadius(8)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(8)
+        .padding(12)
+        .background(themeManager.currentTheme == .light ? .white : themeManager.currentTheme.colors.surface)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(themeManager.currentTheme == .light ? Color(.systemGray4) : themeManager.currentTheme.colors.border, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
     }
 }
 

@@ -140,6 +140,7 @@ class FlightStore: ObservableObject {
         let updatedDeparture = Airport(
             airport: flight.departure.airport,
             code: flight.departure.code,
+            city: flight.departure.city,
             latitude: depCoordinate?.latitude ?? flight.departure.latitude,
             longitude: depCoordinate?.longitude ?? flight.departure.longitude,
             time: flight.departure.time,
@@ -152,6 +153,7 @@ class FlightStore: ObservableObject {
         let updatedArrival = Airport(
             airport: flight.arrival.airport,
             code: flight.arrival.code,
+            city: flight.arrival.city,
             latitude: arrCoordinate?.latitude ?? flight.arrival.latitude,
             longitude: arrCoordinate?.longitude ?? flight.arrival.longitude,
             time: flight.arrival.time,
@@ -173,7 +175,8 @@ class FlightStore: ObservableObject {
             currentPosition: flight.currentPosition,
             progress: flight.progress,
             flightDate: flight.flightDate,
-            dataSource: flight.dataSource
+            dataSource: flight.dataSource,
+            date: flight.date
         )
         
         flights[index] = updatedFlight
@@ -361,7 +364,12 @@ class FlightStore: ObservableObject {
     private func loadFlights() {
         guard let data = userDefaults.data(forKey: flightsKey) else {
             // Load sample data for development
-            flights = [Flight.sample, Flight.sampleInAir]
+            flights = [
+                Flight.sample, 
+                Flight.sampleInAir, 
+                Flight.sampleFigmaDesign, 
+                Flight.sampleJakartaDenpasar
+            ]
             return
         }
         
@@ -584,7 +592,8 @@ class FlightStore: ObservableObject {
                             currentPosition: updatedFlight.currentPosition,
                             progress: updatedFlight.progress,
                             flightDate: updatedFlight.flightDate,
-                            dataSource: updatedFlight.dataSource
+                            dataSource: updatedFlight.dataSource,
+                            date: flight.date
                         )
                         refreshedFlights.append(preservedFlight)
                     } else {
@@ -614,6 +623,7 @@ class FlightStore: ObservableObject {
                 departure: Airport(
                     airport: "Mock Departure Airport",
                     code: "LAX",
+                    city: "Los Angeles",
                     latitude: 33.9425,
                     longitude: -118.4081,
                     time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)),
@@ -625,6 +635,7 @@ class FlightStore: ObservableObject {
                 arrival: Airport(
                     airport: "Mock Arrival Airport",
                     code: "JFK",
+                    city: "New York",
                     latitude: 40.6413,
                     longitude: -73.7781,
                     time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(14400)),
@@ -642,7 +653,8 @@ class FlightStore: ObservableObject {
                 currentPosition: nil,
                 progress: Double.random(in: 0...1),
                 flightDate: ISO8601DateFormatter().string(from: Date()),
-                dataSource: .aviationstack
+                dataSource: .aviationstack,
+                date: Date()
             )
         ]
         

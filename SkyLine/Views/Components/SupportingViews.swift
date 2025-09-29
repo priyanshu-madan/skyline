@@ -223,7 +223,7 @@ struct FlightDetailView: View {
                             .font(AppTypography.titleLarge)
                             .foregroundColor(theme.currentTheme.colors.text)
                         
-                        Text(flight.airline)
+                        Text(flight.airline ?? "Unknown Airline")
                             .font(AppTypography.body)
                             .foregroundColor(theme.currentTheme.colors.textSecondary)
                         

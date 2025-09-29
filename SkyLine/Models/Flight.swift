@@ -12,7 +12,7 @@ import CoreLocation
 struct Flight: Codable, Identifiable, Hashable {
     let id: String
     let flightNumber: String
-    let airline: String
+    let airline: String?
     let departure: Airport
     let arrival: Airport
     let status: FlightStatus
@@ -21,6 +21,7 @@ struct Flight: Codable, Identifiable, Hashable {
     let progress: Double? // 0.0 to 1.0
     let flightDate: String?
     let dataSource: DataSource
+    let date: Date
     
     var isDeparted: Bool {
         status == .departed || status == .inAir || status == .landed
@@ -33,12 +34,24 @@ struct Flight: Codable, Identifiable, Hashable {
     var routeDescription: String {
         "\(departure.code) → \(arrival.code)"
     }
+    
+    // Helper function to extract flight date from departure time
+    static func extractFlightDate(from departureTime: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        if let parsedDate = formatter.date(from: departureTime) {
+            // Return the date component only (start of day)
+            return Calendar.current.startOfDay(for: parsedDate)
+        }
+        // Fallback to current date if parsing fails
+        return Calendar.current.startOfDay(for: Date())
+    }
 }
 
 // MARK: - Airport Model
 struct Airport: Codable, Hashable {
     let airport: String
     let code: String
+    let city: String
     let latitude: Double?
     let longitude: Double?
     let time: String
@@ -201,6 +214,7 @@ extension Flight {
         departure: Airport(
             airport: "Los Angeles International Airport",
             code: "LAX",
+            city: "Los Angeles",
             latitude: 33.9425,
             longitude: -118.4081,
             time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)),
@@ -212,6 +226,7 @@ extension Flight {
         arrival: Airport(
             airport: "John F. Kennedy International Airport",
             code: "JFK",
+            city: "New York",
             latitude: 40.6413,
             longitude: -73.7781,
             time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(18000)),
@@ -229,7 +244,8 @@ extension Flight {
         currentPosition: nil,
         progress: 0.0,
         flightDate: ISO8601DateFormatter().string(from: Date()),
-        dataSource: .aviationstack
+        dataSource: .aviationstack,
+        date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)))
     )
     
     static let sampleInAir = Flight(
@@ -239,6 +255,7 @@ extension Flight {
         departure: Airport(
             airport: "San Francisco International Airport",
             code: "SFO",
+            city: "San Francisco",
             latitude: 37.6213,
             longitude: -122.3790,
             time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600)),
@@ -250,6 +267,7 @@ extension Flight {
         arrival: Airport(
             airport: "Chicago O'Hare International Airport",
             code: "ORD",
+            city: "Chicago",
             latitude: 41.9742,
             longitude: -87.9073,
             time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(10800)),
@@ -275,6 +293,90 @@ extension Flight {
         ),
         progress: 0.45,
         flightDate: ISO8601DateFormatter().string(from: Date()),
-        dataSource: .combined
+        dataSource: .combined,
+        date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600)))
+    )
+    
+    // Additional sample flights matching Figma design
+    static let sampleFigmaDesign = Flight(
+        id: "sample-figma-bna-bdb",
+        flightNumber: "LA 21",
+        airline: "Garuda INA",
+        departure: Airport(
+            airport: "Banda Aceh Airport",
+            code: "BNA",
+            city: "Banda Aceh",
+            latitude: 5.523611,
+            longitude: 95.420833,
+            time: ISO8601DateFormatter().string(from: Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()),
+            actualTime: nil,
+            terminal: "1",
+            gate: "A5",
+            delay: nil
+        ),
+        arrival: Airport(
+            airport: "Bandar Baru Airport",
+            code: "BDB",
+            city: "Bandar Baru",
+            latitude: 1.385,
+            longitude: 103.8667,
+            time: ISO8601DateFormatter().string(from: Calendar.current.date(bySettingHour: 16, minute: 0, second: 0, of: Date()) ?? Date()),
+            actualTime: nil,
+            terminal: "2",
+            gate: "B12",
+            delay: nil
+        ),
+        status: .boarding,
+        aircraft: Aircraft(
+            type: "Boeing 737-800",
+            registration: "PK-GMA",
+            icao24: "8D0001"
+        ),
+        currentPosition: nil,
+        progress: 0.0,
+        flightDate: ISO8601DateFormatter().string(from: Date()),
+        dataSource: .manual,
+        date: Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
+    )
+    
+    static let sampleJakartaDenpasar = Flight(
+        id: "sample-jkt-dps",
+        flightNumber: "JT 930",
+        airline: "Lion Air",
+        departure: Airport(
+            airport: "Soekarno-Hatta International Airport",
+            code: "JKT",
+            city: "Jakarta",
+            latitude: -6.1275,
+            longitude: 106.6537,
+            time: ISO8601DateFormatter().string(from: Calendar.current.date(bySettingHour: 9, minute: 15, second: 0, of: Date()) ?? Date()),
+            actualTime: nil,
+            terminal: "1A",
+            gate: "A7",
+            delay: nil
+        ),
+        arrival: Airport(
+            airport: "Ngurah Rai International Airport",
+            code: "DPS",
+            city: "Denpasar",
+            latitude: -8.7467,
+            longitude: 115.1667,
+            time: ISO8601DateFormatter().string(from: Calendar.current.date(bySettingHour: 14, minute: 30, second: 0, of: Date()) ?? Date()),
+            actualTime: nil,
+            terminal: "D",
+            gate: "D3",
+            delay: nil
+        ),
+        status: .departed,
+        aircraft: Aircraft(
+            type: "Boeing 737-900ER",
+            registration: "PK-LJR",
+            icao24: "8D0002"
+        ),
+        currentPosition: nil,
+        progress: 0.3,
+        flightDate: ISO8601DateFormatter().string(from: Date()),
+        dataSource: .manual,
+        date: Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
     )
 }

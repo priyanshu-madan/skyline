@@ -134,6 +134,7 @@ struct PhotoImportView: View {
             departure: Airport(
                 airport: "San Francisco International Airport",
                 code: "SFO",
+                city: "San Francisco",
                 latitude: 37.6213,
                 longitude: -122.3790,
                 time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(7200)),
@@ -145,6 +146,7 @@ struct PhotoImportView: View {
             arrival: Airport(
                 airport: "John F. Kennedy International Airport",
                 code: "JFK",
+                city: "New York",
                 latitude: 40.6413,
                 longitude: -73.7781,
                 time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(25200)),
@@ -161,8 +163,9 @@ struct PhotoImportView: View {
             ),
             currentPosition: nil,
             progress: 0.0,
-            flightDate: ISO8601DateFormatter().string(from: Date()),
-            dataSource: .pkpass
+            flightDate: ISO8601DateFormatter().string(from: Date().addingTimeInterval(7200)),
+            dataSource: .pkpass,
+            date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(7200)))
         )
     }
 }

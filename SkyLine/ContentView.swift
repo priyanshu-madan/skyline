@@ -33,7 +33,7 @@ struct ContentView: View {
                     .environmentObject(authService)
                     .presentationDetents([.height(80), .fraction(0.6), .large])
                     .presentationBackgroundInteraction(.enabled)
-                    .presentationBackground(.regularMaterial)
+                    .presentationBackground(.clear)
                     .presentationCornerRadius(40)
             }
             .preferredColorScheme(themeManager.currentTheme.colorScheme)

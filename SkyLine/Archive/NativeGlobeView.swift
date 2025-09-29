@@ -303,7 +303,7 @@ struct NativeGlobeView: View {
                                         .padding(.vertical, 2)
                                         .background(statusColor(for: flight.status))
                                         .cornerRadius(4)
-                                    Text(flight.airline)
+                                    Text(flight.airline ?? "Unknown Airline")
                                         .font(AppTypography.footnote)
                                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                                 }
