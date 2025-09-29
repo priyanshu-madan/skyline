@@ -298,7 +298,7 @@ struct GlobeView: View {
                                 .foregroundColor(statusColor(for: flight.status))
                         }
                         
-                        Text(flight.airline)
+                        Text(flight.airline ?? "Unknown Airline")
                             .font(AppTypography.flightStatus)
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
@@ -368,7 +368,7 @@ struct GlobeView: View {
                                         .background(statusColor(for: flight.status))
                                         .cornerRadius(4)
                                     
-                                    Text(flight.airline)
+                                    Text(flight.airline ?? "Unknown Airline")
                                         .font(AppTypography.footnote)
                                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                                 }

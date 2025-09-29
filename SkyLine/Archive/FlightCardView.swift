@@ -99,7 +99,7 @@ struct FlightCardView: View {
                         }
                         
                         // Airline
-                        Text(flight.airline)
+                        Text(flight.airline ?? "Unknown Airline")
                             .font(AppTypography.footnote)
                             .foregroundColor(theme.currentTheme.colors.textSecondary)
                             .textCase(.uppercase)

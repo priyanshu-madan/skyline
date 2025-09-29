@@ -399,6 +399,7 @@ extension Airport {
             self = Airport(
                 airport: self.airport,
                 code: self.code,
+                city: self.city,
                 latitude: coords.latitude,
                 longitude: coords.longitude,
                 time: self.time,
@@ -417,6 +418,7 @@ extension Airport {
         return Airport(
             airport: name ?? self.airport,
             code: self.code,
+            city: self.city,
             latitude: coordinates?.latitude ?? self.latitude,
             longitude: coordinates?.longitude ?? self.longitude,
             time: self.time,

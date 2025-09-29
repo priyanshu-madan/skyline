@@ -272,6 +272,7 @@ class CloudKitService: ObservableObject {
         // Departure airport
         record["departureAirport"] = flight.departure.airport
         record["departureCode"] = flight.departure.code
+        record["departureCity"] = flight.departure.city
         record["departureLatitude"] = flight.departure.latitude
         record["departureLongitude"] = flight.departure.longitude
         record["departureTime"] = flight.departure.time
@@ -283,6 +284,7 @@ class CloudKitService: ObservableObject {
         // Arrival airport
         record["arrivalAirport"] = flight.arrival.airport
         record["arrivalCode"] = flight.arrival.code
+        record["arrivalCity"] = flight.arrival.city
         record["arrivalLatitude"] = flight.arrival.latitude
         record["arrivalLongitude"] = flight.arrival.longitude
         record["arrivalTime"] = flight.arrival.time
@@ -326,6 +328,7 @@ class CloudKitService: ObservableObject {
         let departure = Airport(
             airport: record["departureAirport"] as? String ?? "",
             code: record["departureCode"] as? String ?? "",
+            city: record["departureCity"] as? String ?? "",
             latitude: record["departureLatitude"] as? Double,
             longitude: record["departureLongitude"] as? Double,
             time: record["departureTime"] as? String ?? "",
@@ -339,6 +342,7 @@ class CloudKitService: ObservableObject {
         let arrival = Airport(
             airport: record["arrivalAirport"] as? String ?? "",
             code: record["arrivalCode"] as? String ?? "",
+            city: record["arrivalCity"] as? String ?? "",
             latitude: record["arrivalLatitude"] as? Double,
             longitude: record["arrivalLongitude"] as? Double,
             time: record["arrivalTime"] as? String ?? "",
@@ -385,7 +389,8 @@ class CloudKitService: ObservableObject {
             currentPosition: currentPosition,
             progress: record["progress"] as? Double,
             flightDate: record["flightDate"] as? String,
-            dataSource: dataSource
+            dataSource: dataSource,
+            date: record["date"] as? Date ?? Date()
         )
     }
     

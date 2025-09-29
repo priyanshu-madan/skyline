@@ -93,7 +93,7 @@ struct FlightCardView: View {
                     .font(AppTypography.headline)
                     .foregroundColor(theme.currentTheme.colors.text)
                 
-                Text(flight.airline)
+                Text(flight.airline ?? "Unknown Airline")
                     .font(AppTypography.caption)
                     .foregroundColor(theme.currentTheme.colors.textSecondary)
             }

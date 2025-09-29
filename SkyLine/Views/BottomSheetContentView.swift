@@ -420,6 +420,7 @@ struct BottomSheetContentView: View {
         let updatedDeparture = Airport(
             airport: flight.departure.airport,
             code: flight.departure.code,
+            city: flight.departure.city,
             latitude: depCoordinate?.latitude ?? flight.departure.latitude,
             longitude: depCoordinate?.longitude ?? flight.departure.longitude,
             time: flight.departure.time,
@@ -432,6 +433,7 @@ struct BottomSheetContentView: View {
         let updatedArrival = Airport(
             airport: flight.arrival.airport,
             code: flight.arrival.code,
+            city: flight.arrival.city,
             latitude: arrCoordinate?.latitude ?? flight.arrival.latitude,
             longitude: arrCoordinate?.longitude ?? flight.arrival.longitude,
             time: flight.arrival.time,
@@ -452,7 +454,8 @@ struct BottomSheetContentView: View {
             currentPosition: flight.currentPosition,
             progress: flight.progress,
             flightDate: flight.flightDate,
-            dataSource: flight.dataSource
+            dataSource: flight.dataSource,
+            date: flight.date
         )
     }
     
@@ -555,6 +558,7 @@ struct BottomSheetContentView: View {
             departure: Airport(
                 airport: depCode, // Will be enhanced with real airport names later
                 code: depCode,
+                city: depCode, // Use airport code as city for now
                 latitude: nil, // Will be populated by AirportService
                 longitude: nil,
                 time: boardingPassData.departureTime ?? "",
@@ -566,6 +570,7 @@ struct BottomSheetContentView: View {
             arrival: Airport(
                 airport: arrCode, // Will be enhanced with real airport names later
                 code: arrCode,
+                city: arrCode, // Use airport code as city for now
                 latitude: nil, // Will be populated by AirportService
                 longitude: nil,
                 time: boardingPassData.arrivalTime ?? "",
@@ -579,7 +584,8 @@ struct BottomSheetContentView: View {
             currentPosition: nil, // No current position for boarding pass
             progress: 0.0, // Default progress
             flightDate: nil, // No specific date
-            dataSource: .manual // User-entered data
+            dataSource: .manual, // User-entered data
+            date: Calendar.current.startOfDay(for: Date())
         )
         
         // Add coordinates using AirportService
@@ -594,6 +600,7 @@ struct BottomSheetContentView: View {
         let updatedDeparture = Airport(
             airport: depCode,
             code: depCode,
+            city: depCode, // Use airport code as city for now
             latitude: depCoordinate?.latitude,
             longitude: depCoordinate?.longitude,
             time: boardingPassData.departureTime ?? "",
@@ -606,6 +613,7 @@ struct BottomSheetContentView: View {
         let updatedArrival = Airport(
             airport: arrCode,
             code: arrCode,
+            city: arrCode, // Use airport code as city for now
             latitude: arrCoordinate?.latitude,
             longitude: arrCoordinate?.longitude,
             time: boardingPassData.arrivalTime ?? "",
@@ -627,7 +635,8 @@ struct BottomSheetContentView: View {
             currentPosition: flight.currentPosition,
             progress: flight.progress,
             flightDate: flight.flightDate,
-            dataSource: flight.dataSource
+            dataSource: flight.dataSource,
+            date: Flight.extractFlightDate(from: boardingPassData.departureTime ?? "")
         )
         
         // Save to FlightStore

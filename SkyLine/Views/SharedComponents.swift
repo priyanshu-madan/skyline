@@ -23,7 +23,7 @@ struct SearchResultCard: View {
                     Text(flight.flightNumber)
                         .font(AppTypography.flightNumber)
                         .foregroundColor(themeManager.currentTheme.colors.text)
-                    Text(flight.airline)
+                    Text(flight.airline ?? "Unknown Airline")
                         .font(AppTypography.flightStatus)
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 }
@@ -136,7 +136,7 @@ struct FlightDetailSheet: View {
                             .font(.system(size: 32, weight: .bold, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.text)
                         
-                        Text(flight.airline)
+                        Text(flight.airline ?? "Unknown Airline")
                             .font(AppTypography.body)
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         
