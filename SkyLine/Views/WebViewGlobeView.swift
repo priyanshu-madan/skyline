@@ -242,20 +242,20 @@ struct WebViewGlobeView: View {
             
         case "FLIGHT_FOCUS_SUCCESS":
             if let flightNumber = json["flightNumber"] as? String,
-               let flightIndex = json["flightIndex"] as? Int {
-                print("✅ Flight focus successful: \(flightNumber) at index \(flightIndex)")
+               let flightId = json["flightId"] as? String {
+                print("✅ Flight focus successful: \(flightNumber) (ID: \(flightId))")
             }
             
         case "FLIGHT_FOCUS_RETRY_NEEDED":
             if let flightNumber = json["flightNumber"] as? String,
-               let flightIndex = json["flightIndex"] as? Int {
-                print("🔄 Retrying flight focus for: \(flightNumber) at index \(flightIndex)")
+               let flightId = json["flightId"] as? String {
+                print("🔄 Retrying flight focus for: \(flightNumber) (ID: \(flightId))")
                 // Retry the focus after a short delay
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.coordinator.evaluateJavaScript("""
-                        if (window.focusOnFlight) {
-                            console.log('Retry: Focusing on flight at index \(flightIndex)');
-                            window.focusOnFlight(\(flightIndex));
+                        if (window.focusOnFlightById) {
+                            console.log('Retry: Focusing on flight by ID: \(flightId)');
+                            window.focusOnFlightById('\(flightId)', '\(flightNumber)');
                         }
                     """)
                 }
@@ -265,6 +265,26 @@ struct WebViewGlobeView: View {
             if let error = json["error"] as? String,
                let flightNumber = json["flightNumber"] as? String {
                 print("❌ Flight focus error for \(flightNumber): \(error)")
+            }
+            
+        case "FLIGHT_NOT_FOUND":
+            if let flightNumber = json["flightNumber"] as? String,
+               let flightId = json["flightId"] as? String {
+                print("⚠️ Flight not found in globe data: \(flightNumber) (ID: \(flightId))")
+                // Try to refresh flight data and retry
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.updateFlightData()
+                    
+                    // Retry after data refresh
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.coordinator.evaluateJavaScript("""
+                            if (window.focusOnFlightById) {
+                                console.log('Retry after data refresh: \(flightId)');
+                                window.focusOnFlightById('\(flightId)', '\(flightNumber)');
+                            }
+                        """)
+                    }
+                }
             }
             
         case "FLIGHT_SELECTED":
@@ -306,6 +326,7 @@ struct WebViewGlobeView: View {
                 "endLat": arrLat,
                 "endLng": arrLng,
                 "flightNumber": flight.flightNumber,
+                "flightId": flight.id,
                 "status": flight.status.rawValue,
                 "departureCode": flight.departure.code,
                 "arrivalCode": flight.arrival.code
@@ -1073,6 +1094,85 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           setTimeout(updateVisualsDebounced, 1200);
         };
         
+        
+        // Enhanced flight focusing with ID-based matching and visual highlighting
+        let selectedFlightId = null;
+        
+        window.focusOnFlightById = function(flightId, flightNumber) {
+          console.log("🎯 Attempting to focus on flight:", flightNumber, "ID:", flightId);
+          console.log("📊 Available arcsData:", arcsData?.length || 0, "flights");
+          
+          if (!arcsData || arcsData.length === 0) {
+            console.warn("⚠️ No flight data available in arcsData");
+            return false;
+          }
+          
+          // Find flight by ID first, then by flight number as fallback
+          let flight = null;
+          let flightIndex = -1;
+          
+          for (let i = 0; i < arcsData.length; i++) {
+            const arc = arcsData[i];
+            if (arc.flightId === flightId || 
+                (arc.flightNumber && arc.flightNumber === flightNumber)) {
+              flight = arc;
+              flightIndex = i;
+              break;
+            }
+          }
+          
+          if (!flight) {
+            console.warn("⚠️ Flight not found in arcsData:", flightNumber, "ID:", flightId);
+            return false;
+          }
+          
+          console.log("✅ Flight found at index:", flightIndex);
+          
+          // Calculate center point and focus
+          const lat = (flight.startLat + flight.endLat) / 2;
+          const lng = (flight.startLng + flight.endLng) / 2;
+          
+          // Set the point of view
+          world.pointOfView({ lat, lng, altitude: 12.0 }, 1500);
+          
+          // Highlight the selected flight
+          highlightFlight(flightId, flightIndex);
+          
+          setTimeout(updateVisualsDebounced, 1800);
+          
+          console.log("🎯 Successfully focused on flight:", flightNumber);
+          return true;
+        };
+        
+        // Visual highlighting function
+        function highlightFlight(flightId, flightIndex) {
+          selectedFlightId = flightId;
+          
+          // Update arc colors to highlight selected flight
+          world.arcColor((arc, index) => {
+            if (index === flightIndex) {
+              return ["#FF6B35", "#FF8C42"]; // Highlighted flight - bright orange
+            } else {
+              return ["rgba(0, 107, 255, 0.3)", "rgba(0, 107, 255, 0.2)"]; // Dimmed
+            }
+          });
+          
+          // Update stroke width for emphasis
+          world.arcStroke((arc, index) => {
+            return index === flightIndex ? 3.5 : 1.5;
+          });
+          
+          console.log("🎨 Applied visual highlighting to flight:", flightId);
+        }
+        
+        // Clear highlighting function
+        window.clearFlightHighlight = function() {
+          selectedFlightId = null;
+          world.arcColor(() => currentTheme.flightPathColors);
+          world.arcStroke(2.0);
+          console.log("🎨 Cleared flight highlighting");
+        };
+
         window.focusOnFlight = function(flightIndex) {
           if (arcsData[flightIndex]) {
             const flight = arcsData[flightIndex];
