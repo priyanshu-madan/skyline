@@ -58,11 +58,13 @@ struct SkyLineBottomBarView: View {
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
     
-    // Callback to communicate with parent ContentView
+    // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
+    let onTabSelected: (() -> Void)?
     
-    init(onFlightSelected: ((Flight) -> Void)? = nil) {
+    init(onFlightSelected: ((Flight) -> Void)? = nil, onTabSelected: (() -> Void)? = nil) {
         self.onFlightSelected = onFlightSelected
+        self.onTabSelected = onTabSelected
     }
     
     var body: some View {
@@ -175,6 +177,9 @@ struct SkyLineBottomBarView: View {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         activeTab = tab
                     }
+                    
+                    // Trigger sheet expansion when tab is tapped
+                    onTabSelected?()
                 }
             }
         }
@@ -616,7 +621,7 @@ fileprivate struct TabViewHelper: UIViewRepresentable {
 }
 
 #Preview {
-    SkyLineBottomBarView(onFlightSelected: nil)
+    SkyLineBottomBarView(onFlightSelected: nil, onTabSelected: nil)
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
         .environmentObject(AuthenticationService.shared)

@@ -30,11 +30,14 @@ struct ContentView: View {
                     .frame(height: 60)
             }
             .sheet(isPresented: $showBottomBar) {
-                SkyLineBottomBarView(onFlightSelected: handleFlightSelection)
+                SkyLineBottomBarView(
+                    onFlightSelected: handleFlightSelection,
+                    onTabSelected: handleTabSelection
+                )
                     .environmentObject(themeManager)
                     .environmentObject(flightStore)
                     .environmentObject(authService)
-                    .presentationDetents([.height(80), .fraction(0.6), .large], selection: $selectedDetent)
+                    .presentationDetents([.height(80), .fraction(0.2), .fraction(0.6), .large], selection: $selectedDetent)
                     .presentationBackgroundInteraction(.enabled)
                     .presentationBackground(.clear)
                     .presentationCornerRadius(40)
@@ -46,54 +49,48 @@ struct ContentView: View {
     // MARK: - Flight Selection Handler
     
     private func handleFlightSelection(_ flight: Flight) {
-        // Find the flight index in the sorted flights array
-        let sortedFlights = flightStore.sortedFlights
-        if let flightIndex = sortedFlights.firstIndex(where: { $0.id == flight.id }) {
-            // Enhanced flight selection with better error handling and feedback
-            let flightSelectionScript = """
-                (function() {
-                    try {
-                        console.log('🎯 Flight selection requested: index \(flightIndex), flight \(flight.flightNumber)');
+        print("🎯 Flight selection requested: \(flight.flightNumber) (ID: \(flight.id))")
+        
+        // Use flight ID and number for reliable identification instead of array index
+        let flightSelectionScript = """
+            (function() {
+                try {
+                    console.log('🎯 Flight selection requested: \(flight.flightNumber) (ID: \(flight.id))');
+                    
+                    if (typeof window.focusOnFlightById === 'function') {
+                        console.log('✅ Focusing on flight by ID: \(flight.id)');
+                        const success = window.focusOnFlightById('\(flight.id)', '\(flight.flightNumber)');
                         
-                        if (typeof window.focusOnFlight === 'function') {
-                            console.log('✅ Focusing on flight at index \(flightIndex): \(flight.flightNumber)');
-                            window.focusOnFlight(\(flightIndex));
-                            
+                        if (success) {
                             // Send success message back to Swift
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
                                 window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
                                     type: 'FLIGHT_FOCUS_SUCCESS',
-                                    flightIndex: \(flightIndex),
                                     flightNumber: '\(flight.flightNumber)',
                                     flightId: '\(flight.id)'
                                 }));
                             }
-                            
                             return true;
                         } else {
-                            console.warn('⚠️ focusOnFlight function not available yet, will retry...');
+                            console.warn('⚠️ Flight not found in globe data: \(flight.flightNumber)');
                             
-                            // Send retry request back to Swift
+                            // Send not found message back to Swift
                             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
                                 window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
-                                    type: 'FLIGHT_FOCUS_RETRY_NEEDED',
-                                    flightIndex: \(flightIndex),
+                                    type: 'FLIGHT_NOT_FOUND',
                                     flightNumber: '\(flight.flightNumber)',
                                     flightId: '\(flight.id)'
                                 }));
                             }
-                            
                             return false;
                         }
-                    } catch (error) {
-                        console.error('❌ Error focusing on flight:', error.message);
+                    } else {
+                        console.warn('⚠️ focusOnFlightById function not available yet, will retry...');
                         
-                        // Send error message back to Swift
+                        // Send retry request back to Swift
                         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
                             window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
-                                type: 'FLIGHT_FOCUS_ERROR',
-                                error: error.message,
-                                flightIndex: \(flightIndex),
+                                type: 'FLIGHT_FOCUS_RETRY_NEEDED',
                                 flightNumber: '\(flight.flightNumber)',
                                 flightId: '\(flight.id)'
                             }));
@@ -101,19 +98,42 @@ struct ContentView: View {
                         
                         return false;
                     }
-                })();
-            """
-            
-            webViewCoordinator.evaluateJavaScript(flightSelectionScript)
-            
-            // Auto-collapse the bottom sheet to show more of the globe
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    selectedDetent = .height(80)
+                } catch (error) {
+                    console.error('❌ Error focusing on flight:', error.message);
+                    
+                    // Send error message back to Swift
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+                        window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
+                            type: 'FLIGHT_FOCUS_ERROR',
+                            error: error.message,
+                            flightNumber: '\(flight.flightNumber)',
+                            flightId: '\(flight.id)'
+                        }));
+                    }
+                    
+                    return false;
                 }
+            })();
+        """
+        
+        webViewCoordinator.evaluateJavaScript(flightSelectionScript)
+        
+        // Auto-collapse the bottom sheet to show more of the globe
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                selectedDetent = .height(80)
             }
-        } else {
-            print("❌ Flight not found in sorted flights array: \(flight.flightNumber)")
+        }
+    }
+    
+    // MARK: - Tab Selection Handler
+    
+    private func handleTabSelection() {
+        // Expand sheet to 20% height when tab buttons are tapped
+        withAnimation(.easeInOut(duration: 0.3)) {
+            if selectedDetent == .height(80) {
+                selectedDetent = .fraction(0.2)
+            }
         }
     }
 }
