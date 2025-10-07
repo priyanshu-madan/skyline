@@ -49,13 +49,16 @@ struct ContentView: View {
     // MARK: - Flight Selection Handler
     
     private func handleFlightSelection(_ flight: Flight) {
-        print("🎯 Flight selection requested: \(flight.flightNumber) (ID: \(flight.id))")
+        print("🎯 Swift: Flight selection requested: \(flight.flightNumber) (ID: \(flight.id))")
+        print("🎯 Swift: Flight departure: \(flight.departure.code) → \(flight.arrival.code)")
         
         // Use flight ID and number for reliable identification instead of array index
         let flightSelectionScript = """
             (function() {
                 try {
-                    console.log('🎯 Flight selection requested: \(flight.flightNumber) (ID: \(flight.id))');
+                    console.log('🎯 JS: Flight selection requested: \(flight.flightNumber) (ID: \(flight.id))');
+                    console.log('🔍 JS: Available functions:', typeof window.focusOnFlightById, typeof window.updateFlightData);
+                    console.log('📊 JS: Current arcsData length:', window.arcsData ? window.arcsData.length : 'undefined');
                     
                     if (typeof window.focusOnFlightById === 'function') {
                         console.log('✅ Focusing on flight by ID: \(flight.id)');
@@ -116,6 +119,7 @@ struct ContentView: View {
             })();
         """
         
+        print("🚀 Swift: Executing JavaScript flight selection")
         webViewCoordinator.evaluateJavaScript(flightSelectionScript)
         
         // Auto-collapse the bottom sheet to show more of the globe
