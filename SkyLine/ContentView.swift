@@ -32,12 +32,14 @@ struct ContentView: View {
             .sheet(isPresented: $showBottomBar) {
                 SkyLineBottomBarView(
                     onFlightSelected: handleFlightSelection,
-                    onTabSelected: handleTabSelection
+                    onTabSelected: handleTabSelection,
+                    onGlobeReset: resetGlobeView,
+                    selectedDetent: $selectedDetent
                 )
                     .environmentObject(themeManager)
                     .environmentObject(flightStore)
                     .environmentObject(authService)
-                    .presentationDetents([.height(80), .fraction(0.2), .fraction(0.6), .large], selection: $selectedDetent)
+                    .presentationDetents([.height(80), .fraction(0.2), .fraction(0.3), .fraction(0.6), .large], selection: $selectedDetent)
                     .presentationBackgroundInteraction(.enabled)
                     .presentationBackground(.clear)
                     .presentationCornerRadius(40)
@@ -122,11 +124,9 @@ struct ContentView: View {
         print("🚀 Swift: Executing JavaScript flight selection")
         webViewCoordinator.evaluateJavaScript(flightSelectionScript)
         
-        // Auto-collapse the bottom sheet to show more of the globe
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                selectedDetent = .height(80)
-            }
+        // Expand sheet to show flight details
+        withAnimation(.easeInOut(duration: 0.5)) {
+            selectedDetent = .fraction(0.3)
         }
     }
     
@@ -139,6 +139,40 @@ struct ContentView: View {
                 selectedDetent = .fraction(0.2)
             }
         }
+    }
+    
+    // MARK: - Globe Reset Handler
+    
+    private func resetGlobeView() {
+        print("🌍 Swift: Resetting globe view")
+        
+        let resetScript = """
+            (function() {
+                try {
+                    console.log('🌍 JS: Resetting globe view');
+                    
+                    // Clear flight highlighting using the proper function
+                    if (typeof window.clearFlightHighlight === 'function') {
+                        console.log('✅ Clearing flight highlighting');
+                        window.clearFlightHighlight();
+                    }
+                    
+                    // Reset globe rotation and position if function exists
+                    if (typeof window.resetRotation === 'function') {
+                        console.log('✅ Resetting rotation and position');
+                        window.resetRotation();
+                    }
+                    
+                    console.log('🌍 Globe reset completed successfully');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Error resetting globe:', error.message);
+                    return false;
+                }
+            })();
+        """
+        
+        webViewCoordinator.evaluateJavaScript(resetScript)
     }
 }
 

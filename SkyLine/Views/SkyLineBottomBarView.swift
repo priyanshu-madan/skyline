@@ -57,14 +57,19 @@ struct SkyLineBottomBarView: View {
     @State private var addFlightView: Bool = false
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
+    @State private var selectedFlightForDetails: Flight? = nil
     
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
     let onTabSelected: (() -> Void)?
+    let onGlobeReset: (() -> Void)?
+    @Binding var selectedDetent: PresentationDetent
     
-    init(onFlightSelected: ((Flight) -> Void)? = nil, onTabSelected: (() -> Void)? = nil) {
+    init(onFlightSelected: ((Flight) -> Void)? = nil, onTabSelected: (() -> Void)? = nil, onGlobeReset: (() -> Void)? = nil, selectedDetent: Binding<PresentationDetent>) {
         self.onFlightSelected = onFlightSelected
         self.onTabSelected = onTabSelected
+        self.onGlobeReset = onGlobeReset
+        self._selectedDetent = selectedDetent
     }
     
     var body: some View {
@@ -116,23 +121,51 @@ struct SkyLineBottomBarView: View {
         ScrollView(.vertical) {
             VStack {
                 HStack {
-                    Text(tab.rawValue)
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                    
-                    Spacer(minLength: 0)
-                    
-                    Button {
-                        addFlightView.toggle()
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .frame(width: 30, height: 30)
+                    if tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large) {
+                        // Flight path header
+                        Text("\(selectedFlightForDetails?.departure.code ?? "") → \(selectedFlightForDetails?.arrival.code ?? "")")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundColor(themeManager.currentTheme.colors.text)
+                        
+                        Spacer(minLength: 0)
+                        
+                        Button {
+                            // Reset globe view first
+                            onGlobeReset?()
+                            
+                            // Then close flight details
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                selectedFlightForDetails = nil
+                                selectedDetent = .fraction(0.2)
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                    } else {
+                        Text(tab.rawValue)
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundColor(themeManager.currentTheme.colors.text)
+                        
+                        Spacer(minLength: 0)
+                        
+                        Button {
+                            addFlightView.toggle()
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .frame(width: 30, height: 30)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
                     }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
                 }
                 .padding(.top, 15)
                 .padding(.leading, 10)
@@ -144,7 +177,19 @@ struct SkyLineBottomBarView: View {
             case .globe:
                 GlobeTabContent()
             case .flights:
-                FlightsTabContent()
+                if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
+                    FlightDetailsInSheet(
+                        flight: selectedFlight,
+                        onClose: {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                selectedFlightForDetails = nil
+                                selectedDetent = .fraction(0.2)
+                            }
+                        }
+                    )
+                } else {
+                    FlightsTabContent()
+                }
             case .search:
                 SearchTabContent()
             case .profile:
@@ -340,16 +385,11 @@ struct SkyLineBottomBarView: View {
         
         withAnimation(.easeInOut(duration: 0.3)) {
             selectedFlightId = flight.id
+            selectedFlightForDetails = flight
         }
         
         // Call the callback to communicate with ContentView
         onFlightSelected?(flight)
-        
-        // Auto-collapse to show more of the globe after a brief delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            // This would require parent view handling to collapse the sheet
-            // For now, we'll just maintain the selection state
-        }
     }
     
     private func handleFlightDelete(_ flight: Flight) {
@@ -621,7 +661,12 @@ fileprivate struct TabViewHelper: UIViewRepresentable {
 }
 
 #Preview {
-    SkyLineBottomBarView(onFlightSelected: nil, onTabSelected: nil)
+    SkyLineBottomBarView(
+        onFlightSelected: nil, 
+        onTabSelected: nil,
+        onGlobeReset: nil,
+        selectedDetent: .constant(.fraction(0.2))
+    )
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
         .environmentObject(AuthenticationService.shared)
