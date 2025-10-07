@@ -649,6 +649,86 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             world.controls().autoRotate = true;
           };
           
+          // Enhanced flight focusing with ID-based matching and visual highlighting
+          let selectedFlightId = null;
+          
+          window.focusOnFlightById = function(flightId, flightNumber) {
+            console.log("🎯 Attempting to focus on flight:", flightNumber, "ID:", flightId);
+            console.log("📊 Available arcsData:", arcsData?.length || 0, "flights");
+            
+            if (!arcsData || arcsData.length === 0) {
+              console.warn("⚠️ No flight data available in arcsData");
+              return false;
+            }
+            
+            // Find flight by ID first, then by flight number as fallback
+            let flight = null;
+            let flightIndex = -1;
+            
+            for (let i = 0; i < arcsData.length; i++) {
+              const arc = arcsData[i];
+              if (arc.flightId === flightId || 
+                  (arc.flightNumber && arc.flightNumber === flightNumber)) {
+                flight = arc;
+                flightIndex = i;
+                break;
+              }
+            }
+            
+            if (!flight) {
+              console.warn("⚠️ Flight not found in arcsData:", flightNumber, "ID:", flightId);
+              return false;
+            }
+            
+            console.log("✅ Flight found at index:", flightIndex);
+            
+            // Calculate center point and focus
+            const lat = (flight.startLat + flight.endLat) / 2;
+            const lng = (flight.startLng + flight.endLng) / 2;
+            
+            // Set the point of view
+            world.pointOfView({ lat, lng, altitude: 2.5 }, 1500);
+            
+            // Highlight the selected flight
+            selectedFlightId = flightId;
+            
+            // Update arc colors to highlight selected flight
+            world.arcColor((arc, index) => {
+              console.log("🎨 Checking arc:", arc.flightNumber, "ID:", arc.flightId, "index:", index);
+              console.log("🎯 Looking for:", flightNumber, "ID:", flightId);
+              
+              // Use ONLY flight ID for exact matching (no flight number fallback)
+              if (arc.flightId === flightId) {
+                console.log("🟠 EXACT MATCH! Setting ORANGE for:", arc.flightNumber, "ID:", arc.flightId);
+                return ["#FF6B35", "#FF8C42"]; // Highlighted flight - bright orange
+              } else {
+                console.log("📏 No exact match, setting VERY THIN for:", arc.flightNumber, "ID:", arc.flightId);
+                return ["rgba(0, 107, 255, 0.4)", "rgba(0, 107, 255, 0.3)"]; // Light blue for thin lines
+              }
+            });
+            
+            // Update stroke width for emphasis
+            world.arcStroke((arc, index) => {
+              if (arc.flightId === flightId) {
+                return 4.0; // Thick stroke for selected flight
+              } else {
+                return 0.0001; // Nearly invisible stroke for background flights
+              }
+            });
+            
+            console.log("🎨 Applied visual highlighting to flight:", flightId);
+            console.log("🎯 Successfully focused on flight:", flightNumber);
+            return true;
+          };
+          
+          // Clear highlighting function
+          window.clearFlightHighlight = function() {
+            selectedFlightId = null;
+            world.arcColor(() => ["#006bff", "rgba(0, 107, 255, 0.8)"]);
+            world.arcStroke(2.0);
+            console.log("🎨 Cleared flight highlighting");
+          };
+          
           document.getElementById('status').innerHTML = 'Globe ready, loading countries...';
           console.log('🌍 Globe with flight support created successfully');
           console.log('📋 Available functions:', typeof window.updateFlightData, typeof window.setTheme);
