@@ -699,8 +699,8 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               
               // Use ONLY flight ID for exact matching (no flight number fallback)
               if (arc.flightId === flightId) {
-                console.log("🟠 EXACT MATCH! Setting ORANGE for:", arc.flightNumber, "ID:", arc.flightId);
-                return ["#FF6B35", "#FF8C42"]; // Highlighted flight - bright orange
+                console.log("🔵 EXACT MATCH! Setting BLUE for:", arc.flightNumber, "ID:", arc.flightId);
+                return ["#006BFF", "rgba(0, 107, 255, 0.8)"]; // Highlighted flight - blue (same as default)
               } else {
                 console.log("📏 No exact match, setting VERY THIN for:", arc.flightNumber, "ID:", arc.flightId);
                 return ["rgba(0, 107, 255, 0.4)", "rgba(0, 107, 255, 0.3)"]; // Light blue for thin lines
@@ -716,6 +716,46 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               }
             });
             
+            // Filter airport labels to show only selected flight's airports
+            console.log("🏷️ Filtering airport labels for selected flight");
+            const selectedFlightLabels = [
+              {
+                lat: flight.startLat,
+                lng: flight.startLng,
+                code: flight.departureCode || 'DEP'
+              },
+              {
+                lat: flight.endLat,
+                lng: flight.endLng,
+                code: flight.arrivalCode || 'ARR'
+              }
+            ];
+            
+            world.htmlElementsData(selectedFlightLabels)
+              .htmlLat(d => d.lat)
+              .htmlLng(d => d.lng)
+              .htmlAltitude(0.01)
+              .htmlElement(d => {
+                const el = document.createElement('div');
+                el.innerHTML = d.code;
+                el.style.cssText = `
+                  color: #007AFF;
+                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                  font-size: 10px;
+                  font-weight: bold;
+                  background: rgba(255, 255, 255, 0.9);
+                  padding: 2px 4px;
+                  border-radius: 3px;
+                  border: 1px solid #007AFF;
+                  text-align: center;
+                  pointer-events: none;
+                  white-space: nowrap;
+                  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                  transform: translate(-50%, -50%);
+                `;
+                return el;
+              });
+            
             console.log("🎨 Applied visual highlighting to flight:", flightId);
             console.log("🎯 Successfully focused on flight:", flightNumber);
             return true;
@@ -726,7 +766,66 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             selectedFlightId = null;
             world.arcColor(() => ["#006bff", "rgba(0, 107, 255, 0.8)"]);
             world.arcStroke(2.0);
-            console.log("🎨 Cleared flight highlighting");
+            
+            // Restore all airport labels
+            console.log("🏷️ Restoring all airport labels");
+            if (arcsData && arcsData.length > 0) {
+              const airportLabels = [];
+              arcsData.forEach(flight => {
+                // Add departure airport
+                airportLabels.push({
+                  lat: flight.startLat,
+                  lng: flight.startLng,
+                  code: flight.departureCode || 'DEP'
+                });
+                // Add arrival airport  
+                airportLabels.push({
+                  lat: flight.endLat,
+                  lng: flight.endLng,
+                  code: flight.arrivalCode || 'ARR'
+                });
+              });
+              
+              // Remove duplicates based on location
+              const uniqueLabels = [];
+              airportLabels.forEach(label => {
+                const exists = uniqueLabels.find(existing => 
+                  Math.abs(existing.lat - label.lat) < 0.1 && 
+                  Math.abs(existing.lng - label.lng) < 0.1
+                );
+                if (!exists) {
+                  uniqueLabels.push(label);
+                }
+              });
+              
+              // Restore airport code labels as HTML elements
+              world.htmlElementsData(uniqueLabels.slice(0, 30))
+                .htmlLat(d => d.lat)
+                .htmlLng(d => d.lng)
+                .htmlAltitude(0.01)
+                .htmlElement(d => {
+                  const el = document.createElement('div');
+                  el.innerHTML = d.code;
+                  el.style.cssText = `
+                    color: #007AFF;
+                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                    font-size: 10px;
+                    font-weight: bold;
+                    background: rgba(255, 255, 255, 0.9);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    border: 1px solid #007AFF;
+                    text-align: center;
+                    pointer-events: none;
+                    white-space: nowrap;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                    transform: translate(-50%, -50%);
+                  `;
+                  return el;
+                });
+            }
+            
+            console.log("🎨 Cleared flight highlighting and restored all airport labels");
           };
           
           document.getElementById('status').innerHTML = 'Globe ready, loading countries...';
@@ -1250,7 +1349,66 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           selectedFlightId = null;
           world.arcColor(() => currentTheme.flightPathColors);
           world.arcStroke(2.0);
-          console.log("🎨 Cleared flight highlighting");
+          
+          // Restore all airport labels
+          console.log("🏷️ Restoring all airport labels");
+          if (arcsData && arcsData.length > 0) {
+            const airportLabels = [];
+            arcsData.forEach(flight => {
+              // Add departure airport
+              airportLabels.push({
+                lat: flight.startLat,
+                lng: flight.startLng,
+                code: flight.departureCode || 'DEP'
+              });
+              // Add arrival airport  
+              airportLabels.push({
+                lat: flight.endLat,
+                lng: flight.endLng,
+                code: flight.arrivalCode || 'ARR'
+              });
+            });
+            
+            // Remove duplicates based on location
+            const uniqueLabels = [];
+            airportLabels.forEach(label => {
+              const exists = uniqueLabels.find(existing => 
+                Math.abs(existing.lat - label.lat) < 0.1 && 
+                Math.abs(existing.lng - label.lng) < 0.1
+              );
+              if (!exists) {
+                uniqueLabels.push(label);
+              }
+            });
+            
+            // Restore airport code labels as HTML elements
+            world.htmlElementsData(uniqueLabels.slice(0, 30))
+              .htmlLat(d => d.lat)
+              .htmlLng(d => d.lng)
+              .htmlAltitude(0.01)
+              .htmlElement(d => {
+                const el = document.createElement('div');
+                el.innerHTML = d.code;
+                el.style.cssText = `
+                  color: #007AFF;
+                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                  font-size: 10px;
+                  font-weight: bold;
+                  background: rgba(255, 255, 255, 0.9);
+                  padding: 2px 4px;
+                  border-radius: 3px;
+                  border: 1px solid #007AFF;
+                  text-align: center;
+                  pointer-events: none;
+                  white-space: nowrap;
+                  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                  transform: translate(-50%, -50%);
+                `;
+                return el;
+              });
+          }
+          
+          console.log("🎨 Cleared flight highlighting and restored all airport labels");
         };
 
         window.focusOnFlight = function(flightIndex) {
