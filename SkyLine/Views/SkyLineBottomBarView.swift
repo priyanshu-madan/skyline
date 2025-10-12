@@ -58,6 +58,7 @@ struct SkyLineBottomBarView: View {
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
     @State private var selectedFlightForDetails: Flight? = nil
+    @State private var flightDetailsViewKey: UUID = UUID()
     
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
@@ -120,36 +121,11 @@ struct SkyLineBottomBarView: View {
     func IndividualTabView(_ tab: SkyLineTab) -> some View {
         ScrollView(.vertical) {
             VStack {
-                HStack {
-                    if tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large) {
-                        // Flight path header
-                        Text("\(selectedFlightForDetails?.departure.code ?? "") → \(selectedFlightForDetails?.arrival.code ?? "")")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                        
-                        Spacer(minLength: 0)
-                        
-                        Button {
-                            // Reset globe view first
-                            onGlobeReset?()
-                            
-                            // Then close flight details
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                selectedFlightForDetails = nil
-                                selectedDetent = .fraction(0.2)
-                            }
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .frame(width: 30, height: 30)
-                        }
-                        .buttonStyle(.glass)
-                        .buttonBorderShape(.circle)
-                    } else {
+                // Remove the header section when viewing flight details
+                if !(tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large)) {
+                    HStack {
                         Text(tab.rawValue)
-                            .font(.largeTitle)
+                            .font(.system(.largeTitle, design: .monospaced))
                             .fontWeight(.bold)
                             .foregroundColor(themeManager.currentTheme.colors.text)
                         
@@ -159,18 +135,18 @@ struct SkyLineBottomBarView: View {
                             addFlightView.toggle()
                         } label: {
                             Image(systemName: "plus")
-                                .font(.title3)
+                                .font(.system(.title3, design: .monospaced))
                                 .fontWeight(.semibold)
                                 .frame(width: 30, height: 30)
                         }
                         .buttonStyle(.glass)
                         .buttonBorderShape(.circle)
                     }
+                    .padding(.top, 15)
+                    .padding(.leading, 10)
+                    .padding(.bottom, 15)
                 }
-                .padding(.top, 15)
-                .padding(.leading, 10)
             }
-            .padding(15)
             
             // Tab-specific content
             switch tab {
@@ -181,12 +157,29 @@ struct SkyLineBottomBarView: View {
                     FlightDetailsInSheet(
                         flight: selectedFlight,
                         onClose: {
+                            print("🔍 DEBUG: FlightDetailsInSheet close button tapped")
+                            onGlobeReset?()
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 selectedFlightForDetails = nil
                                 selectedDetent = .fraction(0.2)
+                                flightDetailsViewKey = UUID()
+                                print("🔍 DEBUG: Reset to selectedDetent 0.2")
                             }
                         }
                     )
+                    .id(flightDetailsViewKey)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .clipped()
+                    .transaction { transaction in
+                        // Force immediate update without animation to reset scroll state
+                        transaction.disablesAnimations = true
+                    }
+                    .onAppear {
+                        print("🔍 DEBUG: FlightDetailsInSheet appeared in SkyLineBottomBarView")
+                        print("🔍 DEBUG: Current selectedDetent: \(selectedDetent)")
+                        print("🔍 DEBUG: Flight: \(selectedFlight.flightNumber)")
+                        print("🔍 DEBUG: ViewKey: \(flightDetailsViewKey)")
+                    }
                 } else {
                     FlightsTabContent()
                 }
@@ -208,11 +201,11 @@ struct SkyLineBottomBarView: View {
             ForEach(SkyLineTab.allCases, id: \.rawValue) { tab in
                 VStack(spacing: 6) {
                     Image(systemName: tab.symbolImage)
-                        .font(.title3)
+                        .font(.system(.title3, design: .monospaced))
                         .symbolVariant(.fill)
                     
                     Text(tab.rawValue)
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .monospaced))
                         .fontWeight(.semibold)
                 }
                 .foregroundStyle(activeTab == tab ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
@@ -259,16 +252,16 @@ struct SkyLineBottomBarView: View {
             // Main content area - placeholder for now
             VStack(spacing: 16) {
                 Image(systemName: "globe.americas.fill")
-                    .font(.system(size: 48))
+                    .font(.system(size: 48, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.primary)
                     .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                 
                 Text("SkyLine")
-                    .font(.title2)
+                    .font(.system(.title2, design: .monospaced))
                     .fontWeight(.semibold)
                 
                 Text("\(flightStore.flightCount) flights tracked")
-                    .font(.body)
+                    .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
             }
             
@@ -285,16 +278,16 @@ struct SkyLineBottomBarView: View {
                 
                 VStack(spacing: 16) {
                     Image(systemName: "airplane")
-                        .font(.system(size: 48))
+                        .font(.system(size: 48, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.primary)
                         .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                     
                     Text("No Flights")
-                        .font(.title2)
+                        .font(.system(.title2, design: .monospaced))
                         .fontWeight(.semibold)
                     
                     Text("Add flights to track their status")
-                        .font(.body)
+                        .font(.system(.body, design: .monospaced))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
@@ -332,16 +325,16 @@ struct SkyLineBottomBarView: View {
             
             VStack(spacing: 16) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 48))
+                    .font(.system(size: 48, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.primary)
                     .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                 
                 Text("Search Flights")
-                    .font(.title2)
+                    .font(.system(.title2, design: .monospaced))
                     .fontWeight(.semibold)
                 
                 Text("Find and track flight status")
-                    .font(.body)
+                    .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -358,16 +351,16 @@ struct SkyLineBottomBarView: View {
             
             VStack(spacing: 16) {
                 Image(systemName: "location.slash")
-                    .font(.system(size: 48))
+                    .font(.system(size: 48, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.primary)
                     .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
                 
                 Text(authService.authenticationState.user?.displayName ?? "Profile")
-                    .font(.title2)
+                    .font(.system(.title2, design: .monospaced))
                     .fontWeight(.semibold)
                 
                 Text("Settings and account")
-                    .font(.body)
+                    .font(.system(.body, design: .monospaced))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -380,16 +373,31 @@ struct SkyLineBottomBarView: View {
     // MARK: - Flight Action Handlers
     
     private func handleFlightTap(_ flight: Flight) {
+        print("🔍 DEBUG: Flight tapped - \(flight.flightNumber)")
+        print("🔍 DEBUG: Current selectedDetent before tap: \(selectedDetent)")
+        
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
         withAnimation(.easeInOut(duration: 0.3)) {
             selectedFlightId = flight.id
             selectedFlightForDetails = flight
+            flightDetailsViewKey = UUID() // Force view recreation with new key
+            print("🔍 DEBUG: Set selectedFlightForDetails to \(flight.flightNumber)")
+            print("🔍 DEBUG: Generated new flightDetailsViewKey: \(flightDetailsViewKey)")
+            
+            // For collapsed sheet, start with a specific detent
+            if selectedDetent == .fraction(0.2) {
+                selectedDetent = .fraction(0.3) // Start collapsed
+                print("🔍 DEBUG: Changed selectedDetent from 0.2 to 0.3 (collapsed)")
+            } else {
+                print("🔍 DEBUG: selectedDetent was not 0.2, keeping as \(selectedDetent)")
+            }
         }
         
         // Call the callback to communicate with ContentView
         onFlightSelected?(flight)
+        print("🔍 DEBUG: Called onFlightSelected callback")
     }
     
     private func handleFlightDelete(_ flight: Flight) {
@@ -407,7 +415,7 @@ struct SkyLineBottomBarView: View {
             // Flight date
             HStack {
                 Text(DateFormatter.flightCardDate.string(from: flight.date))
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 Spacer()
             }
@@ -418,15 +426,15 @@ struct SkyLineBottomBarView: View {
                 // Departure
                 VStack(alignment: .leading, spacing: 4) {
                     Text(DateFormatter.flightTime.string(from: flight.date))
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     
                     Text(flight.departure.code)
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.text)
                     
                     Text(flight.departure.city)
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .lineLimit(1)
                 }
@@ -441,13 +449,13 @@ struct SkyLineBottomBarView: View {
                             .frame(width: 32, height: 32)
                         
                         Image(systemName: "airplane")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.background)
                             .rotationEffect(.degrees(90))
                     }
                     
                     Text("2h 30m")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .multilineTextAlignment(.center)
                 }
@@ -457,15 +465,15 @@ struct SkyLineBottomBarView: View {
                 // Arrival
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(DateFormatter.flightTimeArrival.string(from: Calendar.current.date(byAdding: .hour, value: 2, to: flight.date) ?? flight.date))
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     
                     Text(flight.arrival.code)
-                        .font(.system(size: 24, weight: .bold))
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.text)
                     
                     Text(flight.arrival.city)
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .lineLimit(1)
                 }
@@ -476,11 +484,11 @@ struct SkyLineBottomBarView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Airlines")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     
                     Text(flight.airline ?? "Unknown")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.text)
                 }
                 
@@ -488,11 +496,11 @@ struct SkyLineBottomBarView: View {
                 
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Flight no")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     
                     Text(flight.flightNumber)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.text)
                 }
             }
@@ -553,16 +561,16 @@ struct SkyLineBottomBarView: View {
             // Preview content for the context menu
             VStack(alignment: .leading, spacing: 8) {
                 Text(flight.flightNumber)
-                    .font(.title2)
+                    .font(.system(.title2, design: .monospaced))
                     .fontWeight(.bold)
                 
                 HStack {
                     VStack(alignment: .leading) {
                         Text(flight.departure.code)
-                            .font(.title3)
+                            .font(.system(.title3, design: .monospaced))
                             .fontWeight(.semibold)
                         Text(flight.departure.city)
-                            .font(.caption)
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
                     
@@ -575,16 +583,16 @@ struct SkyLineBottomBarView: View {
                     
                     VStack(alignment: .trailing) {
                         Text(flight.arrival.code)
-                            .font(.title3)
+                            .font(.system(.title3, design: .monospaced))
                             .fontWeight(.semibold)
                         Text(flight.arrival.city)
-                            .font(.caption)
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundColor(.secondary)
                     }
                 }
                 
                 Text("Status: \(flight.status.displayName)")
-                    .font(.caption)
+                    .font(.system(.caption, design: .monospaced))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(getStatusColor(for: flight.status))

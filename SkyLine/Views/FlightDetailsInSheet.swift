@@ -13,22 +13,73 @@ struct FlightDetailsInSheet: View {
     let onClose: () -> Void
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Flight Header Section with integrated close button
-                FlightHeaderSection(flight: flight, onClose: onClose)
-                
-                // Aircraft Information Card
-                AircraftInfoCard(flight: flight)
-                
-                // Flight Timeline Card
-                FlightTimelineCard(flight: flight)
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 16, pinnedViews: [.sectionHeaders]) {
+                Section {
+                    // Aircraft Information Card
+                    AircraftInfoCard(flight: flight)
+                    
+                    // Flight Timeline Card
+                    FlightTimelineCard(flight: flight)
+                } header: {
+                    // Flight Header Section - pinned at top
+                    FlightHeaderSection(flight: flight, onClose: onClose)
+                        .background(themeManager.currentTheme.colors.background)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 20)
         }
         .background(themeManager.currentTheme.colors.background)
+        .background(
+            ScrollViewOffsetSetter()
+        )
+        .onAppear {
+            print("🔍 DEBUG: FlightDetailsInSheet appeared")
+        }
+    }
+}
+
+struct ScrollViewOffsetSetter: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        
+        DispatchQueue.main.async {
+            // Find the ScrollView in the view hierarchy and reset its offset
+            if let scrollView = view.findScrollViewParent() {
+                print("🔍 DEBUG: Found ScrollView - resetting contentOffset to zero")
+                scrollView.setContentOffset(.zero, animated: false)
+            } else {
+                print("🔍 DEBUG: No ScrollView found in hierarchy")
+            }
+        }
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // Also reset on updates
+        DispatchQueue.main.async {
+            if let scrollView = uiView.findScrollViewParent() {
+                print("🔍 DEBUG: Update - resetting ScrollView contentOffset")
+                scrollView.setContentOffset(.zero, animated: false)
+            }
+        }
+    }
+}
+
+extension UIView {
+    func findScrollViewParent() -> UIScrollView? {
+        var currentView: UIView? = self
+        while let view = currentView {
+            if let scrollView = view as? UIScrollView {
+                return scrollView
+            }
+            currentView = view.superview
+        }
+        return nil
     }
 }
 
@@ -47,18 +98,18 @@ struct FlightHeaderSection: View {
                     .frame(width: 48, height: 48)
                     .overlay(
                         Text(flight.airline?.prefix(2).uppercased() ?? "FL")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
                     )
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(DateFormatter.flightCardDate.string(from: flight.date).uppercased()) - \(flight.flightNumber)")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
                     
                     Text("\(flight.departure.city.isEmpty ? flight.departure.code : flight.departure.city) to \(flight.arrival.city.isEmpty ? flight.arrival.code : flight.arrival.city)")
-                        .font(.system(size: 24, weight: .regular))
+                        .font(.system(size: 15, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.text)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -69,7 +120,7 @@ struct FlightHeaderSection: View {
                 // Close button aligned with the header content
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .frame(width: 32, height: 32)
                         .background(Circle().fill(themeManager.currentTheme.colors.surface.opacity(0.8)))
@@ -95,7 +146,7 @@ struct AircraftInfoCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(flight.aircraft?.type ?? "Unknown Aircraft")
-                .font(.system(size: 24, weight: .regular))
+                .font(.system(size: 24, weight: .regular, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.text)
             
             // Aircraft image placeholder
@@ -114,7 +165,7 @@ struct AircraftInfoCard: View {
                 .frame(height: 180)
                 .overlay(
                     Image(systemName: "airplane")
-                        .font(.system(size: 48))
+                        .font(.system(size: 48, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 )
             
@@ -173,11 +224,11 @@ struct AircraftSpecItem: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.textSecondary)
             
             Text(value)
-                .font(.system(size: 20, weight: .regular))
+                .font(.system(size: 20, weight: .regular, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.text)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,14 +244,14 @@ struct FlightTimelineCard: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Detailed Timeline")
-                    .font(.system(size: 24, weight: .regular))
+                    .font(.system(size: 24, weight: .regular, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.text)
                 
                 Spacer()
                 
                 // PRO badge
                 Text("PRO")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme == .dark ? 
                         Color(red: 0.8, green: 0.6, blue: 1.0) :  // dark:text-purple-300
                         Color(red: 0.553, green: 0.267, blue: 0.678) // text-purple-700
@@ -215,14 +266,14 @@ struct FlightTimelineCard: View {
             }
             
             Text("Scheduled, Estimated, and Actual")
-                .font(.system(size: 14, weight: .regular))
+                .font(.system(size: 14, weight: .regular, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.textSecondary)
             
             VStack(alignment: .leading, spacing: 24) {
                 // Departure section
                 VStack(alignment: .leading, spacing: 16) {
                     Text("DEPART")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
                         .tracking(1)
@@ -247,7 +298,7 @@ struct FlightTimelineCard: View {
                 if flight.status == .inAir || flight.status == .landed {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("ARRIVE")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                             .textCase(.uppercase)
                             .tracking(1)
@@ -290,27 +341,27 @@ struct TimelineEventRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: 16, weight: .regular, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
             
             VStack(alignment: .trailing, spacing: 4) {
                 Text("Schedule")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 
                 Text(scheduled)
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.system(size: 16, weight: .regular, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.text)
             }
             
             VStack(alignment: .trailing, spacing: 4) {
                 Text("Estimated")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 
                 Text(estimated)
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.system(size: 16, weight: .regular, design: .monospaced))
                     .foregroundColor(isDelayed ? 
                         (themeManager.currentTheme == .dark ? 
                             Color(red: 0.937, green: 0.384, blue: 0.384) :  // dark:text-red-400

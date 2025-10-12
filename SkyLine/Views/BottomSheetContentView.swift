@@ -205,7 +205,7 @@ struct BottomSheetContentView: View {
                     if flightStore.flights.isEmpty {
                         VStack(spacing: 16) {
                             Text("🛫")
-                                .font(.system(size: 48))
+                                .font(.system(size: 48, design: .monospaced))
                             
                             Text("No saved flights")
                                 .font(.system(size: 18, weight: .bold, design: .monospaced))

@@ -254,7 +254,7 @@ struct FlightDetailView: View {
                                     .frame(height: 2)
                                 
                                 Text("✈️")
-                                    .font(.title2)
+                                    .font(.system(.title2, design: .monospaced))
                                     .padding(.horizontal, AppSpacing.sm)
                                 
                                 Rectangle()
@@ -316,7 +316,7 @@ struct FlightDetailView: View {
             
             VStack(spacing: AppSpacing.sm) {
                 Text(airport.code)
-                    .font(.largeTitle)
+                    .font(.system(.largeTitle, design: .monospaced))
                     .fontWeight(.bold)
                     .foregroundColor(theme.currentTheme.colors.text)
                 

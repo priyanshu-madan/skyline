@@ -313,7 +313,7 @@ struct BoardingPassConfirmationView: View {
             VStack(spacing: 20) {
                 // Header
                 Text("Confirm Flight Details")
-                    .font(.title2)
+                    .font(.system(.title2, design: .monospaced))
                     .fontWeight(.bold)
                     .padding(.top)
                 
