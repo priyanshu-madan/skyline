@@ -129,11 +129,11 @@ struct ThemeColors {
     )
     
     static let dark = ThemeColors(
-        background: Color.black,
-        surface: Color(.systemGray6).opacity(0.1),
-        text: Color.white,
-        textSecondary: Color(.systemGray2),
-        border: Color(.systemGray5),
+        background: Color(red: 0.145, green: 0.145, blue: 0.145),  // oklch(0.145 0 0)
+        surface: Color(red: 0.145, green: 0.145, blue: 0.145),     // oklch(0.145 0 0) - card background
+        text: Color(red: 0.985, green: 0.985, blue: 0.985),        // oklch(0.985 0 0)
+        textSecondary: Color(red: 0.708, green: 0.708, blue: 0.708), // oklch(0.708 0 0)
+        border: Color(red: 0.269, green: 0.269, blue: 0.269),      // oklch(0.269 0 0)
         primary: Color.blue,
         secondary: Color.purple,
         accent: Color.orange,

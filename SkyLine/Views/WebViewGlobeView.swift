@@ -53,15 +53,10 @@ struct WebViewGlobeView: View {
                     }
                 }
                 .onReceive(AirportService.shared.coordinatesUpdated) { airportCode in
-                    let matchingFlights = flightStore.flights.filter { flight in
-                        flight.departure.code.uppercased() == airportCode || 
-                        flight.arrival.code.uppercased() == airportCode
-                    }
+                    // EMERGENCY FIX: Disable updateFlightCoordinates calls to stop infinite loop
+                    print("⚠️ Airport coordinates updated for \(airportCode) but enhancement disabled")
                     
-                    for flight in matchingFlights {
-                        flightStore.updateFlightCoordinates(flight.id)
-                    }
-                    
+                    // Only update the globe view data, don't trigger flight coordinate updates
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         updateFlightData()
                     }

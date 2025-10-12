@@ -234,6 +234,31 @@ class AirportService: ObservableObject {
         return nil
     }
     
+    /// Get complete airport information including city and country
+    func getAirportInfo(for airportCode: String) async -> (name: String?, city: String?, country: String?, coordinates: CLLocationCoordinate2D?) {
+        let code = airportCode.uppercased()
+        
+        // Always try to get enhanced info from shared service first for complete data
+        if let sharedInfo = await SharedAirportService.shared.getAirportInfo(for: code) {
+            // Cache coordinates locally for faster subsequent access
+            await MainActor.run {
+                airportDatabase[code] = sharedInfo.coordinates
+                coordinatesUpdated.send(code)
+            }
+            return (
+                name: sharedInfo.name,
+                city: sharedInfo.city,
+                country: sharedInfo.country,
+                coordinates: sharedInfo.coordinates
+            )
+        }
+        
+        // Fallback to local static data if shared service fails
+        let localName = airportNames[code]
+        let localCoordinates = airportDatabase[code]
+        return (name: localName, city: nil, country: nil, coordinates: localCoordinates)
+    }
+    
     /// Fetch airport coordinates from online database
     private func fetchAirportCoordinates(for airportCode: String) async {
         print("🌐 Starting fallback coordinate lookup for airport: \(airportCode)")
