@@ -69,7 +69,7 @@ struct SearchResultCard: View {
                                 .frame(width: 20, height: 2)
                             
                             Text("✈️")
-                                .font(.system(size: 16))
+                                .font(.system(size: 16, design: .monospaced))
                                 .padding(.horizontal, 8)
                             
                             Rectangle()

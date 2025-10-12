@@ -245,7 +245,7 @@ extension Flight {
         progress: 0.0,
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .aviationstack,
-        date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)))
+        date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     )
     
     static let sampleInAir = Flight(
@@ -294,7 +294,7 @@ extension Flight {
         progress: 0.45,
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .combined,
-        date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3600)))
+        date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
     )
     
     // Additional sample flights matching Figma design

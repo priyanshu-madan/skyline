@@ -25,11 +25,11 @@ struct PhotoImportView: View {
                 
                 VStack(spacing: 16) {
                     Text("Import Boarding Pass")
-                        .font(.title)
+                        .font(.system(.title, design: .monospaced))
                         .fontWeight(.bold)
                     
                     Text("Take a photo of your boarding pass to automatically import flight details")
-                        .font(.body)
+                        .font(.system(.body, design: .monospaced))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -50,7 +50,7 @@ struct PhotoImportView: View {
                                 Text("Take Photo")
                             }
                         }
-                        .font(.headline)
+                        .font(.system(.headline, design: .monospaced))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -67,7 +67,7 @@ struct PhotoImportView: View {
                             Image(systemName: "photo.on.rectangle")
                             Text("Choose from Gallery")
                         }
-                        .font(.headline)
+                        .font(.system(.headline, design: .monospaced))
                         .foregroundColor(.blue)
                         .frame(maxWidth: .infinity)
                         .padding()

@@ -93,6 +93,14 @@ class FlightStore: ObservableObject {
                 UserDefaults.standard.set(true, forKey: "hasRunEnhancement")
             }
         }
+        
+        // Fix flight dates for existing saved flights (run once)
+        if !UserDefaults.standard.bool(forKey: "hasFixedFlightDates") {
+            Task {
+                await fixFlightDates()
+                UserDefaults.standard.set(true, forKey: "hasFixedFlightDates")
+            }
+        }
     }
     
     // MARK: - Flight Management
@@ -279,7 +287,53 @@ class FlightStore: ObservableObject {
             print("  Departure: \(flight.departure.city) (\(flight.departure.code))")
             print("  Arrival: \(flight.arrival.city) (\(flight.arrival.code))")
             print("  City empty check - Dep: '\(flight.departure.city.isEmpty)', Arr: '\(flight.arrival.city.isEmpty)'")
+            print("  Flight date: \(DateFormatter.flightCardDate.string(from: flight.date))")
         }
+    }
+    
+    /// Fix flight dates for existing saved flights that may have incorrect dates
+    @MainActor
+    func fixFlightDates() {
+        print("🔧 Fixing flight dates...")
+        var updatedFlights: [Flight] = []
+        
+        for flight in flights {
+            let today = Calendar.current.startOfDay(for: Date())
+            let flightDate = Calendar.current.startOfDay(for: flight.date)
+            
+            // If the flight date is today, try to extract a better date from departure time
+            if flightDate == today {
+                let properDate = Flight.extractFlightDate(from: flight.departure.time)
+                
+                // Only update if we get a different date
+                if Calendar.current.startOfDay(for: properDate) != today {
+                    let updatedFlight = Flight(
+                        id: flight.id,
+                        flightNumber: flight.flightNumber,
+                        airline: flight.airline,
+                        departure: flight.departure,
+                        arrival: flight.arrival,
+                        status: flight.status,
+                        aircraft: flight.aircraft,
+                        currentPosition: flight.currentPosition,
+                        progress: flight.progress,
+                        flightDate: flight.flightDate,
+                        dataSource: flight.dataSource,
+                        date: properDate
+                    )
+                    updatedFlights.append(updatedFlight)
+                    print("✅ Fixed date for flight \(flight.flightNumber): \(DateFormatter.flightCardDate.string(from: properDate))")
+                } else {
+                    updatedFlights.append(flight)
+                }
+            } else {
+                updatedFlights.append(flight)
+            }
+        }
+        
+        flights = updatedFlights
+        saveFlights()
+        print("🎉 Flight date fixing completed")
     }
 
     @MainActor
@@ -830,7 +884,7 @@ class FlightStore: ObservableObject {
                 progress: Double.random(in: 0...1),
                 flightDate: ISO8601DateFormatter().string(from: Date()),
                 dataSource: .aviationstack,
-                date: Date()
+                date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)))
             )
         ]
         

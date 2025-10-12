@@ -155,7 +155,7 @@ struct BoardingPassConfirmationView: View {
                 
                 VStack {
                     Text("✈️")
-                        .font(.system(size: 24))
+                        .font(.system(size: 24, design: .monospaced))
                         .padding(.top, 20)
                 }
                 

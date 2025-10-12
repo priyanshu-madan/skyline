@@ -124,7 +124,7 @@ struct FlightCardView: View {
     private var departureAirportView: some View {
         VStack(spacing: AppSpacing.xs) {
             Text(flight.departure.airport)
-                .font(.caption2)
+                .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(theme.currentTheme.colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(1)
@@ -158,7 +158,7 @@ struct FlightCardView: View {
     private var arrivalAirportView: some View {
         VStack(spacing: AppSpacing.xs) {
             Text(flight.arrival.airport)
-                .font(.caption2)
+                .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(theme.currentTheme.colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(1)
@@ -190,7 +190,7 @@ struct FlightCardView: View {
     private var departureDetailsView: some View {
         VStack(alignment: .center, spacing: AppSpacing.xs / 2) {
             Text("DEPARTS")
-                .font(.caption2)
+                .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(theme.currentTheme.colors.textSecondary)
                 .fontWeight(.medium)
             
@@ -200,13 +200,13 @@ struct FlightCardView: View {
             
             if let date = flight.flightDate {
                 Text(formatFlightDate(date))
-                    .font(.caption2)
+                    .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(theme.currentTheme.colors.textSecondary)
             }
             
             if flight.departure.hasDelay {
                 Text(flight.departure.delayText)
-                    .font(.caption2)
+                    .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(theme.currentTheme.colors.error)
                     .fontWeight(.semibold)
             }
@@ -216,7 +216,7 @@ struct FlightCardView: View {
     private var arrivalDetailsView: some View {
         VStack(alignment: .center, spacing: AppSpacing.xs / 2) {
             Text("ARRIVES")
-                .font(.caption2)
+                .font(.system(.caption2, design: .monospaced))
                 .foregroundColor(theme.currentTheme.colors.textSecondary)
                 .fontWeight(.medium)
             
@@ -226,7 +226,7 @@ struct FlightCardView: View {
             
             if let date = flight.flightDate {
                 Text(formatFlightDate(date))
-                    .font(.caption2)
+                    .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(theme.currentTheme.colors.textSecondary)
             }
         }
@@ -237,7 +237,7 @@ struct FlightCardView: View {
             if let gate = flight.departure.gate {
                 VStack(alignment: .center, spacing: AppSpacing.xs / 2) {
                     Text("GATE")
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(theme.currentTheme.colors.textSecondary)
                         .fontWeight(.medium)
                     
@@ -254,7 +254,7 @@ struct FlightCardView: View {
                 
                 VStack(alignment: .center, spacing: AppSpacing.xs / 2) {
                     Text("TERMINAL")
-                        .font(.caption2)
+                        .font(.system(.caption2, design: .monospaced))
                         .foregroundColor(theme.currentTheme.colors.textSecondary)
                         .fontWeight(.medium)
                     
