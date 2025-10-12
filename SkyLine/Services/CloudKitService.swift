@@ -404,13 +404,25 @@ class CloudKitService: ObservableObject {
             resolvedFlights[flight.id] = flight
         }
         
-        // Merge with cloud flights using timestamp-based resolution
+        // Merge with cloud flights using enhanced data priority
         for cloudFlight in cloudFlights {
             if let localFlight = resolvedFlights[cloudFlight.id] {
-                // Conflict detected - use most recent modification
-                // For now, prefer CloudKit data (server wins)
-                resolvedFlights[cloudFlight.id] = cloudFlight
-                print("🔄 Conflict resolved for flight \(cloudFlight.flightNumber): using CloudKit version")
+                // Conflict detected - prefer local if it has enhanced airport data
+                let localHasEnhancedData = !localFlight.departure.city.isEmpty && !localFlight.arrival.city.isEmpty
+                let cloudHasEnhancedData = !cloudFlight.departure.city.isEmpty && !cloudFlight.arrival.city.isEmpty
+                
+                if localHasEnhancedData && !cloudHasEnhancedData {
+                    // Keep local version with enhanced data
+                    print("🔄 Conflict resolved for flight \(localFlight.flightNumber): keeping enhanced local version")
+                } else if !localHasEnhancedData && cloudHasEnhancedData {
+                    // Use cloud version with enhanced data
+                    resolvedFlights[cloudFlight.id] = cloudFlight
+                    print("🔄 Conflict resolved for flight \(cloudFlight.flightNumber): using enhanced CloudKit version")
+                } else {
+                    // Both have enhanced data or both lack it - prefer CloudKit (server wins)
+                    resolvedFlights[cloudFlight.id] = cloudFlight
+                    print("🔄 Conflict resolved for flight \(cloudFlight.flightNumber): using CloudKit version")
+                }
             } else {
                 // New flight from cloud
                 resolvedFlights[cloudFlight.id] = cloudFlight

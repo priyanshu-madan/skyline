@@ -84,6 +84,15 @@ class FlightStore: ObservableObject {
         setupAutoSave()
         setupCloudKitSync()
         self.isInitialized = true
+        
+        // EMERGENCY FIX: Completely disable enhancement to stop infinite loop
+        // Only run enhancement once on first app launch
+        if !UserDefaults.standard.bool(forKey: "hasRunEnhancement") && false { // DISABLED
+            Task {
+                await updateAllFlightsWithEnhancedData()
+                UserDefaults.standard.set(true, forKey: "hasRunEnhancement")
+            }
+        }
     }
     
     // MARK: - Flight Management
@@ -124,65 +133,232 @@ class FlightStore: ObservableObject {
     }
     
     @MainActor
+    func updateAllFlightsWithEnhancedData() async {
+        print("🔄 Updating all flights with enhanced airport data...")
+        
+        // Remove duplicate flights first
+        removeDuplicateFlights()
+        
+        // Force refresh major airports that might have incomplete data
+        await refreshMajorAirports()
+        
+        // Process flights in smaller batches to prevent overwhelming the system
+        let batchSize = 2
+        for batchStart in stride(from: 0, to: flights.count, by: batchSize) {
+            let batchEnd = min(batchStart + batchSize, flights.count)
+            
+            for i in batchStart..<batchEnd {
+                let flight = flights[i]
+                
+                // Skip flights with empty airport codes
+                guard !flight.departure.code.isEmpty && !flight.arrival.code.isEmpty else {
+                    print("⚠️ Skipping flight \(flight.flightNumber) - empty airport codes")
+                    continue
+                }
+                
+                // Check if flight already has enhanced data to avoid redundant processing
+                if !flight.departure.city.isEmpty && !flight.arrival.city.isEmpty && 
+                   flight.departure.city != flight.departure.code && 
+                   flight.arrival.city != flight.arrival.code {
+                    print("✅ Flight \(flight.flightNumber) already has enhanced data, skipping")
+                    continue
+                }
+                
+                // Get enhanced airport information for both departure and arrival
+                let airportService = AirportService.shared
+                let depInfo = await airportService.getAirportInfo(for: flight.departure.code)
+                let arrInfo = await airportService.getAirportInfo(for: flight.arrival.code)
+            
+            // Create new Airport instances with enhanced information
+            let updatedDeparture = Airport(
+                airport: depInfo.name ?? flight.departure.airport,
+                code: flight.departure.code,
+                city: depInfo.city ?? (flight.departure.city.isEmpty ? flight.departure.code : flight.departure.city),
+                latitude: depInfo.coordinates?.latitude ?? flight.departure.latitude,
+                longitude: depInfo.coordinates?.longitude ?? flight.departure.longitude,
+                time: flight.departure.time,
+                actualTime: flight.departure.actualTime,
+                terminal: flight.departure.terminal,
+                gate: flight.departure.gate,
+                delay: flight.departure.delay
+            )
+            
+            let updatedArrival = Airport(
+                airport: arrInfo.name ?? flight.arrival.airport,
+                code: flight.arrival.code,
+                city: arrInfo.city ?? (flight.arrival.city.isEmpty ? flight.arrival.code : flight.arrival.city),
+                latitude: arrInfo.coordinates?.latitude ?? flight.arrival.latitude,
+                longitude: arrInfo.coordinates?.longitude ?? flight.arrival.longitude,
+                time: flight.arrival.time,
+                actualTime: flight.arrival.actualTime,
+                terminal: flight.arrival.terminal,
+                gate: flight.arrival.gate,
+                delay: flight.arrival.delay
+            )
+            
+            // Create new Flight instance with enhanced airport data
+            let updatedFlight = Flight(
+                id: flight.id,
+                flightNumber: flight.flightNumber,
+                airline: flight.airline,
+                departure: updatedDeparture,
+                arrival: updatedArrival,
+                status: flight.status,
+                aircraft: flight.aircraft,
+                currentPosition: flight.currentPosition,
+                progress: flight.progress,
+                flightDate: flight.flightDate,
+                dataSource: flight.dataSource,
+                date: flight.date
+            )
+            
+                flights[i] = updatedFlight
+                print("✅ Enhanced flight \(flight.flightNumber): \(updatedDeparture.city) to \(updatedArrival.city)")
+            }
+            
+            // Add delay between batches to prevent overwhelming CloudKit
+            if batchEnd < flights.count {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            }
+        }
+        
+        saveFlights()
+        print("🎉 All flights updated with enhanced airport data")
+    }
+    
+    private func removeDuplicateFlights() {
+        let uniqueFlights = flights.reduce(into: [String: Flight]()) { result, flight in
+            let key = "\(flight.flightNumber)-\(flight.departure.code)-\(flight.arrival.code)-\(DateFormatter.flightCardDate.string(from: flight.date))"
+            if result[key] == nil {
+                result[key] = flight
+            } else {
+                print("🗑️ Removing duplicate flight: \(flight.flightNumber)")
+            }
+        }
+        
+        flights = Array(uniqueFlights.values)
+        print("✅ Removed duplicates, now have \(flights.count) unique flights")
+    }
+    
+    private func refreshMajorAirports() async {
+        // Get all unique airport codes from current flights
+        var airportCodes = Set<String>()
+        for flight in flights {
+            if !flight.departure.code.isEmpty {
+                airportCodes.insert(flight.departure.code)
+            }
+            if !flight.arrival.code.isEmpty {
+                airportCodes.insert(flight.arrival.code)
+            }
+        }
+        
+        let validCodes = Array(airportCodes.filter { !$0.isEmpty })
+        print("🔄 Force refreshing airport data for: \(validCodes.sorted())")
+        
+        // Limit concurrent requests to prevent rate limiting
+        let batchSize = 3
+        for batch in validCodes.chunked(into: batchSize) {
+            await withTaskGroup(of: Void.self) { group in
+                for code in batch {
+                    group.addTask {
+                        print("🔍 Force fetching airport info for \(code)")
+                        let _ = await SharedAirportService.shared.getAirportInfo(for: code)
+                    }
+                }
+            }
+            
+            // Add delay between batches to respect rate limits
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+        }
+    }
+    
+    func debugFlightData() {
+        print("🔍 Debug: Current flight data")
+        for flight in flights {
+            print("Flight \(flight.flightNumber):")
+            print("  Departure: \(flight.departure.city) (\(flight.departure.code))")
+            print("  Arrival: \(flight.arrival.city) (\(flight.arrival.code))")
+            print("  City empty check - Dep: '\(flight.departure.city.isEmpty)', Arr: '\(flight.arrival.city.isEmpty)'")
+        }
+    }
+
+    @MainActor
     func updateFlightCoordinates(_ flightId: String) {
+        // EMERGENCY FIX: Completely disable this method to stop infinite loop
+        print("⚠️ updateFlightCoordinates disabled to prevent infinite loop")
+        return
+        
         guard let index = flights.firstIndex(where: { $0.id == flightId }) else { return }
         
         let flight = flights[index]
-        let airportService = AirportService.shared
         
-        // Get updated coordinates (check the dynamic database)
-        let depCoordinate = airportService.getCoordinates(for: flight.departure.code)
-        let arrCoordinate = airportService.getCoordinates(for: flight.arrival.code)
+        // Check if flight already has enhanced data
+        let hasEnhancedData = !flight.departure.city.isEmpty && 
+                             !flight.arrival.city.isEmpty && 
+                             flight.departure.city != flight.departure.code && 
+                             flight.arrival.city != flight.arrival.code
         
-        // Update coordinates for flight
+        if hasEnhancedData {
+            print("✅ Flight \(flight.flightNumber) already has enhanced data, skipping")
+            return
+        }
         
-        // Create new Airport instances with updated coordinates
-        let updatedDeparture = Airport(
-            airport: flight.departure.airport,
-            code: flight.departure.code,
-            city: flight.departure.city,
-            latitude: depCoordinate?.latitude ?? flight.departure.latitude,
-            longitude: depCoordinate?.longitude ?? flight.departure.longitude,
-            time: flight.departure.time,
-            actualTime: flight.departure.actualTime,
-            terminal: flight.departure.terminal,
-            gate: flight.departure.gate,
-            delay: flight.departure.delay
-        )
-        
-        let updatedArrival = Airport(
-            airport: flight.arrival.airport,
-            code: flight.arrival.code,
-            city: flight.arrival.city,
-            latitude: arrCoordinate?.latitude ?? flight.arrival.latitude,
-            longitude: arrCoordinate?.longitude ?? flight.arrival.longitude,
-            time: flight.arrival.time,
-            actualTime: flight.arrival.actualTime,
-            terminal: flight.arrival.terminal,
-            gate: flight.arrival.gate,
-            delay: flight.arrival.delay
-        )
-        
-        // Create new Flight instance with updated airports
-        let updatedFlight = Flight(
-            id: flight.id,
-            flightNumber: flight.flightNumber,
-            airline: flight.airline,
-            departure: updatedDeparture,
-            arrival: updatedArrival,
-            status: flight.status,
-            aircraft: flight.aircraft,
-            currentPosition: flight.currentPosition,
-            progress: flight.progress,
-            flightDate: flight.flightDate,
-            dataSource: flight.dataSource,
-            date: flight.date
-        )
-        
-        flights[index] = updatedFlight
-        saveFlights()
-        
-        // Flight coordinates updated
+        Task {
+            // Get enhanced airport information including city/country data
+            let airportService = AirportService.shared
+            let depInfo = await airportService.getAirportInfo(for: flight.departure.code)
+            let arrInfo = await airportService.getAirportInfo(for: flight.arrival.code)
+            
+            await MainActor.run {
+                // Create new Airport instances with enhanced information
+                let updatedDeparture = Airport(
+                    airport: depInfo.name ?? flight.departure.airport,
+                    code: flight.departure.code,
+                    city: depInfo.city ?? flight.departure.city,
+                    latitude: depInfo.coordinates?.latitude ?? flight.departure.latitude,
+                    longitude: depInfo.coordinates?.longitude ?? flight.departure.longitude,
+                    time: flight.departure.time,
+                    actualTime: flight.departure.actualTime,
+                    terminal: flight.departure.terminal,
+                    gate: flight.departure.gate,
+                    delay: flight.departure.delay
+                )
+                
+                let updatedArrival = Airport(
+                    airport: arrInfo.name ?? flight.arrival.airport,
+                    code: flight.arrival.code,
+                    city: arrInfo.city ?? flight.arrival.city,
+                    latitude: arrInfo.coordinates?.latitude ?? flight.arrival.latitude,
+                    longitude: arrInfo.coordinates?.longitude ?? flight.arrival.longitude,
+                    time: flight.arrival.time,
+                    actualTime: flight.arrival.actualTime,
+                    terminal: flight.arrival.terminal,
+                    gate: flight.arrival.gate,
+                    delay: flight.arrival.delay
+                )
+                
+                // Create new Flight instance with enhanced airport data
+                let updatedFlight = Flight(
+                    id: flight.id,
+                    flightNumber: flight.flightNumber,
+                    airline: flight.airline,
+                    departure: updatedDeparture,
+                    arrival: updatedArrival,
+                    status: flight.status,
+                    aircraft: flight.aircraft,
+                    currentPosition: flight.currentPosition,
+                    progress: flight.progress,
+                    flightDate: flight.flightDate,
+                    dataSource: flight.dataSource,
+                    date: flight.date
+                )
+                
+                flights[index] = updatedFlight
+                saveFlights()
+                
+                print("✅ Updated flight \(flight.flightNumber) with enhanced airport data")
+            }
+        }
     }
     
     @MainActor
@@ -688,6 +864,15 @@ enum FlightError: LocalizedError {
             return "Network connection error"
         case .invalidData:
             return "Invalid flight data"
+        }
+    }
+}
+
+// MARK: - Array Extension for Batching
+extension Array {
+    func chunked(into size: Int) -> [[Element]] {
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
         }
     }
 }
