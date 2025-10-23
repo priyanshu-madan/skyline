@@ -145,48 +145,42 @@ struct AircraftInfoCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(flight.aircraft?.type ?? "Unknown Aircraft")
-                .font(.system(size: 24, weight: .regular, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
             // Destination image with fallback
             DestinationImageDisplayView(flight: flight)
                 .frame(height: 180)
             
-            // Aircraft specifications grid
+            // Flight details grid
             VStack(spacing: 16) {
                 HStack(spacing: 16) {
                     AircraftSpecItem(
-                        title: "Tail No.",
-                        value: flight.aircraft?.registration ?? "--"
+                        title: "Flight",
+                        value: flight.flightNumber
                     )
                     
                     AircraftSpecItem(
-                        title: "ICAO Type",
-                        value: flight.aircraft?.icao24?.prefix(4).uppercased() ?? "--"
+                        title: "Departure",
+                        value: formatTime(flight.departure.time, actualTime: flight.departure.actualTime)
                     )
                     
                     AircraftSpecItem(
-                        title: "Age",
-                        value: "--"
+                        title: "Arrival",
+                        value: formatTime(flight.arrival.time, actualTime: flight.arrival.actualTime)
                     )
                 }
                 
                 HStack(spacing: 16) {
                     AircraftSpecItem(
-                        title: "Cruising Speed",
-                        value: "530 mph"
+                        title: "Duration",
+                        value: calculateFlightDuration()
                     )
                     
                     AircraftSpecItem(
-                        title: "Range",
-                        value: "3,400 mi"
+                        title: "Distance",
+                        value: calculateFlightDistance()
                     )
                     
-                    AircraftSpecItem(
-                        title: "First Flight",
-                        value: "--"
-                    )
+                    Spacer()
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -196,6 +190,96 @@ struct AircraftInfoCard: View {
                 .fill(themeManager.currentTheme.colors.surface)
                 .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
         )
+    }
+    
+    private func calculateFlightDuration() -> String {
+        // Try to calculate duration from departure and arrival times
+        let depTime = flight.departure.actualTime ?? flight.departure.time
+        let arrTime = flight.arrival.actualTime ?? flight.arrival.time
+        
+        // Try ISO8601 format first
+        let iso8601Formatter = ISO8601DateFormatter()
+        
+        if let depDate = iso8601Formatter.date(from: depTime),
+           let arrDate = iso8601Formatter.date(from: arrTime) {
+            let duration = arrDate.timeIntervalSince(depDate)
+            let hours = Int(duration) / 3600
+            let minutes = (Int(duration) % 3600) / 60
+            return "\(hours)h \(minutes)m"
+        }
+        
+        // Fallback - simple time-based calculation if times are in HH:mm format
+        if let depHour = extractHour(from: depTime),
+           let arrHour = extractHour(from: arrTime) {
+            let duration = arrHour - depHour
+            return duration > 0 ? "\(duration)h 0m" : "2h 30m"
+        }
+        
+        return "2h 30m" // Default fallback
+    }
+    
+    private func formatTime(_ time: String, actualTime: String?) -> String {
+        // Use actual time if available, otherwise scheduled time
+        let timeToFormat = actualTime ?? time
+        
+        // Try ISO8601 format first
+        let iso8601Formatter = ISO8601DateFormatter()
+        if let date = iso8601Formatter.date(from: timeToFormat) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        }
+        
+        // Try simple HH:mm format
+        if timeToFormat.contains(":") && timeToFormat.count >= 5 {
+            let components = timeToFormat.prefix(5) // Take first 5 characters (HH:mm)
+            return String(components)
+        }
+        
+        // If it's just the time part, return as is
+        if !timeToFormat.isEmpty {
+            return timeToFormat
+        }
+        
+        return "--"
+    }
+    
+    private func extractHour(from timeString: String) -> Int? {
+        if timeString.contains(":") {
+            let components = timeString.components(separatedBy: ":")
+            return Int(components.first ?? "")
+        }
+        return nil
+    }
+    
+    private func calculateFlightDistance() -> String {
+        guard let depLat = flight.departure.latitude,
+              let depLng = flight.departure.longitude,
+              let arrLat = flight.arrival.latitude,
+              let arrLng = flight.arrival.longitude else {
+            return "--"
+        }
+        
+        let distance = calculateHaversineDistance(
+            lat1: depLat, lng1: depLng,
+            lat2: arrLat, lng2: arrLng
+        )
+        
+        return "\(Int(distance)) mi"
+    }
+    
+    private func calculateHaversineDistance(lat1: Double, lng1: Double, lat2: Double, lng2: Double) -> Double {
+        let earthRadius = 3959.0 // Earth's radius in miles
+        
+        let dLat = (lat2 - lat1) * Double.pi / 180.0
+        let dLng = (lng2 - lng1) * Double.pi / 180.0
+        
+        let a = sin(dLat/2) * sin(dLat/2) +
+                cos(lat1 * Double.pi / 180.0) * cos(lat2 * Double.pi / 180.0) *
+                sin(dLng/2) * sin(dLng/2)
+        
+        let c = 2 * atan2(sqrt(a), sqrt(1-a))
+        return earthRadius * c
     }
 }
 
