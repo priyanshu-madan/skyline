@@ -66,6 +66,9 @@ class CloudKitService: ObservableObject {
         
         // Initialize destination images schema
         await initializeDestinationImagesSchema()
+        
+        // Initialize trips schema
+        await initializeTripsSchema()
     }
     
     // MARK: - Destination Images Schema
@@ -113,6 +116,54 @@ class CloudKitService: ObservableObject {
             print("⚠️ Destination images schema initialization: \(error)")
             // Clean up temporary file on error
             try? FileManager.default.removeItem(at: tempURL)
+        }
+    }
+    
+    // MARK: - Trips Schema
+    
+    private func initializeTripsSchema() async {
+        // Initialize Trip record type
+        let sampleTripRecord = CKRecord(recordType: "Trip")
+        sampleTripRecord["title"] = "Schema Initialization"
+        sampleTripRecord["destination"] = "Test"
+        sampleTripRecord["destinationCode"] = ""
+        sampleTripRecord["startDate"] = Date()
+        sampleTripRecord["endDate"] = Date()
+        sampleTripRecord["description"] = ""
+        sampleTripRecord["coverImageURL"] = ""
+        sampleTripRecord["latitude"] = 0.0
+        sampleTripRecord["longitude"] = 0.0
+        sampleTripRecord["createdAt"] = Date()
+        sampleTripRecord["updatedAt"] = Date()
+        
+        do {
+            let _ = try await database.save(sampleTripRecord)
+            try await database.deleteRecord(withID: sampleTripRecord.recordID)
+            print("✅ Trip schema initialized")
+        } catch {
+            print("⚠️ Trip schema initialization: \(error)")
+        }
+        
+        // Initialize TripEntry record type
+        let sampleEntryRecord = CKRecord(recordType: "TripEntry")
+        sampleEntryRecord["tripId"] = "SCHEMA_INIT"
+        sampleEntryRecord["timestamp"] = Date()
+        sampleEntryRecord["entryType"] = "note"
+        sampleEntryRecord["title"] = "Schema Initialization"
+        sampleEntryRecord["content"] = "Test"
+        sampleEntryRecord["imageURLs"] = ["https://example.com/placeholder.jpg"] // Non-empty array for schema
+        sampleEntryRecord["latitude"] = 0.0
+        sampleEntryRecord["longitude"] = 0.0
+        sampleEntryRecord["locationName"] = ""
+        sampleEntryRecord["createdAt"] = Date()
+        sampleEntryRecord["updatedAt"] = Date()
+        
+        do {
+            let _ = try await database.save(sampleEntryRecord)
+            try await database.deleteRecord(withID: sampleEntryRecord.recordID)
+            print("✅ TripEntry schema initialized")
+        } catch {
+            print("⚠️ TripEntry schema initialization: \(error)")
         }
     }
     
