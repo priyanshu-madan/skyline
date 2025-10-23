@@ -18,6 +18,8 @@
 		A93C59AF2E5B9C5200266D7E /* SkyLineUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59AE2E5B9C5200266D7E /* SkyLineUITestsLaunchTests.swift */; };
 		A94165942E8709EB0050BE19 /* SkyLineBottomBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */; };
 		A94165BB2E95963F0050BE19 /* FlightDetailsInSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165BA2E95963F0050BE19 /* FlightDetailsInSheet.swift */; };
+		A94165BE2E9C71B10050BE19 /* DestinationImageSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165BC2E9C71B10050BE19 /* DestinationImageSeeder.swift */; };
+		A94165BF2E9C71B10050BE19 /* DestinationImageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165BD2E9C71B10050BE19 /* DestinationImageService.swift */; };
 		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
 		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
 		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
@@ -69,6 +71,8 @@
 		A93C59AE2E5B9C5200266D7E /* SkyLineUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineBottomBarView.swift; sourceTree = "<group>"; };
 		A94165BA2E95963F0050BE19 /* FlightDetailsInSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightDetailsInSheet.swift; sourceTree = "<group>"; };
+		A94165BC2E9C71B10050BE19 /* DestinationImageSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationImageSeeder.swift; sourceTree = "<group>"; };
+		A94165BD2E9C71B10050BE19 /* DestinationImageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationImageService.swift; sourceTree = "<group>"; };
 		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
 		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
 		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
@@ -217,6 +221,8 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A94165BC2E9C71B10050BE19 /* DestinationImageSeeder.swift */,
+				A94165BD2E9C71B10050BE19 /* DestinationImageService.swift */,
 				A99F90F22E662B0700BE96FE /* SharedAirportService.swift */,
 				A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */,
 				A99F90EA2E6503C200BE96FE /* CloudKitService.swift */,
@@ -398,6 +404,8 @@
 				A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */,
 				A99F90EB2E6503C200BE96FE /* CloudKitService.swift in Sources */,
 				A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */,
+				A94165BE2E9C71B10050BE19 /* DestinationImageSeeder.swift in Sources */,
+				A94165BF2E9C71B10050BE19 /* DestinationImageService.swift in Sources */,
 				A99F90E32E5C11A600BE96FE /* WebViewGlobeView.swift in Sources */,
 				A99F90D92E5C059800BE96FE /* SupportingViews.swift in Sources */,
 				A91559682E6E32F300D77E8C /* SharedComponents.swift in Sources */,

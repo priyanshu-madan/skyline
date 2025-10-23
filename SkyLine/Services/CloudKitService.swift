@@ -8,6 +8,7 @@
 import Foundation
 import CloudKit
 import Combine
+import SwiftUI
 
 // MARK: - CloudKit Service
 class CloudKitService: ObservableObject {
@@ -15,6 +16,7 @@ class CloudKitService: ObservableObject {
     
     private let container: CKContainer
     private let database: CKDatabase
+    private let publicDatabase: CKDatabase
     
     @Published var isSyncing = false
     @Published var syncError: String?
@@ -27,6 +29,7 @@ class CloudKitService: ObservableObject {
         // Use the specific container configured in Xcode
         container = CKContainer(identifier: "iCloud.com.skyline.flighttracker")
         database = container.privateCloudDatabase
+        publicDatabase = container.publicCloudDatabase
     }
     
     // MARK: - Schema Initialization
@@ -59,6 +62,57 @@ class CloudKitService: ObservableObject {
             print("✅ Search history schema initialized")
         } catch {
             print("⚠️ Search schema initialization: \(error)")
+        }
+        
+        // Initialize destination images schema
+        await initializeDestinationImagesSchema()
+    }
+    
+    // MARK: - Destination Images Schema
+    
+    private func initializeDestinationImagesSchema() async {
+        let destinationImagesRecordType = "DestinationImage"
+        
+        // Create a sample destination image record to initialize schema
+        let sampleDestinationRecord = CKRecord(recordType: destinationImagesRecordType)
+        sampleDestinationRecord["airportCode"] = "SCHEMA_INIT"
+        sampleDestinationRecord["cityName"] = "Schema Initialization"
+        sampleDestinationRecord["countryName"] = "Test"
+        sampleDestinationRecord["imageURL"] = ""
+        
+        // Create a temporary image for schema initialization
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("schema_init.jpg")
+        
+        // Create a minimal 1x1 pixel image
+        let size = CGSize(width: 1, height: 1)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let tempImage = renderer.image { context in
+            context.cgContext.setFillColor(UIColor.clear.cgColor)
+            context.cgContext.fill(CGRect(origin: .zero, size: size))
+        }
+        
+        do {
+            if let imageData = tempImage.jpegData(compressionQuality: 0.1) {
+                try imageData.write(to: tempURL)
+                sampleDestinationRecord["image"] = CKAsset(fileURL: tempURL)
+            }
+            
+            let _ = try await publicDatabase.save(sampleDestinationRecord)
+            try await publicDatabase.deleteRecord(withID: sampleDestinationRecord.recordID)
+            print("✅ Destination images schema initialized")
+            
+            // Clean up temporary file
+            try? FileManager.default.removeItem(at: tempURL)
+            
+            // Seed initial destination images if needed
+            // Note: Uncomment this line once DestinationImageSeeder is added to the project
+            // await DestinationImageSeeder.shared.seedIfNeeded()
+            
+        } catch {
+            print("⚠️ Destination images schema initialization: \(error)")
+            // Clean up temporary file on error
+            try? FileManager.default.removeItem(at: tempURL)
         }
     }
     

@@ -11,7 +11,7 @@ import SwiftUI
 extension DateFormatter {
     static let flightCardDate: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMMM d, yyyy"
+        formatter.dateFormat = "EEE, MMM d, yyyy"
         return formatter
     }()
     
