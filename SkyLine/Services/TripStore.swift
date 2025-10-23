@@ -186,10 +186,15 @@ class TripStore: ObservableObject {
         isLoading = true
         error = nil
         
+        print("🔍 DEBUG: Attempting to save entry: \(entry.title)")
+        
         do {
             // Save to CloudKit
             let record = entry.toCKRecord()
+            print("🔍 DEBUG: Created CloudKit record for entry")
+            
             let _ = try await cloudKitService.database.save(record)
+            print("✅ Successfully saved entry to CloudKit")
             
             // Update local store
             if tripEntries[entry.tripId] == nil {
@@ -202,9 +207,27 @@ class TripStore: ObservableObject {
             return .success(())
             
         } catch {
+            print("❌ CloudKit save failed: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            
+            // For development: still save locally even if CloudKit fails
+            #if DEBUG
+            print("🔧 Development mode: Saving locally despite CloudKit failure")
+            
+            // Update local store anyway
+            if tripEntries[entry.tripId] == nil {
+                tripEntries[entry.tripId] = []
+            }
+            tripEntries[entry.tripId]?.append(entry)
+            tripEntries[entry.tripId]?.sort { $0.timestamp > $1.timestamp }
+            
+            isLoading = false
+            return .success(())
+            #else
             isLoading = false
             self.error = "Failed to add entry: \(error.localizedDescription)"
             return .failure(.saveFailed)
+            #endif
         }
     }
     

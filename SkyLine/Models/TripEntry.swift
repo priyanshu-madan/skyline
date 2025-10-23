@@ -278,7 +278,10 @@ extension TripEntry {
         record["entryType"] = entryType.rawValue
         record["title"] = title
         record["content"] = content
-        record["imageURLs"] = imageURLs
+        // Only set imageURLs if non-empty, otherwise omit the field
+        if !imageURLs.isEmpty {
+            record["imageURLs"] = imageURLs
+        }
         record["latitude"] = latitude
         record["longitude"] = longitude
         record["locationName"] = locationName
