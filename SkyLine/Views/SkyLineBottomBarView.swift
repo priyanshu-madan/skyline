@@ -30,15 +30,15 @@ extension DateFormatter {
 
 /// Tab Enum for SkyLine
 enum SkyLineTab: String, CaseIterable {
-    case globe = "Globe"
+    case trips = "Trips"
     case flights = "Flights"
     case search = "Search"
     case profile = "Profile"
     
     var symbolImage: String {
         switch self {
-        case .globe:
-            return "globe.americas"
+        case .trips:
+            return "suitcase"
         case .flights:
             return "airplane"
         case .search:
@@ -53,8 +53,10 @@ struct SkyLineBottomBarView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var flightStore: FlightStore
     @EnvironmentObject var authService: AuthenticationService
-    @State private var activeTab: SkyLineTab = .globe
+    @StateObject private var tripStore = TripStore.shared
+    @State private var activeTab: SkyLineTab = .trips
     @State private var addFlightView: Bool = false
+    @State private var addTripView: Bool = false
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
     @State private var selectedFlightForDetails: Flight? = nil
@@ -80,8 +82,8 @@ struct SkyLineBottomBarView: View {
             
             VStack(spacing: 0) {
                 TabView(selection: $activeTab) {
-                    IndividualTabView(.globe)
-                        .tag(SkyLineTab.globe)
+                    IndividualTabView(.trips)
+                        .tag(SkyLineTab.trips)
                     
                     IndividualTabView(.flights)
                         .tag(SkyLineTab.flights)
@@ -114,6 +116,11 @@ struct SkyLineBottomBarView: View {
                 .presentationBackground(.regularMaterial)
                 .presentationCornerRadius(40)
         }
+        .sheet(isPresented: $addTripView) {
+            AddTripView()
+                .environmentObject(themeManager)
+                .environmentObject(tripStore)
+        }
     }
     
     /// Individual Tab View
@@ -124,15 +131,32 @@ struct SkyLineBottomBarView: View {
                 // Remove the header section when viewing flight details
                 if !(tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large)) {
                     HStack {
-                        Text(tab.rawValue)
-                            .font(.system(.largeTitle, design: .monospaced))
-                            .fontWeight(.bold)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
+                        if tab == .trips {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Trips")
+                                    .font(.system(.largeTitle, design: .monospaced))
+                                    .fontWeight(.bold)
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                                
+                                Text("\(tripStore.trips.count) trips documented")
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                            }
+                        } else {
+                            Text(tab.rawValue)
+                                .font(.system(.largeTitle, design: .monospaced))
+                                .fontWeight(.bold)
+                                .foregroundColor(themeManager.currentTheme.colors.text)
+                        }
                         
                         Spacer(minLength: 0)
                         
                         Button {
-                            addFlightView.toggle()
+                            if tab == .trips {
+                                addTripView.toggle()
+                            } else {
+                                addFlightView.toggle()
+                            }
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(.title3, design: .monospaced))
@@ -143,15 +167,15 @@ struct SkyLineBottomBarView: View {
                         .buttonBorderShape(.circle)
                     }
                     .padding(.top, 15)
-                    .padding(.leading, 10)
+                    .padding(.horizontal, 20)
                     .padding(.bottom, 15)
                 }
             }
             
             // Tab-specific content
             switch tab {
-            case .globe:
-                GlobeTabContent()
+            case .trips:
+                TripsTabContent()
             case .flights:
                 if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
                     FlightDetailsInSheet(
@@ -228,7 +252,7 @@ struct SkyLineBottomBarView: View {
         .padding(.bottom, 8)
         .background(
             RoundedRectangle(cornerRadius: 20)
-                .fill(themeManager.currentTheme == .light ? .white : Color.black.opacity(0.6))
+                .fill(themeManager.currentTheme == .light ? .white : themeManager.currentTheme.colors.surface)
                 .shadow(
                     color: themeManager.currentTheme == .light ? .black.opacity(0.1) : .white.opacity(0.05),
                     radius: 10,
@@ -245,29 +269,9 @@ struct SkyLineBottomBarView: View {
     // MARK: - Tab Content Views
     
     @ViewBuilder
-    func GlobeTabContent() -> some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            // Main content area - placeholder for now
-            VStack(spacing: 16) {
-                Image(systemName: "globe.americas.fill")
-                    .font(.system(size: 48, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-                
-                Text("SkyLine")
-                    .font(.system(.title2, design: .monospaced))
-                    .fontWeight(.semibold)
-                
-                Text("\(flightStore.flightCount) flights tracked")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
+    func TripsTabContent() -> some View {
+        TripsListView()
+            .environmentObject(tripStore)
     }
     
     @ViewBuilder

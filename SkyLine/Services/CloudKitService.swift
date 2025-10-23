@@ -15,8 +15,8 @@ class CloudKitService: ObservableObject {
     static let shared = CloudKitService()
     
     private let container: CKContainer
-    private let database: CKDatabase
-    private let publicDatabase: CKDatabase
+    let database: CKDatabase  // Made public for TripStore access
+    let publicDatabase: CKDatabase  // Made public for trip destinations
     
     @Published var isSyncing = false
     @Published var syncError: String?
