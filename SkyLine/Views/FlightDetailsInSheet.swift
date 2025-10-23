@@ -103,7 +103,7 @@ struct FlightHeaderSection: View {
                     )
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(DateFormatter.flightCardDate.string(from: flight.date).uppercased()) - \(flight.flightNumber)")
+                    Text("\(flight.flightNumber) - \(DateFormatter.flightCardDate.string(from: flight.date).uppercased())")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
@@ -149,25 +149,9 @@ struct AircraftInfoCard: View {
                 .font(.system(size: 24, weight: .regular, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.text)
             
-            // Aircraft image placeholder
-            RoundedRectangle(cornerRadius: 12)
-                .fill(LinearGradient(
-                    colors: themeManager.currentTheme == .dark ? [
-                        Color(red: 0.31, green: 0.31, blue: 0.31),  // dark:from-gray-800
-                        Color(red: 0.11, green: 0.11, blue: 0.15)   // dark:to-gray-900
-                    ] : [
-                        Color(red: 0.98, green: 0.98, blue: 0.98),  // from-gray-50
-                        Color.white                                  // to-white
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ))
+            // Destination image with fallback
+            DestinationImageDisplayView(flight: flight)
                 .frame(height: 180)
-                .overlay(
-                    Image(systemName: "airplane")
-                        .font(.system(size: 48, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                )
             
             // Aircraft specifications grid
             VStack(spacing: 16) {
@@ -384,3 +368,166 @@ struct TimelineEventRow: View {
     )
     .environmentObject(ThemeManager())
 }
+
+// MARK: - Destination Image Display
+
+struct DestinationImageDisplayView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    let flight: Flight
+    
+    @State private var destinationImage: UIImage?
+    @State private var isLoading: Bool = false
+    
+    var body: some View {
+        Group {
+            if let image = destinationImage {
+                // Show the destination image
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .cornerRadius(12)
+                    .clipped()
+            } else if isLoading {
+                // Show loading state
+                loadingView
+            } else {
+                // Show fallback placeholder
+                placeholderView
+            }
+        }
+        .onAppear {
+            loadDestinationImage()
+        }
+    }
+    
+    private var loadingView: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(LinearGradient(
+                colors: themeManager.currentTheme == .dark ? [
+                    Color(red: 0.31, green: 0.31, blue: 0.31),
+                    Color(red: 0.11, green: 0.11, blue: 0.15)
+                ] : [
+                    Color(red: 0.98, green: 0.98, blue: 0.98),
+                    Color.white
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            ))
+            .overlay(
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                        .scaleEffect(0.8)
+                    
+                    Text("Loading destination...")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                }
+            )
+    }
+    
+    private var placeholderView: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(LinearGradient(
+                colors: themeManager.currentTheme == .dark ? [
+                    Color(red: 0.31, green: 0.31, blue: 0.31),
+                    Color(red: 0.11, green: 0.11, blue: 0.15)
+                ] : [
+                    Color(red: 0.98, green: 0.98, blue: 0.98),
+                    Color.white
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            ))
+            .overlay(
+                VStack(spacing: 8) {
+                    Image(systemName: "airplane.arrival")
+                        .font(.system(size: 32, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    
+                    Text(flight.arrival.city.isEmpty ? flight.arrival.code : flight.arrival.city)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+            )
+    }
+    
+    private func loadDestinationImage() {
+        guard !flight.arrival.code.isEmpty else {
+            print("🔍 DEBUG: No arrival airport code found")
+            return
+        }
+        
+        print("🔍 DEBUG: Loading destination image for \(flight.arrival.code) (\(flight.arrival.city))")
+        isLoading = true
+        
+        Task {
+            let image = await fetchDestinationImageFromCloudKit(
+                airportCode: flight.arrival.code,
+                cityName: flight.arrival.city
+            )
+            
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    self.destinationImage = image
+                    self.isLoading = false
+                }
+                
+                if image != nil {
+                    print("✅ Successfully loaded destination image for \(flight.arrival.code)")
+                } else {
+                    print("⚠️ No destination image found for \(flight.arrival.code)")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - CloudKit Image Fetching
+
+import CloudKit
+
+func fetchDestinationImageFromCloudKit(airportCode: String, cityName: String) async -> UIImage? {
+    let container = CKContainer(identifier: "iCloud.com.skyline.flighttracker")
+    let publicDatabase = container.publicCloudDatabase
+    
+    print("🔍 DEBUG: Searching CloudKit for airport code: \(airportCode)")
+    
+    do {
+        // Try to find by airport code first
+        let predicate = NSPredicate(format: "airportCode == %@", airportCode.uppercased())
+        let query = CKQuery(recordType: "DestinationImage", predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        
+        for (_, record) in result.matchResults {
+            switch record {
+            case .success(let ckRecord):
+                print("✅ Found CloudKit record for \(airportCode)")
+                
+                // Get the image asset
+                if let asset = ckRecord["image"] as? CKAsset,
+                   let imageData = try? Data(contentsOf: asset.fileURL!),
+                   let uiImage = UIImage(data: imageData) {
+                    print("✅ Successfully loaded image from CloudKit for \(airportCode)")
+                    return uiImage
+                } else {
+                    print("❌ Failed to load image data from CloudKit asset for \(airportCode)")
+                }
+                
+            case .failure(let error):
+                print("❌ Error loading CloudKit record for \(airportCode): \(error)")
+            }
+        }
+        
+        print("⚠️ No CloudKit record found for airport code: \(airportCode)")
+        return nil
+        
+    } catch {
+        print("❌ CloudKit query error for \(airportCode): \(error)")
+        return nil
+    }
+}
+
