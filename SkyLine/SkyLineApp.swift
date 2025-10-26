@@ -18,7 +18,8 @@ struct SkyLineApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if case .authenticated = authService.authenticationState {
+                switch authService.authenticationState {
+                case .authenticated:
                     ContentView()
                         .environmentObject(themeManager)
                         .environmentObject(flightStore)
@@ -35,7 +36,13 @@ struct SkyLineApp: App {
                                 await TripStore.shared.syncIfNeeded()
                             }
                         }
-                } else {
+                        
+                case .authenticating:
+                    // Show loading screen while checking existing authentication
+                    AppLoadingView()
+                        .environmentObject(themeManager)
+                        
+                case .unauthenticated, .error:
                     AuthenticationView()
                         .environmentObject(themeManager)
                         .environmentObject(authService)
@@ -100,5 +107,42 @@ struct SkyLineApp: App {
         
         // Configure Status Bar Style globally
         UIApplication.shared.statusBarStyle = theme == .light ? .darkContent : .lightContent
+    }
+}
+
+// MARK: - App Loading View
+struct AppLoadingView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    var body: some View {
+        ZStack {
+            themeManager.currentTheme.colors.background
+                .ignoresSafeArea()
+            
+            VStack(spacing: 24) {
+                // App Icon
+                ZStack {
+                    Circle()
+                        .fill(themeManager.currentTheme.colors.primary)
+                        .frame(width: 80, height: 80)
+                    
+                    Image(systemName: "airplane")
+                        .font(.system(size: 40, weight: .medium, design: .monospaced))
+                        .foregroundColor(.white)
+                }
+                .shadow(color: themeManager.currentTheme.colors.primary.opacity(0.3), radius: 15, x: 0, y: 8)
+                
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                        .scaleEffect(1.2)
+                    
+                    Text("SkyLine")
+                        .font(.system(.title2, design: .monospaced))
+                        .fontWeight(.bold)
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                }
+            }
+        }
     }
 }
