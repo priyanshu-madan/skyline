@@ -15,10 +15,11 @@ struct ContentView: View {
     @State private var selectedDetent: PresentationDetent = .height(80)
     @StateObject private var webViewCoordinator = WebViewCoordinator()
     @State private var retryFlightSelection: (() -> Void)? = nil
+    @State private var currentActiveTab: SkyLineTab? = nil
     
     var body: some View {
         // Background Globe View (replaces Map in original)
-        WebViewGlobeView(coordinator: webViewCoordinator)
+        WebViewGlobeView(coordinator: webViewCoordinator, currentTab: currentActiveTab)
             .environmentObject(themeManager)
             .environmentObject(flightStore)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -34,7 +35,12 @@ struct ContentView: View {
                     onFlightSelected: handleFlightSelection,
                     onTabSelected: handleTabSelection,
                     onGlobeReset: resetGlobeView,
-                    selectedDetent: $selectedDetent
+                    selectedDetent: $selectedDetent,
+                    onTabChanged: { newTab in
+                        print("📱 ContentView received tab change: \(newTab.rawValue)")
+                        currentActiveTab = newTab
+                        print("📱 ContentView currentActiveTab set to: \(currentActiveTab?.rawValue ?? "nil")")
+                    }
                 )
                     .environmentObject(themeManager)
                     .environmentObject(flightStore)

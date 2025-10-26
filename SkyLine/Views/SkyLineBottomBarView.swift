@@ -66,12 +66,14 @@ struct SkyLineBottomBarView: View {
     let onFlightSelected: ((Flight) -> Void)?
     let onTabSelected: (() -> Void)?
     let onGlobeReset: (() -> Void)?
+    let onTabChanged: ((SkyLineTab) -> Void)?
     @Binding var selectedDetent: PresentationDetent
     
-    init(onFlightSelected: ((Flight) -> Void)? = nil, onTabSelected: (() -> Void)? = nil, onGlobeReset: (() -> Void)? = nil, selectedDetent: Binding<PresentationDetent>) {
+    init(onFlightSelected: ((Flight) -> Void)? = nil, onTabSelected: (() -> Void)? = nil, onGlobeReset: (() -> Void)? = nil, selectedDetent: Binding<PresentationDetent>, onTabChanged: ((SkyLineTab) -> Void)? = nil) {
         self.onFlightSelected = onFlightSelected
         self.onTabSelected = onTabSelected
         self.onGlobeReset = onGlobeReset
+        self.onTabChanged = onTabChanged
         self._selectedDetent = selectedDetent
     }
     
@@ -99,6 +101,13 @@ struct SkyLineBottomBarView: View {
                     TabViewHelper()
                 }
                 .compositingGroup()
+                .onChange(of: activeTab) { newTab in
+                    print("🔄 Tab changed in onChange: \(newTab.rawValue)")
+                    onTabChanged?(newTab)
+                }
+                .onAppear {
+                    onTabChanged?(activeTab)
+                }
                 
                 CustomTabBar()
                     .padding(.bottom, bottomPadding)
@@ -236,9 +245,14 @@ struct SkyLineBottomBarView: View {
                 .frame(maxWidth: .infinity)
                 .contentShape(.rect)
                 .onTapGesture {
+                    print("🎯 Tab tapped: \(tab.rawValue)")
                     withAnimation(.easeInOut(duration: 0.3)) {
                         activeTab = tab
                     }
+                    
+                    // Immediately notify the globe of tab change
+                    print("🔄 Immediately calling onTabChanged with: \(tab.rawValue)")
+                    onTabChanged?(tab)
                     
                     // Trigger sheet expansion when tab is tapped
                     onTabSelected?()
