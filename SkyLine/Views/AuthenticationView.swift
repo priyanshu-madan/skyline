@@ -94,19 +94,23 @@ struct AuthenticationView: View {
                             .padding(.vertical, 16)
                         } else {
                             // Apple Sign In Button
-                            SignInWithAppleButton(
-                                onRequest: { request in
-                                    request.requestedScopes = [.fullName, .email]
-                                },
-                                onCompletion: { result in
-                                    handleSignInResult(result)
+                            Button(action: {
+                                authService.signInWithApple()
+                            }) {
+                                HStack {
+                                    Image(systemName: "applelogo")
+                                        .font(.system(size: 18, weight: .medium))
+                                    
+                                    Text("Sign in with Apple")
+                                        .font(.system(.body, design: .monospaced))
+                                        .fontWeight(.medium)
                                 }
-                            )
-                            .signInWithAppleButtonStyle(
-                                themeManager.currentTheme == .light ? .black : .white
-                            )
-                            .frame(height: 50)
-                            .cornerRadius(8)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .background(Color.black)
+                                .cornerRadius(8)
+                            }
                             .padding(.horizontal, 20)
                         }
                         
@@ -145,23 +149,6 @@ struct AuthenticationView: View {
         }
     }
     
-    private func handleSignInResult(_ result: Result<ASAuthorization, Error>) {
-        authService.isLoading = true
-        
-        switch result {
-        case .success(let authorization):
-            if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                let user = appleIDCredential.toUser()
-                authService.authenticationState = .authenticated(user)
-                // User is saved automatically in the AuthenticationService
-            }
-            
-        case .failure(let error):
-            authService.authenticationState = .error(error.localizedDescription)
-        }
-        
-        authService.isLoading = false
-    }
 }
 
 // MARK: - Feature Row Component

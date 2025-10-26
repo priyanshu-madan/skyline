@@ -53,41 +53,79 @@ class AuthenticationService: NSObject, ObservableObject {
     
     override init() {
         super.init()
+        print("🔄 AuthService: Initializing AuthenticationService...")
+        
+        // Start with authenticating state while we check existing credentials
+        authenticationState = .authenticating
+        print("🔄 AuthService: Set initial state to .authenticating")
+        
         checkExistingAuthentication()
     }
     
     // MARK: - Authentication Check
     
     private func checkExistingAuthentication() {
+        print("🔍 AuthService: Checking existing authentication...")
+        print("🔍 AuthService: UserDefaults key being checked: '\(userKey)'")
+        
+        // Debug: List all UserDefaults keys to see what's there
+        let allKeys = userDefaults.dictionaryRepresentation().keys
+        print("🔍 AuthService: All UserDefaults keys: \(Array(allKeys))")
+        
         // Check for existing user in UserDefaults
-        guard let userData = userDefaults.data(forKey: userKey),
-              let user = try? JSONDecoder().decode(User.self, from: userData) else {
-            authenticationState = .unauthenticated
+        guard let userData = userDefaults.data(forKey: userKey) else {
+            print("❌ AuthService: No user data found in UserDefaults for key '\(userKey)'")
+            DispatchQueue.main.async {
+                self.authenticationState = .unauthenticated
+            }
             return
         }
+        
+        guard let user = try? JSONDecoder().decode(User.self, from: userData) else {
+            print("❌ AuthService: Failed to decode user data")
+            DispatchQueue.main.async {
+                self.authenticationState = .unauthenticated
+            }
+            return
+        }
+        
+        print("📱 AuthService: Found cached user: \(user.displayName) (ID: \(user.id))")
         
         // Verify the Apple ID credential is still valid
         let appleIDProvider = ASAuthorizationAppleIDProvider()
         appleIDProvider.getCredentialState(forUserID: user.id) { [weak self] credentialState, error in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("❌ AuthService: Error checking credential state: \(error)")
+                    self.authenticationState = .unauthenticated
+                    return
+                }
+                
                 switch credentialState {
                 case .authorized:
-                    self?.authenticationState = .authenticated(user)
-                    print("✅ User still authenticated: \(user.displayName)")
+                    print("✅ AuthService: Apple ID credential still valid - auto-login successful")
+                    self.authenticationState = .authenticated(user)
                     
-                case .revoked, .notFound:
-                    self?.authenticationState = .unauthenticated
-                    self?.clearUserData()
-                    print("⚠️ Apple ID credential revoked or not found")
+                case .revoked:
+                    print("⚠️ AuthService: Apple ID credential revoked")
+                    self.authenticationState = .unauthenticated
+                    self.clearUserData()
+                    
+                case .notFound:
+                    print("⚠️ AuthService: Apple ID credential not found")
+                    self.authenticationState = .unauthenticated
+                    self.clearUserData()
                     
                 case .transferred:
-                    self?.authenticationState = .unauthenticated
-                    self?.clearUserData()
-                    print("⚠️ Apple ID credential transferred")
+                    print("⚠️ AuthService: Apple ID credential transferred")
+                    self.authenticationState = .unauthenticated
+                    self.clearUserData()
                     
                 @unknown default:
-                    self?.authenticationState = .unauthenticated
-                    print("❓ Unknown Apple ID credential state")
+                    print("❓ AuthService: Unknown Apple ID credential state")
+                    self.authenticationState = .unauthenticated
                 }
             }
         }
@@ -119,6 +157,8 @@ class AuthenticationService: NSObject, ObservableObject {
     
     private func clearUserData() {
         userDefaults.removeObject(forKey: userKey)
+        userDefaults.synchronize()
+        print("🗑️ AuthService: User data cleared from UserDefaults")
     }
     
     // Public method for saving user (called from AuthenticationView)
@@ -126,9 +166,19 @@ class AuthenticationService: NSObject, ObservableObject {
         do {
             let userData = try JSONEncoder().encode(user)
             userDefaults.set(userData, forKey: userKey)
-            print("✅ User data saved locally")
+            userDefaults.synchronize() // Force immediate save
+            print("✅ AuthService: User data saved locally - \(user.displayName) (ID: \(user.id))")
+            print("💾 AuthService: UserDefaults key '\(userKey)' size: \(userData.count) bytes")
+            
+            // Verify the save worked by immediately trying to read it back
+            if let verifyData = userDefaults.data(forKey: userKey),
+               let verifyUser = try? JSONDecoder().decode(User.self, from: verifyData) {
+                print("✅ AuthService: Verification successful - can read back user: \(verifyUser.displayName)")
+            } else {
+                print("❌ AuthService: Verification failed - cannot read back saved user data")
+            }
         } catch {
-            print("❌ Failed to save user data: \(error)")
+            print("❌ AuthService: Failed to save user data: \(error)")
         }
     }
     
