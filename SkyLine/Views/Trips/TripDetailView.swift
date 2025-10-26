@@ -569,14 +569,6 @@ struct EmptyTimelineView: View {
 }
 
 // MARK: - Placeholder Views
-struct AddEntryView: View {
-    let tripId: String
-    
-    var body: some View {
-        Text("Add Entry View - Coming Soon")
-            .font(.system(.title, design: .monospaced))
-    }
-}
 
 struct EntryDetailView: View {
     let entry: TripEntry

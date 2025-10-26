@@ -23,6 +23,18 @@ struct SkyLineApp: App {
                         .environmentObject(themeManager)
                         .environmentObject(flightStore)
                         .environmentObject(authService)
+                        .onAppear {
+                            // Sync trip data when user is authenticated
+                            Task {
+                                await TripStore.shared.syncIfNeeded()
+                            }
+                        }
+                        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                            // Sync when app comes to foreground
+                            Task {
+                                await TripStore.shared.syncIfNeeded()
+                            }
+                        }
                 } else {
                     AuthenticationView()
                         .environmentObject(themeManager)

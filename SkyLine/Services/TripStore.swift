@@ -23,6 +23,11 @@ class TripStore: ObservableObject {
     private let cloudKitService = CloudKitService.shared
     private var cancellables = Set<AnyCancellable>()
     
+    // Caching keys
+    private let tripsKey = "CachedTrips"
+    private let entriesKey = "CachedTripEntries"
+    private let lastSyncKey = "LastTripSyncDate"
+    
     // Computed properties
     var upcomingTrips: [Trip] {
         trips.filter { $0.isUpcoming }.sorted { $0.startDate < $1.startDate }
@@ -50,7 +55,11 @@ class TripStore: ObservableObject {
     }
     
     private init() {
-        loadSampleData() // Load sample data for development
+        // Load cached data immediately for offline access
+        loadCachedData()
+        
+        // Only sync from CloudKit during app lifecycle events, not on init
+        print("🔄 TripStore: Initialized with \(trips.count) cached trips")
     }
     
     // MARK: - Trip Management
@@ -67,6 +76,9 @@ class TripStore: ObservableObject {
             // Update local store
             trips.append(trip)
             tripEntries[trip.id] = []
+            
+            // Cache the updated data
+            cacheData()
             
             isLoading = false
             return .success(())
@@ -108,6 +120,9 @@ class TripStore: ObservableObject {
                 trips[index] = updatedTrip
             }
             
+            // Cache the updated data
+            cacheData()
+            
             isLoading = false
             return .success(())
             
@@ -134,6 +149,9 @@ class TripStore: ObservableObject {
             trips.removeAll { $0.id == tripId }
             tripEntries.removeValue(forKey: tripId)
             
+            // Cache the updated data
+            cacheData()
+            
             isLoading = false
             return .success(())
             
@@ -148,22 +166,41 @@ class TripStore: ObservableObject {
         isLoading = true
         error = nil
         
+        // Check CloudKit account status first
+        let accountAvailable = await cloudKitService.checkAccountStatus()
+        guard accountAvailable else {
+            isLoading = false
+            self.error = "CloudKit account not available"
+            print("❌ TripStore: CloudKit account not available")
+            return .failure(.fetchFailed)
+        }
+        
         do {
-            let query = CKQuery(recordType: "Trip", predicate: NSPredicate(value: true))
-            query.sortDescriptors = [NSSortDescriptor(key: "startDate", ascending: false)]
+            // Try using createdAt field which is a Date and should be queryable by default
+            print("🔄 TripStore: Attempting to fetch Trip records using createdAt field...")
+            
+            // Use createdAt field with a date that's definitely in the past
+            let oldDate = Date(timeIntervalSince1970: 0) // January 1, 1970
+            let predicate = NSPredicate(format: "createdAt > %@", oldDate as NSDate)
+            let query = CKQuery(recordType: "Trip", predicate: predicate)
             
             let (results, _) = try await cloudKitService.database.records(matching: query)
+            
+            print("🔄 TripStore: Fetched \(results.count) raw results")
             
             let fetchedTrips = results.compactMap { (_, result) in
                 switch result {
                 case .success(let record):
                     return Trip.fromCKRecord(record)
-                case .failure:
+                case .failure(let error):
+                    print("❌ TripStore: Failed to process individual record: \(error)")
                     return nil
                 }
             }
             
-            trips = fetchedTrips
+            print("🔄 TripStore: Fetched \(fetchedTrips.count) trips from CloudKit")
+            // Sort trips by start date (newest first) on the client side
+            trips = fetchedTrips.sorted { $0.startDate > $1.startDate }
             
             // Fetch entries for all trips
             for trip in trips {
@@ -176,6 +213,7 @@ class TripStore: ObservableObject {
         } catch {
             isLoading = false
             self.error = "Failed to fetch trips: \(error.localizedDescription)"
+            print("❌ TripStore: Failed to fetch trips: \(error)")
             return .failure(.fetchFailed)
         }
     }
@@ -203,6 +241,9 @@ class TripStore: ObservableObject {
             tripEntries[entry.tripId]?.append(entry)
             tripEntries[entry.tripId]?.sort { $0.timestamp > $1.timestamp }
             
+            // Cache the updated data
+            cacheData()
+            
             isLoading = false
             return .success(())
             
@@ -220,6 +261,9 @@ class TripStore: ObservableObject {
             }
             tripEntries[entry.tripId]?.append(entry)
             tripEntries[entry.tripId]?.sort { $0.timestamp > $1.timestamp }
+            
+            // Cache the updated data
+            cacheData()
             
             isLoading = false
             return .success(())
@@ -263,6 +307,9 @@ class TripStore: ObservableObject {
                 tripEntries[entry.tripId] = entries.sorted { $0.timestamp > $1.timestamp }
             }
             
+            // Cache the updated data
+            cacheData()
+            
             isLoading = false
             return .success(())
             
@@ -284,6 +331,9 @@ class TripStore: ObservableObject {
             
             // Update local store
             tripEntries[tripId]?.removeAll { $0.id == entryId }
+            
+            // Cache the updated data
+            cacheData()
             
             isLoading = false
             return .success(())
@@ -313,6 +363,10 @@ class TripStore: ObservableObject {
             }
             
             tripEntries[tripId] = fetchedEntries
+            
+            // Cache the updated entries
+            cacheData()
+            
             return .success(())
             
         } catch {
@@ -363,16 +417,92 @@ class TripStore: ObservableObject {
         return entries.groupedByDay()
     }
     
-    // MARK: - Sample Data (Development)
+    // MARK: - Caching
+    
+    private func loadCachedData() {
+        // Load trips from cache
+        if let tripsData = UserDefaults.standard.data(forKey: tripsKey),
+           let cachedTrips = try? JSONDecoder().decode([Trip].self, from: tripsData) {
+            trips = cachedTrips
+            print("✅ TripStore: Loaded \(trips.count) trips from cache")
+        }
+        
+        // Load entries from cache
+        if let entriesData = UserDefaults.standard.data(forKey: entriesKey),
+           let cachedEntries = try? JSONDecoder().decode([String: [TripEntry]].self, from: entriesData) {
+            tripEntries = cachedEntries
+            print("✅ TripStore: Loaded \(tripEntries.keys.count) trip entries from cache")
+        }
+    }
+    
+    private func cacheData() {
+        // Cache trips
+        if let tripsData = try? JSONEncoder().encode(trips) {
+            UserDefaults.standard.set(tripsData, forKey: tripsKey)
+        }
+        
+        // Cache entries
+        if let entriesData = try? JSONEncoder().encode(tripEntries) {
+            UserDefaults.standard.set(entriesData, forKey: entriesKey)
+        }
+        
+        // Update last sync time
+        UserDefaults.standard.set(Date(), forKey: lastSyncKey)
+        
+        print("💾 TripStore: Cached \(trips.count) trips and \(tripEntries.keys.count) trip entries")
+    }
+    
+    var shouldSync: Bool {
+        guard let lastSync = UserDefaults.standard.object(forKey: lastSyncKey) as? Date else {
+            return true // Never synced
+        }
+        
+        // Sync if it's been more than 5 minutes since last sync
+        return Date().timeIntervalSince(lastSync) > 300
+    }
+    
+    // MARK: - Public Sync Methods
+    
+    func syncIfNeeded() async {
+        guard shouldSync else {
+            print("🔄 TripStore: Skipping sync - recent sync detected")
+            return
+        }
+        
+        print("🔄 TripStore: Syncing with CloudKit...")
+        await syncWithCloudKit()
+    }
+    
+    func forceSync() async {
+        print("🔄 TripStore: Force syncing with CloudKit...")
+        await syncWithCloudKit()
+    }
+    
+    private func syncWithCloudKit() async {
+        let result = await fetchTrips()
+        switch result {
+        case .success:
+            print("✅ TripStore: Successfully synced \(trips.count) trips from CloudKit")
+            cacheData()
+        case .failure(let error):
+            print("❌ TripStore: Failed to sync from CloudKit: \(error)")
+            // Keep cached data, don't fallback to sample data
+        }
+    }
+    
+    // MARK: - Data Loading (Legacy)
+    
+    private func loadPersistedData() async {
+        // This method is now deprecated - use syncIfNeeded() instead
+        await syncWithCloudKit()
+    }
     
     private func loadSampleData() {
-        #if DEBUG
         trips = Trip.sampleTrips
         
         for trip in trips {
             tripEntries[trip.id] = TripEntry.sampleEntries(for: trip.id)
         }
-        #endif
     }
 }
 

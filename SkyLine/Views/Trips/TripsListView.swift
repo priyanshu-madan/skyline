@@ -15,7 +15,11 @@ struct TripsListView: View {
     
     var body: some View {
         ScrollView {
-            if tripStore.trips.isEmpty {
+            if tripStore.isLoading && tripStore.trips.isEmpty {
+                // Show loading state when initially loading and no trips cached
+                LoadingTripsView()
+            } else if tripStore.trips.isEmpty && !tripStore.isLoading {
+                // Only show empty state when not loading and truly empty
                 EmptyTripsView(onAddTrip: { showingAddTrip = true })
             } else {
                 TripsContentView(
@@ -27,7 +31,7 @@ struct TripsListView: View {
             }
         }
         .refreshable {
-            await tripStore.fetchTrips()
+            await tripStore.forceSync()
         }
         .sheet(isPresented: $showingAddTrip) {
             AddTripView()
@@ -38,11 +42,6 @@ struct TripsListView: View {
             TripDetailView(trip: trip)
                 .environmentObject(themeManager)
                 .environmentObject(tripStore)
-        }
-        .onAppear {
-            Task {
-                await tripStore.fetchTrips()
-            }
         }
     }
 }
@@ -105,6 +104,20 @@ struct TripsContentView: View {
     
     var body: some View {
         LazyVStack(spacing: 24) {
+            // Show subtle loading indicator when refreshing
+            if tripStore.isLoading && !tripStore.trips.isEmpty {
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                        .scaleEffect(0.8)
+                    
+                    Text("Syncing...")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                }
+                .padding(.top, 8)
+            }
+            
             // Active/Upcoming Trips
             if !tripStore.activeTrips.isEmpty || !tripStore.upcomingTrips.isEmpty {
                 VStack(spacing: 16) {
@@ -346,6 +359,35 @@ struct RoundedCorner: Shape {
             cornerRadii: CGSize(width: radius, height: radius)
         )
         return Path(path.cgPath)
+    }
+}
+
+// MARK: - Loading State
+struct LoadingTripsView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            
+            VStack(spacing: 16) {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                    .scaleEffect(1.2)
+                
+                Text("Loading Your Trips...")
+                    .font(.system(.title3, design: .monospaced))
+                    .fontWeight(.medium)
+                    .foregroundColor(themeManager.currentTheme.colors.text)
+                
+                Text("Syncing from iCloud")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+            }
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
