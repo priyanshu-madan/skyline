@@ -2,7 +2,7 @@
 //  BoardingPassScanner.swift
 //  SkyLine
 //
-//  OCR service for extracting flight details from boarding pass screenshots
+//  Enhanced OCR service with Mistral AI and Vision framework fallback
 //
 
 import Foundation
@@ -15,16 +15,64 @@ class BoardingPassScanner: ObservableObject {
     @Published var isProcessing = false
     @Published var lastError: String?
     
-    private init() {}
+    private let mistralOCR = MistralOCRService.shared
+    private let useMistralAI: Bool
+    
+    private init() {
+        // Check if Mistral API is configured
+        let hasEnvKey = ProcessInfo.processInfo.environment["MISTRAL_API_KEY"]?.isEmpty == false
+        let hasPlistKey = (Bundle.main.infoDictionary?["MISTRAL_API_KEY"] as? String) != "YOUR_MISTRAL_API_KEY_HERE" &&
+                         (Bundle.main.infoDictionary?["MISTRAL_API_KEY"] as? String)?.isEmpty == false
+        
+        self.useMistralAI = hasEnvKey || hasPlistKey
+        
+        print("🔧 BoardingPassScanner initialized with \(useMistralAI ? "Mistral AI" : "Vision") OCR")
+    }
     
     // MARK: - OCR Processing
     
     func scanBoardingPass(from image: UIImage) async -> BoardingPassData? {
-        print("🔍 Starting OCR scan...")
+        print("🔍 Starting OCR scan with \(useMistralAI ? "Mistral AI" : "Vision framework")...")
+        
         await MainActor.run {
             isProcessing = true
             lastError = nil
         }
+        
+        // Try Mistral AI first if available
+        if useMistralAI {
+            return await scanWithMistralAI(image: image)
+        } else {
+            return await scanWithVisionFramework(image: image)
+        }
+    }
+    
+    // MARK: - Mistral AI OCR
+    
+    private func scanWithMistralAI(image: UIImage) async -> BoardingPassData? {
+        print("🤖 Using Mistral AI OCR for enhanced accuracy...")
+        
+        let result = await mistralOCR.analyzeBoardingPass(from: image)
+        
+        await MainActor.run {
+            self.isProcessing = false
+            if let error = self.mistralOCR.lastError {
+                self.lastError = error
+            }
+        }
+        
+        if result == nil {
+            print("⚠️ Mistral AI failed, falling back to Vision framework...")
+            return await scanWithVisionFramework(image: image)
+        }
+        
+        return result
+    }
+    
+    // MARK: - Vision Framework OCR (Fallback)
+    
+    private func scanWithVisionFramework(image: UIImage) async -> BoardingPassData? {
+        print("👁️ Using Vision framework OCR...")
         
         guard let cgImage = image.cgImage else {
             print("❌ Invalid image format")
@@ -35,14 +83,12 @@ class BoardingPassScanner: ObservableObject {
             return nil
         }
         
-        print("🔍 Image converted to CGImage, starting Vision processing...")
-        
         return await withCheckedContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 Task {
                     if let error = error {
                         await MainActor.run {
-                            self.lastError = "OCR failed: \(error.localizedDescription)"
+                            self.lastError = "Vision OCR failed: \(error.localizedDescription)"
                             self.isProcessing = false
                         }
                         continuation.resume(returning: nil)
@@ -59,7 +105,7 @@ class BoardingPassScanner: ObservableObject {
                     }
                     
                     let extractedText = self.extractTextFromObservations(observations)
-                    print("🔍 OCR extracted text:", extractedText.joined(separator: " | "))
+                    print("👁️ Vision OCR extracted text:", extractedText.joined(separator: " | "))
                     
                     let boardingPassData = self.parseBoardingPassText(extractedText)
                     
@@ -92,7 +138,7 @@ class BoardingPassScanner: ObservableObject {
         }
     }
     
-    // MARK: - Text Extraction
+    // MARK: - Vision Framework Text Extraction
     
     private func extractTextFromObservations(_ observations: [VNRecognizedTextObservation]) -> [String] {
         var extractedText: [String] = []
