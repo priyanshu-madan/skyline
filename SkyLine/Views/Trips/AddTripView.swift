@@ -13,6 +13,8 @@ struct AddTripView: View {
     @EnvironmentObject var tripStore: TripStore
     @Environment(\.dismiss) private var dismiss
     
+    // Note: DestinationSearchService integration pending - using mock data for now
+    
     @State private var title = ""
     @State private var destination = ""
     @State private var startDate = Date()
@@ -91,6 +93,7 @@ struct AddTripView: View {
                                 if showingSuggestions && !destinationSuggestions.isEmpty {
                                     DestinationSuggestionsView(
                                         suggestions: destinationSuggestions,
+                                        isSearching: false,
                                         onSelect: { suggestion in
                                             selectedDestination = suggestion
                                             destination = suggestion.displayName
@@ -201,7 +204,7 @@ struct AddTripView: View {
             return
         }
         
-        // Simulate destination search - in a real app, this would call a geocoding service
+        // Use mock destinations for now until DestinationSearchService is properly integrated
         let suggestions = mockDestinations.filter { destination in
             destination.city.localizedCaseInsensitiveContains(query) ||
             destination.country.localizedCaseInsensitiveContains(query)
@@ -303,47 +306,66 @@ struct DestinationSuggestionsView: View {
     @EnvironmentObject var themeManager: ThemeManager
     
     let suggestions: [DestinationSuggestion]
+    let isSearching: Bool
     let onSelect: (DestinationSuggestion) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(suggestions) { suggestion in
-                Button {
-                    onSelect(suggestion)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(suggestion.city)
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-                            
-                            Text(suggestion.country)
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        }
-                        
-                        Spacer()
-                        
-                        if let airportCode = suggestion.airportCode {
-                            Text(airportCode)
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.medium)
-                                .foregroundColor(themeManager.currentTheme.colors.primary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(themeManager.currentTheme.colors.primary.opacity(0.1))
-                                .cornerRadius(4)
-                        }
-                    }
-                    .padding()
-                    .background(themeManager.currentTheme.colors.surface)
-                    .contentShape(Rectangle())
+            if isSearching {
+                HStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                        .scaleEffect(0.8)
+                    
+                    Text("Searching destinations...")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 }
-                .buttonStyle(PlainButtonStyle())
-                
-                if suggestion.id != suggestions.last?.id {
-                    Divider()
-                        .foregroundColor(themeManager.currentTheme.colors.border)
+                .padding()
+                .background(themeManager.currentTheme.colors.surface)
+            } else {
+                ForEach(suggestions) { suggestion in
+                    Button {
+                        onSelect(suggestion)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(suggestion.displayName)
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                                    .lineLimit(1)
+                                
+                                if !suggestion.detailText.isEmpty {
+                                    Text(suggestion.detailText)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            if let airportCode = suggestion.airportCode {
+                                Text(airportCode)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .fontWeight(.medium)
+                                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(themeManager.currentTheme.colors.primary.opacity(0.1))
+                                    .cornerRadius(4)
+                            }
+                        }
+                        .padding()
+                        .background(themeManager.currentTheme.colors.surface)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    if suggestion.id != suggestions.last?.id {
+                        Divider()
+                            .foregroundColor(themeManager.currentTheme.colors.border)
+                    }
                 }
             }
         }
@@ -357,25 +379,7 @@ struct DestinationSuggestionsView: View {
     }
 }
 
-// MARK: - Destination Suggestion Model
-struct DestinationSuggestion: Identifiable, Hashable {
-    let id = UUID()
-    let city: String
-    let country: String
-    let airportCode: String?
-    let latitude: Double?
-    let longitude: Double?
-    
-    var displayName: String {
-        if let airportCode = airportCode {
-            return "\(city), \(country) (\(airportCode))"
-        } else {
-            return "\(city), \(country)"
-        }
-    }
-}
-
-// MARK: - Mock Data
+// MARK: - Mock Data (Temporary until DestinationSearchService is integrated)
 private let mockDestinations: [DestinationSuggestion] = [
     DestinationSuggestion(city: "Tokyo", country: "Japan", airportCode: "NRT", latitude: 35.6762, longitude: 139.6503),
     DestinationSuggestion(city: "Paris", country: "France", airportCode: "CDG", latitude: 48.8566, longitude: 2.3522),
