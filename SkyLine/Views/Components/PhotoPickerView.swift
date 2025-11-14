@@ -24,13 +24,13 @@ struct PhotoPickerView: View {
             Button(action: { isShowingPicker = true }) {
                 HStack(spacing: 12) {
                     Image(systemName: "camera.viewfinder")
-                        .font(AppTypography.headline)
+                        .font(.system(.headline, design: .monospaced))
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Scan Boarding Pass")
-                            .font(AppTypography.bodyBold)
+                            .font(.system(.body, weight: .bold, design: .monospaced))
                         Text("From Apple Wallet screenshot")
-                            .font(AppTypography.caption)
+                            .font(.system(.caption, design: .monospaced))
                             .opacity(0.8)
                     }
                     
@@ -62,10 +62,10 @@ struct PhotoPickerView: View {
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Scanning boarding pass...")
-                            .font(AppTypography.flightTime)
+                            .font(.system(.body, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.text)
                         Text("Reading flight details")
-                            .font(AppTypography.caption)
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
                     
@@ -81,15 +81,15 @@ struct PhotoPickerView: View {
             if let error = scanner.lastError {
                 HStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(AppTypography.bodyBold)
+                        .font(.system(.body, weight: .bold, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.error)
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Scan Failed")
-                            .font(AppTypography.flightTime)
+                            .font(.system(.body, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.error)
                         Text(error)
-                            .font(AppTypography.caption)
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
                     
@@ -98,7 +98,7 @@ struct PhotoPickerView: View {
                     Button("Retry") {
                         isShowingPicker = true
                     }
-                    .font(AppTypography.captionBold)
+                    .font(.system(.caption, weight: .bold, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.primary)
                 }
                 .padding(.horizontal, 20)
@@ -186,11 +186,11 @@ struct BoardingPassConfirmationView: View {
                             .foregroundColor(themeManager.currentTheme.colors.success)
                         
                         Text("Boarding Pass Scanned")
-                            .font(AppTypography.headline)
+                            .font(.system(.headline, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.text)
                         
                         Text("Please verify the details below")
-                            .font(AppTypography.bodySmall)
+                            .font(.system(.caption, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
                     .padding(.top, 20)
@@ -215,7 +215,7 @@ struct BoardingPassConfirmationView: View {
                             )
                             
                             Image(systemName: "arrow.right")
-                                .font(AppTypography.bodyBold)
+                                .font(.system(.body, weight: .bold, design: .monospaced))
                                 .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                                 .padding(.top, 20)
                             
@@ -289,7 +289,7 @@ struct BoardingPassConfirmationView: View {
                     Button("Save Flight") {
                         onConfirm(data)
                     }
-                    .font(AppTypography.bodyBold)
+                    .font(.system(.body, weight: .bold, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.primary)
                     .disabled(!data.isValid)
                 }
@@ -311,12 +311,12 @@ struct FormField: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(AppTypography.captionBold)
+                    .font(.system(.caption, weight: .bold, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.primary)
                     .frame(width: 16)
                 
                 Text(title)
-                    .font(AppTypography.captionBold)
+                    .font(.system(.caption, weight: .bold, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
             }
             
@@ -324,7 +324,7 @@ struct FormField: View {
                 get: { value ?? "" },
                 set: { value = $0.isEmpty ? nil : $0 }
             ))
-            .font(AppTypography.body)
+            .font(.system(.body, design: .monospaced))
             .foregroundColor(themeManager.currentTheme.colors.text)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
