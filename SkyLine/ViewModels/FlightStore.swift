@@ -75,12 +75,17 @@ class FlightStore: ObservableObject {
     private let flightsKey = "saved_flights"
     private let searchHistoryKey = "search_history"
     private let lastSyncKey = "last_sync_date"
+    private let deletedFlightsKey = "deleted_flights"
     private var cancellables = Set<AnyCancellable>()
     private let cloudKitService = CloudKitService.shared
+    
+    // Track deleted flights to prevent re-sync
+    private var deletedFlightIds: Set<String> = []
     
     init() {
         loadFlights()
         loadSearchHistory()
+        loadDeletedFlights()
         setupAutoSave()
         setupCloudKitSync()
         self.isInitialized = true
@@ -437,7 +442,8 @@ class FlightStore: ObservableObject {
         return .success(())
     }
     
-    func removeFlightSync(_ flightId: String) {
+    @MainActor
+    func removeFlightSync(_ flightId: String) async {
         flights.removeAll { $0.id == flightId }
         
         // Clear selection if the removed flight was selected
@@ -445,20 +451,28 @@ class FlightStore: ObservableObject {
             selectedFlight = nil
         }
         
+        // Track this deletion to prevent re-sync
+        deletedFlightIds.insert(flightId)
+        saveDeletedFlights()
         saveFlights()
-        
-        // Sync deletion to CloudKit if available
-        if cloudKitAvailable {
-            Task {
-                let _ = await cloudKitService.deleteFlight(with: flightId)
-            }
-        }
         
         // Add haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
         
-        // Flight removed
+        // Sync deletion to CloudKit if available - wait for completion
+        if cloudKitAvailable {
+            let result = await cloudKitService.deleteFlight(with: flightId)
+            switch result {
+            case .success():
+                print("✅ Flight \(flightId) deleted from CloudKit")
+            case .failure(let error):
+                print("❌ Failed to delete \(flightId) from CloudKit: \(error)")
+                // TODO: Could implement retry logic here
+            }
+        }
+        
+        print("🗑️ Flight \(flightId) removal completed")
     }
     
     func updateFlight(_ flightId: String, with updates: Flight) {
@@ -488,6 +502,10 @@ class FlightStore: ObservableObject {
     func clearAllFlights() {
         flights.removeAll()
         selectedFlight = nil
+        
+        // Clear the deleted flights tracking since we're starting fresh
+        deletedFlightIds.removeAll()
+        saveDeletedFlights()
         saveFlights()
         
         // Clear from CloudKit if available
@@ -624,6 +642,16 @@ class FlightStore: ObservableObject {
         searchHistory = userDefaults.stringArray(forKey: searchHistoryKey) ?? []
     }
     
+    private func saveDeletedFlights() {
+        let deletedArray = Array(deletedFlightIds)
+        userDefaults.set(deletedArray, forKey: deletedFlightsKey)
+    }
+    
+    private func loadDeletedFlights() {
+        let deletedArray = userDefaults.stringArray(forKey: deletedFlightsKey) ?? []
+        deletedFlightIds = Set(deletedArray)
+    }
+    
     private func setupAutoSave() {
         // Auto-save when flights change
         $flights
@@ -675,10 +703,13 @@ class FlightStore: ObservableObject {
         
         switch result {
         case .success(let cloudFlights):
-            // Use CloudKit service's conflict resolution
+            // Filter out any flights that were explicitly deleted by the user
+            let filteredCloudFlights = cloudFlights.filter { !deletedFlightIds.contains($0.id) }
+            
+            // Use CloudKit service's conflict resolution with filtered flights
             let resolvedFlights = cloudKitService.handleConflictResolution(
                 localFlights: flights,
-                cloudFlights: cloudFlights
+                cloudFlights: filteredCloudFlights
             )
             
             flights = resolvedFlights
