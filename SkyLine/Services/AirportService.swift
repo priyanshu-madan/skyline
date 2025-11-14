@@ -80,11 +80,13 @@ class AirportService: ObservableObject {
         "SYD": CLLocationCoordinate2D(latitude: -33.9399, longitude: 151.1753),
         "MEL": CLLocationCoordinate2D(latitude: -37.6690, longitude: 144.8410),
         
-        // India (DEL moved to dynamic fallback for testing)
+        // India 
+        "DEL": CLLocationCoordinate2D(latitude: 28.5562, longitude: 77.1000), // Delhi Airport
         "BOM": CLLocationCoordinate2D(latitude: 19.0896, longitude: 72.8656),
         "MAA": CLLocationCoordinate2D(latitude: 12.9941, longitude: 80.1709),
         "BLR": CLLocationCoordinate2D(latitude: 13.1979, longitude: 77.7069),
         "HYD": CLLocationCoordinate2D(latitude: 17.2403, longitude: 78.4294),
+        "IXC": CLLocationCoordinate2D(latitude: 30.6735, longitude: 76.7884), // Chandigarh Airport
         "CCU": CLLocationCoordinate2D(latitude: 22.6546, longitude: 88.4467),
         "AMD": CLLocationCoordinate2D(latitude: 23.0775, longitude: 72.6362),
         "COK": CLLocationCoordinate2D(latitude: 9.9502, longitude: 76.2673),

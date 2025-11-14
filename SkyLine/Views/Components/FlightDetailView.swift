@@ -64,8 +64,10 @@ struct FlightDetailView: View {
         .alert("Delete Flight", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                flightStore.removeFlightSync(flight.id)
-                dismiss()
+                Task {
+                    await flightStore.removeFlightSync(flight.id)
+                    await MainActor.run { dismiss() }
+                }
             }
         } message: {
             Text("Are you sure you want to delete this flight from your saved flights?")

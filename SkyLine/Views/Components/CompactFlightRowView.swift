@@ -151,7 +151,9 @@ struct CompactFlightRowView: View {
         .alert("Delete Flight", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                flightStore.removeFlightSync(flight.id)
+                Task {
+                    await flightStore.removeFlightSync(flight.id)
+                }
             }
         } message: {
             Text("Are you sure you want to delete this flight from your saved flights?")
