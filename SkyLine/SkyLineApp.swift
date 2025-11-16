@@ -28,6 +28,9 @@ struct SkyLineApp: App {
                             // Sync trip data when user is authenticated
                             Task {
                                 await TripStore.shared.syncIfNeeded()
+                                
+                                // Seed initial airline data if needed
+                                await AirlineService.shared.seedInitialAirlines()
                             }
                         }
                         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in

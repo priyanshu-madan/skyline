@@ -54,7 +54,7 @@ class AirportService: ObservableObject {
         "AMS": CLLocationCoordinate2D(latitude: 52.3105, longitude: 4.7683),
         "MAD": CLLocationCoordinate2D(latitude: 40.4839, longitude: -3.5680),
         "FCO": CLLocationCoordinate2D(latitude: 41.7999, longitude: 12.2462),
-        "ZUR": CLLocationCoordinate2D(latitude: 47.4582, longitude: 8.5492),
+        "ZRH": CLLocationCoordinate2D(latitude: 47.4582, longitude: 8.5492), // Zurich Airport
         "VIE": CLLocationCoordinate2D(latitude: 48.1103, longitude: 16.5697),
         "CPH": CLLocationCoordinate2D(latitude: 55.6181, longitude: 12.6561),
         "ARN": CLLocationCoordinate2D(latitude: 59.6519, longitude: 17.9186),
@@ -95,6 +95,7 @@ class AirportService: ObservableObject {
         "DXB": CLLocationCoordinate2D(latitude: 25.2532, longitude: 55.3657),
         "DOH": CLLocationCoordinate2D(latitude: 25.2732, longitude: 51.6078),
         "AUH": CLLocationCoordinate2D(latitude: 24.4330, longitude: 54.6511),
+        "MCT": CLLocationCoordinate2D(latitude: 23.5933, longitude: 58.2844), // Muscat Airport
         "CAI": CLLocationCoordinate2D(latitude: 30.1219, longitude: 31.4056),
         "JNB": CLLocationCoordinate2D(latitude: -26.1367, longitude: 28.2411),
         
@@ -141,7 +142,7 @@ class AirportService: ObservableObject {
         "AMS": "Amsterdam Airport Schiphol",
         "MAD": "Adolfo Suárez Madrid–Barajas Airport",
         "FCO": "Leonardo da Vinci International Airport",
-        "ZUR": "Zurich Airport",
+        "ZRH": "Zurich Airport",
         "VIE": "Vienna International Airport",
         "CPH": "Copenhagen Airport",
         "ARN": "Stockholm Arlanda Airport",
@@ -173,7 +174,8 @@ class AirportService: ObservableObject {
         "COK": "Cochin International Airport",
         "DXB": "Dubai International Airport",
         "DOH": "Hamad International Airport",
-        "AUH": "Abu Dhabi International Airport",
+        "AUH": "Abu Dhabi International Airport", 
+        "MCT": "Muscat International Airport",
         "CAI": "Cairo International Airport",
         "JNB": "O.R. Tambo International Airport",
         "GRU": "São Paulo/Guarulhos International Airport",

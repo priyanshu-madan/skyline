@@ -9,6 +9,11 @@ import Foundation
 import Vision
 import UIKit
 
+// Import Apple Intelligence service if available
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
 class BoardingPassScanner: ObservableObject {
     static let shared = BoardingPassScanner()
     
@@ -35,16 +40,34 @@ class BoardingPassScanner: ObservableObject {
     // MARK: - OCR Processing
     
     func scanBoardingPass(from image: UIImage) async -> BoardingPassData? {
-        print("🔍 Starting enhanced OCR scan with multiple retry strategies...")
+        print("🔍 Starting intelligent boarding pass scan...")
         
         await MainActor.run {
             isProcessing = true
             lastError = nil
         }
         
-        // TEMPORARY: Use only Vision framework to see its output
+        // Try Apple Intelligence first (iOS 18+)
+        if #available(iOS 18.0, *) {
+            print("🧠 Attempting Apple Intelligence extraction...")
+            let intelligentResult = await AppleIntelligenceBoardingPassService.shared.analyzeBoardingPass(from: image)
+            
+            if let data = intelligentResult, isExtractionComplete(data) {
+                print("✅ Apple Intelligence extraction successful!")
+                await MainActor.run {
+                    self.isProcessing = false
+                }
+                return data
+            } else {
+                print("⚠️ Apple Intelligence extraction incomplete, falling back to Vision + patterns...")
+            }
+        } else {
+            print("📱 iOS 18+ required for Apple Intelligence, using Vision + patterns...")
+        }
+        
+        // Fallback to existing Vision + pattern matching approach
         for attempt in 1...3 {
-            print("📋 Vision OCR Attempt \(attempt)/3...")
+            print("📋 Vision + Pattern Attempt \(attempt)/3...")
             
             var result: BoardingPassData? = nil
             
@@ -62,7 +85,7 @@ class BoardingPassScanner: ObservableObject {
             // Validate the extracted data
             if let data = result {
                 if isExtractionComplete(data) {
-                    print("✅ Vision OCR successful on attempt \(attempt)")
+                    print("✅ Vision + Pattern extraction successful on attempt \(attempt)")
                     await MainActor.run {
                         self.isProcessing = false
                     }
@@ -83,10 +106,10 @@ class BoardingPassScanner: ObservableObject {
             }
         }
         
-        print("❌ All OCR attempts failed")
+        print("❌ All extraction methods failed")
         await MainActor.run {
             self.isProcessing = false
-            self.lastError = "Failed to extract sufficient boarding pass information after 3 attempts"
+            self.lastError = "Failed to extract sufficient boarding pass information after trying Apple Intelligence and Vision + patterns"
         }
         
         return nil
@@ -182,7 +205,7 @@ class BoardingPassScanner: ObservableObject {
                     let extractedText = self.extractTextFromObservations(observations)
                     print("👁️ Vision OCR extracted text:", extractedText.joined(separator: " | "))
                     
-                    let boardingPassData = self.parseBoardingPassText(extractedText)
+                    let boardingPassData = await self.parseBoardingPassText(extractedText)
                     
                     await MainActor.run {
                         self.isProcessing = false
@@ -243,7 +266,7 @@ class BoardingPassScanner: ObservableObject {
     
     // MARK: - Boarding Pass Data Parsing
     
-    private func parseBoardingPassText(_ textLines: [String]) -> BoardingPassData? {
+    private func parseBoardingPassText(_ textLines: [String]) async -> BoardingPassData? {
         let allText = textLines.joined(separator: " ")
         print("🧠 Parsing boarding pass text:", allText)
         
@@ -284,10 +307,21 @@ class BoardingPassScanner: ObservableObject {
         // Extract passenger name
         data.passengerName = extractPassengerName(from: textLines)
         
+        // ALWAYS determine airline from flight number - most reliable method
+        if let flightNumber = data.flightNumber {
+            data.airline = await AirlineService.shared.getAirlineFromFlightNumber(flightNumber)
+            if let airline = data.airline {
+                print("✈️ Determined airline from flight number \(flightNumber): \(airline)")
+            } else {
+                print("⚠️ Could not determine airline for flight number: \(flightNumber)")
+            }
+        }
+        
         // Validate we have minimum required data - be more lenient
         if data.flightNumber != nil && (data.departureCode != nil || data.arrivalCode != nil) {
             print("✅ Successfully parsed boarding pass with minimum data")
             print("   Flight: \(data.flightNumber ?? "N/A")")
+            print("   Airline: \(data.airline ?? "N/A")")
             print("   Passenger: \(data.passengerName ?? "N/A")")
             print("   Route (Codes): \(data.departureCode ?? "N/A") → \(data.arrivalCode ?? "N/A")")
             print("   Route (Cities): \(data.departureCity ?? "N/A") → \(data.arrivalCity ?? "N/A")")
@@ -760,6 +794,7 @@ extension String {
 
 struct BoardingPassData: CustomStringConvertible {
     var flightNumber: String?
+    var airline: String?
     var departureCode: String?
     var departureCity: String?
     var arrivalCode: String?
@@ -795,6 +830,7 @@ struct BoardingPassData: CustomStringConvertible {
         return """
         BoardingPassData(
           flight: \(flightNumber ?? "nil"),
+          airline: \(airline ?? "nil"),
           route: \(departureCode ?? "nil")/\(departureCity ?? "nil") → \(arrivalCode ?? "nil")/\(arrivalCity ?? "nil"),
           seat: \(seat ?? "nil"),
           gate: \(gate ?? "nil"),
