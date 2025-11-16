@@ -110,7 +110,9 @@ struct SkyLineBottomBarView: View {
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BoardingPassScanned"))) { notification in
                     if let boardingPassData = notification.object as? BoardingPassData {
-                        handleBoardingPassScanned(boardingPassData)
+                        Task {
+                            await handleBoardingPassScanned(boardingPassData)
+                        }
                     }
                 }
                 
@@ -396,12 +398,12 @@ struct SkyLineBottomBarView: View {
     
     // MARK: - Boarding Pass Handler
     
-    private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) {
+    private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
         print("🎫 Boarding pass scanned successfully")
         print("📄 Data: \(boardingPassData.summary)")
         
-        // Convert BoardingPassData to Flight object
-        let flight = createFlightFromBoardingPass(boardingPassData)
+        // Convert BoardingPassData to Flight object (async for coordinate lookup)
+        let flight = await createFlightFromBoardingPass(boardingPassData)
         
         // Add to flight store
         Task {
@@ -425,18 +427,18 @@ struct SkyLineBottomBarView: View {
         }
     }
     
-    private func createFlightFromBoardingPass(_ data: BoardingPassData) -> Flight {
+    private func createFlightFromBoardingPass(_ data: BoardingPassData) async -> Flight {
         let flightDate = data.departureDate ?? Date()
         
-        // Look up coordinates for departure airport
-        let (depName, depCoordinates) = AirportService.shared.getAirportInfo(for: data.departureCode ?? "")
-        let (arrName, arrCoordinates) = AirportService.shared.getAirportInfo(for: data.arrivalCode ?? "")
+        // Look up coordinates for departure airport (async with dynamic fetching)
+        let (depName, depCity, _, depCoordinates) = await AirportService.shared.getAirportInfo(for: data.departureCode ?? "")
+        let (arrName, arrCity, _, arrCoordinates) = await AirportService.shared.getAirportInfo(for: data.arrivalCode ?? "")
         
         // Create departure airport with proper coordinates
         let departure = Airport(
             airport: depName ?? "\(data.departureCity ?? data.departureCode ?? "Unknown") Airport",
             code: data.departureCode ?? "???",
-            city: data.departureCity ?? data.departureCode ?? "Unknown",
+            city: depCity ?? data.departureCity ?? data.departureCode ?? "Unknown",
             latitude: depCoordinates?.latitude ?? 0.0,
             longitude: depCoordinates?.longitude ?? 0.0,
             time: ISO8601DateFormatter().string(from: flightDate),
@@ -450,7 +452,7 @@ struct SkyLineBottomBarView: View {
         let arrival = Airport(
             airport: arrName ?? "\(data.arrivalCity ?? data.arrivalCode ?? "Unknown") Airport", 
             code: data.arrivalCode ?? "???",
-            city: data.arrivalCity ?? data.arrivalCode ?? "Unknown",
+            city: arrCity ?? data.arrivalCity ?? data.arrivalCode ?? "Unknown",
             latitude: arrCoordinates?.latitude ?? 0.0,
             longitude: arrCoordinates?.longitude ?? 0.0,
             time: ISO8601DateFormatter().string(from: flightDate.addingTimeInterval(7200)), // Default 2 hour flight
@@ -464,7 +466,7 @@ struct SkyLineBottomBarView: View {
         return Flight(
             id: "boarding-pass-\(UUID().uuidString)",
             flightNumber: data.flightNumber ?? "Unknown",
-            airline: nil, // Could extract airline from flight number prefix
+            airline: data.airline, // Use the airline extracted from boarding pass
             departure: departure,
             arrival: arrival,
             status: .boarding,
@@ -965,7 +967,9 @@ struct BoardingPassMenuContent: View {
                     data: data,
                     onConfirm: { confirmedData in
                         showingConfirmation = false
-                        handleBoardingPassScanned(confirmedData)
+                        Task {
+                            await handleBoardingPassScanned(confirmedData)
+                        }
                         extractedData = nil
                         dismiss()
                     },

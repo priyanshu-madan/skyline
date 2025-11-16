@@ -29,6 +29,9 @@
 		A94165CE2EA9DCA40050BE19 /* AddEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165CD2EA9DCA40050BE19 /* AddEntryView.swift */; };
 		A94165D22EC1B6B20050BE19 /* MistralOCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D12EC1B6B20050BE19 /* MistralOCRService.swift */; };
 		A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */; };
+		A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */; };
+		A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D72EC7D4310050BE19 /* AirlineService.swift */; };
+		A94165DA2EC7D46B0050BE19 /* Airline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D92EC7D46B0050BE19 /* Airline.swift */; };
 		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
 		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
 		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
@@ -91,6 +94,9 @@
 		A94165CD2EA9DCA40050BE19 /* AddEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEntryView.swift; sourceTree = "<group>"; };
 		A94165D12EC1B6B20050BE19 /* MistralOCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MistralOCRService.swift; sourceTree = "<group>"; };
 		A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSuggestion.swift; sourceTree = "<group>"; };
+		A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligenceBoardingPassService.swift; sourceTree = "<group>"; };
+		A94165D72EC7D4310050BE19 /* AirlineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirlineService.swift; sourceTree = "<group>"; };
+		A94165D92EC7D46B0050BE19 /* Airline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Airline.swift; sourceTree = "<group>"; };
 		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
 		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
 		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
@@ -251,6 +257,8 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A94165D72EC7D4310050BE19 /* AirlineService.swift */,
+				A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */,
 				A94165D12EC1B6B20050BE19 /* MistralOCRService.swift */,
 				A94165CB2EA9D8670050BE19 /* TripStore.swift */,
 				A94165BC2E9C71B10050BE19 /* DestinationImageSeeder.swift */,
@@ -276,6 +284,7 @@
 		A99F90C12E5BAE8B00BE96FE /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A94165D92EC7D46B0050BE19 /* Airline.swift */,
 				A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */,
 				A94165C72EA9D8560050BE19 /* Trip.swift */,
 				A94165C82EA9D8560050BE19 /* TripEntry.swift */,
@@ -431,6 +440,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */,
 				A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */,
 				A94165BB2E95963F0050BE19 /* FlightDetailsInSheet.swift in Sources */,
 				A99F90D82E5C059800BE96FE /* FlightCardView.swift in Sources */,
@@ -443,6 +453,7 @@
 				A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */,
 				A94165BE2E9C71B10050BE19 /* DestinationImageSeeder.swift in Sources */,
 				A94165BF2E9C71B10050BE19 /* DestinationImageService.swift in Sources */,
+				A94165DA2EC7D46B0050BE19 /* Airline.swift in Sources */,
 				A94165C42EA9D8400050BE19 /* AddTripView.swift in Sources */,
 				A94165C52EA9D8400050BE19 /* TripDetailView.swift in Sources */,
 				A94165C62EA9D8400050BE19 /* TripsListView.swift in Sources */,
@@ -458,6 +469,7 @@
 				A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */,
 				A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */,
 				A99F90F12E651D2B00BE96FE /* User.swift in Sources */,
+				A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */,
 				A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */,
 				A94165CC2EA9D8670050BE19 /* TripStore.swift in Sources */,
 				A94165C92EA9D8560050BE19 /* TripEntry.swift in Sources */,
