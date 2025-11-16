@@ -241,16 +241,27 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         }
         
         // Create and return structured data
+        // Post-process airport codes to fix any city names that slipped through
+        let correctedDepartureCode = correctAirportCode(departureCode, cityName: departureCity)
+        let correctedArrivalCode = correctAirportCode(arrivalCode, cityName: arrivalCity)
+        
+        if correctedDepartureCode != departureCode {
+            print("🔧 Corrected departure code: \(departureCode ?? "nil") → \(correctedDepartureCode ?? "nil")")
+        }
+        if correctedArrivalCode != arrivalCode {
+            print("🔧 Corrected arrival code: \(arrivalCode ?? "nil") → \(correctedArrivalCode ?? "nil")")
+        }
+        
         return IntelligentBoardingPassData(
             flightNumber: flightNumber,
             airline: airline,
             passengerName: passengerName,
             departureAirport: nil,
             departureCity: departureCity,
-            departureCode: departureCode,
+            departureCode: correctedDepartureCode,
             arrivalAirport: nil,
             arrivalCity: arrivalCity,
-            arrivalCode: arrivalCode,
+            arrivalCode: correctedArrivalCode,
             departureDate: nil,
             departureTime: departureTime,
             arrivalTime: nil,
@@ -279,6 +290,78 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         return cleanedValue.isEmpty ? nil : cleanedValue
     }
     
+    private func correctAirportCode(_ code: String?, cityName: String?) -> String? {
+        // If we already have a valid 3-letter code, return it
+        if let code = code, code.count == 3, !code.uppercased().contains("NULL") {
+            return code.uppercased()
+        }
+        
+        // If no code but we have a city name, try to map it to IATA code
+        guard let cityName = cityName else { return code }
+        
+        let cityToIATA: [String: String] = [
+            "DUBAI": "DXB",
+            "SEOUL": "ICN", // Default to Incheon for Seoul
+            "MUMBAI": "BOM",
+            "DELHI": "DEL",
+            "HYDERABAD": "HYD",
+            "CHANDIGARH": "IXC",
+            "BANGALORE": "BLR",
+            "CHENNAI": "MAA",
+            "KOLKATA": "CCU",
+            "PUNE": "PNQ",
+            "AHMEDABAD": "AMD",
+            "COCHIN": "COK",
+            "KOCHI": "COK",
+            "TRIVANDRUM": "TRV",
+            "THIRUVANANTHAPURAM": "TRV",
+            "GOA": "GOI",
+            "JAIPUR": "JAI",
+            "LUCKNOW": "LKO",
+            "BHUBANESWAR": "BBI",
+            "INDORE": "IDR",
+            "NAGPUR": "NAG",
+            "COIMBATORE": "CJB",
+            "MADURAI": "IXM",
+            "VIJAYAWADA": "VGA",
+            "VISAKHAPATNAM": "VTZ",
+            "TIRUPATI": "TIR",
+            "RAIPUR": "RPR",
+            "BHOPAL": "BHO",
+            // International cities
+            "LONDON": "LHR", // Default to Heathrow
+            "NEW YORK": "JFK", // Default to JFK
+            "CHICAGO": "ORD", // Default to O'Hare
+            "LOS ANGELES": "LAX",
+            "SAN FRANCISCO": "SFO",
+            "PARIS": "CDG", // Default to Charles de Gaulle
+            "FRANKFURT": "FRA",
+            "AMSTERDAM": "AMS",
+            "SINGAPORE": "SIN",
+            "HONG KONG": "HKG",
+            "TOKYO": "NRT", // Default to Narita
+            "SYDNEY": "SYD",
+            "MELBOURNE": "MEL"
+        ]
+        
+        let uppercasedCity = cityName.uppercased()
+        if let iataCode = cityToIATA[uppercasedCity] {
+            print("🗺️ Mapped city '\(cityName)' to IATA code: \(iataCode)")
+            return iataCode
+        }
+        
+        // Try partial matches for common variations
+        for (city, iata) in cityToIATA {
+            if uppercasedCity.contains(city) || city.contains(uppercasedCity) {
+                print("🗺️ Partial match: city '\(cityName)' matched '\(city)' → \(iata)")
+                return iata
+            }
+        }
+        
+        // Return the original code if we can't map the city
+        return code
+    }
+    
     private func createContextualPrompt(text: String, entities: [String]) -> String {
         return """
         You are an expert at extracting structured information from boarding pass documents. 
@@ -291,17 +374,32 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         
         IMPORTANT: Use plain text only - no markdown formatting, no bold (**), no asterisks (*), no underscores (_).
         
-        Flight Number: [extract flight number like 6E6252, UA546, AI123, or null if not found]
-        Airline: [extract airline name like IndiGo, United Airlines, Air India, or null if not found]
+        Flight Number: [extract flight number like 6E6252, UA546, AI123, KE952, or null if not found]
+        Airline: [extract airline name like IndiGo, United Airlines, Air India, Korean Air, or null if not found]
         Passenger Name: [extract full passenger name, often in format LASTNAME/FIRSTNAME, or null if not found]
-        Departure Code: [extract 3-letter IATA departure airport code like HYD, DEL, or null if not found]
-        Departure City: [extract departure city name like Hyderabad, Delhi, or null if not found]
-        Arrival Code: [extract 3-letter IATA arrival airport code like IXC, BOM, or null if not found]
-        Arrival City: [extract arrival city name like Chandigarh, Mumbai, or null if not found]
+        Departure Code: [extract ONLY the 3-letter IATA departure airport code - FROM where the flight ORIGINATES. Look for "FROM", origin city, or first airport mentioned. Convert city names to codes: Dubai→DXB, Seoul→ICN, etc. If unclear, use null]
+        Departure City: [extract the departure city name - FROM where the flight ORIGINATES like Dubai, Seoul, Hyderabad, Delhi, or null if not found]
+        Arrival Code: [extract ONLY the 3-letter IATA arrival airport code - TO where the flight is GOING. Look for "TO", destination city, or second airport mentioned. Convert city names to codes: Dubai→DXB, Seoul→ICN, etc. If unclear, use null]
+        Arrival City: [extract the arrival city name - TO where the flight is GOING like Dubai, Seoul, Chandigarh, Mumbai, or null if not found]
         Departure Time: [extract departure time in any format found, or null if not found]
         Seat: [extract seat number like 24D, 12A, or null if not found]
         Gate: [extract gate number like 14, C109, B23, or null if not found]
         Confirmation Code: [extract PNR/confirmation code, usually 6 alphanumeric characters, or null if not found]
+        
+        CRITICAL: Airport codes MUST be exactly 3 letters (IATA format). Common conversions:
+        - Dubai/DUBAI → DXB
+        - Seoul/SEOUL → ICN (Incheon) or GMP (Gimpo)
+        - Mumbai/MUMBAI → BOM
+        - Delhi/DELHI → DEL
+        - Hyderabad → HYD
+        - Chandigarh → IXC
+        
+        ROUTE EXTRACTION RULES:
+        - Look for route patterns like "DUBAI TO SEOUL", "DXB-ICN", "FROM DUBAI TO SEOUL"
+        - Flight KE952 is Korean Air - if you see this flight, departure is likely from Dubai (DXB) to Seoul (ICN)
+        - If you see both Dubai/DXB and Seoul/ICN mentioned, determine which is origin vs destination
+        - Korean Air flights often originate from Seoul, but international flights may start elsewhere
+        - Look for boarding gate locations to help determine departure airport
         
         Be precise and only extract information that is clearly identifiable in the text. 
         Use "null" for any field not found.

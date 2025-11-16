@@ -20,21 +20,8 @@ class BoardingPassScanner: ObservableObject {
     @Published var isProcessing = false
     @Published var lastError: String?
     
-    private let mistralOCR = MistralOCRService.shared
-    private let useMistralAI: Bool
-    
     private init() {
-        // TEMPORARILY DISABLE MISTRAL - Check if Mistral API is configured, fallback to Vision if needed
-        // let hasEnvKey = ProcessInfo.processInfo.environment["MISTRAL_API_KEY"]?.isEmpty == false
-        // let hasPlistKey = (Bundle.main.infoDictionary?["MISTRAL_API_KEY"] as? String) != "YOUR_MISTRAL_API_KEY_HERE" &&
-        //                  (Bundle.main.infoDictionary?["MISTRAL_API_KEY"] as? String)?.isEmpty == false
-        // 
-        // self.useMistralAI = hasEnvKey || hasPlistKey
-        
-        // TEMPORARY: Force Vision framework only to see its output
-        self.useMistralAI = false
-        
-        print("🔧 BoardingPassScanner initialized with Vision framework only (Mistral temporarily disabled)")
+        print("🔧 BoardingPassScanner initialized with Apple Intelligence + Vision framework")
     }
     
     // MARK: - OCR Processing
@@ -140,27 +127,6 @@ class BoardingPassScanner: ObservableObject {
         return hasMinimumData
     }
     
-    // MARK: - Mistral AI OCR
-    
-    private func scanWithMistralAI(image: UIImage) async -> BoardingPassData? {
-        print("🤖 Using Official Mistral OCR API (mistral-ocr-latest)...")
-        
-        let result = await mistralOCR.analyzeBoardingPass(from: image)
-        
-        await MainActor.run {
-            if let error = self.mistralOCR.lastError {
-                self.lastError = error
-                print("⚠️ Mistral AI error: \(error)")
-            }
-        }
-        
-        if result == nil {
-            print("❌ Mistral AI OCR failed, falling back to Vision framework...")
-            return await scanWithVisionFramework(image: image, accuracyLevel: .high)
-        }
-        
-        return result
-    }
     
     // MARK: - Vision Framework OCR (Fallback)
     
