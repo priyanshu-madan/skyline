@@ -758,7 +758,8 @@ extension String {
 
 // MARK: - Boarding Pass Data Model
 
-struct BoardingPassData: CustomStringConvertible {
+struct BoardingPassData: CustomStringConvertible, Identifiable {
+    let id = UUID()
     var flightNumber: String?
     var airline: String?
     var departureCode: String?

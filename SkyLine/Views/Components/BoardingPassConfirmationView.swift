@@ -15,6 +15,8 @@ struct BoardingPassConfirmationView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @State private var editedData: BoardingPassData
     @State private var showingValidationErrors = false
+    @State private var departureTime = Date()
+    @State private var arrivalTime = Date()
     @Environment(\.dismiss) private var dismiss
     
     init(boardingPassData: BoardingPassData, onConfirm: @escaping (BoardingPassData) -> Void, onCancel: @escaping () -> Void) {
@@ -22,6 +24,13 @@ struct BoardingPassConfirmationView: View {
         self.onConfirm = onConfirm
         self.onCancel = onCancel
         self._editedData = State(initialValue: boardingPassData)
+        
+        // Initialize time picker values from boarding pass data
+        let parsedDepartureTime = Self.parseTimeString(boardingPassData.departureTime)
+        let parsedArrivalTime = Self.parseTimeString(boardingPassData.arrivalTime)
+        
+        self._departureTime = State(initialValue: parsedDepartureTime ?? Date())
+        self._arrivalTime = State(initialValue: parsedArrivalTime ?? Date())
     }
     
     var body: some View {
@@ -69,6 +78,9 @@ struct BoardingPassConfirmationView: View {
             Button("OK") { }
         } message: {
             Text("Please ensure flight number, departure airport, and arrival airport are filled in.")
+        }
+        .onAppear {
+            print("📋 BoardingPassConfirmationView appeared for flight: \(boardingPassData.flightNumber ?? "nil")")
         }
     }
     
@@ -200,36 +212,36 @@ struct BoardingPassConfirmationView: View {
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
                     
-                    TextField("7:35 PM", text: Binding(
-                        get: { editedData.departureTime ?? "" },
-                        set: { editedData.departureTime = $0.isEmpty ? nil : $0 }
-                    ))
-                    .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(themeManager.currentTheme.colors.background)
-                    .cornerRadius(8)
+                    DatePicker("", selection: $departureTime, displayedComponents: .hourAndMinute)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .onChange(of: departureTime) { newTime in
+                            editedData.departureTime = formatTimeForBoardingPass(newTime)
+                        }
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(themeManager.currentTheme.colors.background)
+                        .cornerRadius(8)
                 }
                 
-                VStack(alignment: .trailing, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Arrival")
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
                     
-                    TextField("10:15 PM", text: Binding(
-                        get: { editedData.arrivalTime ?? "" },
-                        set: { editedData.arrivalTime = $0.isEmpty ? nil : $0 }
-                    ))
-                    .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(themeManager.currentTheme.colors.background)
-                    .cornerRadius(8)
+                    DatePicker("", selection: $arrivalTime, displayedComponents: .hourAndMinute)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .onChange(of: arrivalTime) { newTime in
+                            editedData.arrivalTime = formatTimeForBoardingPass(newTime)
+                        }
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(themeManager.currentTheme.colors.background)
+                        .cornerRadius(8)
                 }
             }
         }
@@ -375,6 +387,34 @@ struct BoardingPassConfirmationView: View {
                !editedData.departureCode!.isEmpty &&
                editedData.arrivalCode != nil && 
                !editedData.arrivalCode!.isEmpty
+    }
+    
+    // MARK: - Time Helper Functions
+    
+    private func formatTimeForBoardingPass(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+    
+    static func parseTimeString(_ timeString: String?) -> Date? {
+        guard let timeString = timeString, !timeString.isEmpty else { 
+            return nil 
+        }
+        
+        let timeFormats = ["HH:mm", "H:mm", "h:mm a", "hh:mm a"]
+        
+        for format in timeFormats {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            formatter.locale = Locale(identifier: "en_US_POSIX") // Ensure consistent parsing
+            
+            if let date = formatter.date(from: timeString) {
+                return date
+            }
+        }
+        
+        return nil
     }
 }
 
