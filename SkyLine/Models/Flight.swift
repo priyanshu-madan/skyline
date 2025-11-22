@@ -75,10 +75,46 @@ struct Airport: Codable, Hashable {
             }
         }
         
+        // Try ISO8601 first for standard date formats
         if let date = ISO8601DateFormatter().date(from: time) {
             return formatter.string(from: date)
         }
         
+        // Handle boarding pass time formats (like "21:30", "7:35 PM", etc.)
+        if !time.isEmpty {
+            // If the time is already in HH:mm format, return it directly
+            let timeRegex = #"^([01]?[0-9]|2[0-3]):[0-5][0-9]$"#
+            if time.range(of: timeRegex, options: .regularExpression) != nil {
+                return time
+            }
+            
+            // Handle AM/PM format like "7:35 PM"
+            let amPmFormatter = DateFormatter()
+            amPmFormatter.dateFormat = "h:mm a"
+            if let date = amPmFormatter.date(from: time) {
+                return formatter.string(from: date)
+            }
+            
+            // Handle other common time formats
+            let timeFormats = [
+                "H:mm",     // 24-hour without leading zero (7:35)
+                "HH:mm a",  // 24-hour with AM/PM
+                "h:mm a",   // 12-hour with AM/PM
+                "Hmm",      // No colon (1945)
+                "HHmm"      // No colon with leading zero
+            ]
+            
+            for timeFormat in timeFormats {
+                let tempFormatter = DateFormatter()
+                tempFormatter.dateFormat = timeFormat
+                if let date = tempFormatter.date(from: time) {
+                    return formatter.string(from: date)
+                }
+            }
+            
+            // If nothing else worked but we have a time string, return it as-is
+            return time
+        }
         return "N/A"
     }
     

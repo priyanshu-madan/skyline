@@ -128,6 +128,41 @@ struct SkyLineBottomBarView: View {
                 .environmentObject(themeManager)
                 .environmentObject(tripStore)
         }
+        .sheet(item: $scannedBoardingPassData) { boardingPassData in
+            BoardingPassConfirmationView(
+                boardingPassData: boardingPassData,
+                onConfirm: { confirmedData in
+                    Task {
+                        let flight = await createFlightFromBoardingPass(confirmedData)
+                        let result = await flightStore.addFlight(flight)
+                        
+                        await MainActor.run {
+                            switch result {
+                            case .success:
+                                print("✅ Flight added to store: \(flight.flightNumber)")
+                                scannedBoardingPassData = nil
+                                
+                                // Auto-focus on the new flight
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    handleFlightTap(flight)
+                                }
+                                
+                            case .failure(let error):
+                                print("❌ Failed to add flight: \(error)")
+                                scannedBoardingPassData = nil
+                            }
+                        }
+                    }
+                },
+                onCancel: {
+                    scannedBoardingPassData = nil
+                }
+            )
+            .environmentObject(themeManager)
+            .onAppear {
+                print("📋 Presenting confirmation sheet with data: \(boardingPassData.summary)")
+            }
+        }
     }
     
     /// Individual Tab View
@@ -398,41 +433,61 @@ struct SkyLineBottomBarView: View {
     
     // MARK: - Boarding Pass Handler
     
+    @State private var scannedBoardingPassData: BoardingPassData?
+    
     private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
         print("🎫 Boarding pass scanned successfully")
         print("📄 Data: \(boardingPassData.summary)")
         
-        // Convert BoardingPassData to Flight object (async for coordinate lookup)
-        let flight = await createFlightFromBoardingPass(boardingPassData)
-        
-        // Add to flight store
-        Task {
-            let result = await flightStore.addFlight(flight)
-            
-            await MainActor.run {
-                switch result {
-                case .success:
-                    print("✅ Flight added to store: \(flight.flightNumber)")
-                    
-                    // Auto-focus on the new flight
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        handleFlightTap(flight)
-                    }
-                    
-                case .failure(let error):
-                    print("❌ Failed to add flight: \(error)")
-                    // Could show error alert here if needed
-                }
-            }
+        // Show confirmation sheet with compact time pickers by setting the data
+        await MainActor.run {
+            scannedBoardingPassData = boardingPassData
+            print("📋 Set scannedBoardingPassData to trigger sheet: \(scannedBoardingPassData?.summary ?? "nil")")
         }
     }
     
     private func createFlightFromBoardingPass(_ data: BoardingPassData) async -> Flight {
-        let flightDate = data.departureDate ?? Date()
+        // Use boarding pass date if available, otherwise use a future date (not current date)
+        let flightDate: Date
+        if let boardingPassDate = data.departureDate {
+            flightDate = boardingPassDate
+        } else {
+            // If no date from boarding pass, use tomorrow instead of today
+            flightDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        }
         
         // Look up coordinates for departure airport (async with dynamic fetching)
         let (depName, depCity, _, depCoordinates) = await AirportService.shared.getAirportInfo(for: data.departureCode ?? "")
         let (arrName, arrCity, _, arrCoordinates) = await AirportService.shared.getAirportInfo(for: data.arrivalCode ?? "")
+        
+        // Format departure time - combine date with time from boarding pass
+        let departureTimeString: String
+        let departureDateTime: Date
+        if let boardingPassTime = data.departureTime {
+            // Combine flight date with boarding pass time
+            departureDateTime = combineDateAndTime(date: flightDate, timeString: boardingPassTime) ?? flightDate
+            departureTimeString = boardingPassTime // Keep the original time string for display
+            print("✈️ Using boarding pass departure time: \(boardingPassTime)")
+        } else {
+            // Fallback to ISO format if no time available
+            departureDateTime = flightDate
+            departureTimeString = ISO8601DateFormatter().string(from: flightDate)
+        }
+        
+        // Format arrival time - only use if extracted from boarding pass, otherwise N/A
+        let arrivalTimeString: String
+        let arrivalDateTime: Date
+        if let boardingPassArrivalTime = data.arrivalTime {
+            // Use the actual arrival time from boarding pass
+            arrivalDateTime = combineDateAndTime(date: flightDate, timeString: boardingPassArrivalTime) ?? flightDate.addingTimeInterval(7200)
+            arrivalTimeString = boardingPassArrivalTime
+            print("✈️ Using boarding pass arrival time: \(boardingPassArrivalTime)")
+        } else {
+            // No arrival time on boarding pass - show N/A
+            arrivalDateTime = departureDateTime.addingTimeInterval(7200) // Still need a date for internal use
+            arrivalTimeString = "N/A"
+            print("⚠️ No arrival time on boarding pass, showing N/A")
+        }
         
         // Create departure airport with proper coordinates
         let departure = Airport(
@@ -441,7 +496,7 @@ struct SkyLineBottomBarView: View {
             city: depCity ?? data.departureCity ?? data.departureCode ?? "Unknown",
             latitude: depCoordinates?.latitude ?? 0.0,
             longitude: depCoordinates?.longitude ?? 0.0,
-            time: ISO8601DateFormatter().string(from: flightDate),
+            time: departureTimeString,
             actualTime: nil,
             terminal: data.terminal,
             gate: data.gate,
@@ -455,7 +510,7 @@ struct SkyLineBottomBarView: View {
             city: arrCity ?? data.arrivalCity ?? data.arrivalCode ?? "Unknown",
             latitude: arrCoordinates?.latitude ?? 0.0,
             longitude: arrCoordinates?.longitude ?? 0.0,
-            time: ISO8601DateFormatter().string(from: flightDate.addingTimeInterval(7200)), // Default 2 hour flight
+            time: arrivalTimeString,
             actualTime: nil,
             terminal: nil,
             gate: nil,
@@ -482,6 +537,38 @@ struct SkyLineBottomBarView: View {
             date: flightDate
         )
     }
+    
+    // MARK: - Helper Functions
+    
+    private func combineDateAndTime(date: Date, timeString: String) -> Date? {
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        
+        // Parse the time string (supports formats like "19:45", "7:35 PM")
+        let timeFormats = ["HH:mm", "H:mm", "h:mm a", "h:mm"]
+        
+        for format in timeFormats {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            if let timeDate = formatter.date(from: timeString) {
+                let timeComponents = calendar.dateComponents([.hour, .minute], from: timeDate)
+                
+                var combinedComponents = DateComponents()
+                combinedComponents.year = dateComponents.year
+                combinedComponents.month = dateComponents.month
+                combinedComponents.day = dateComponents.day
+                combinedComponents.hour = timeComponents.hour
+                combinedComponents.minute = timeComponents.minute
+                
+                return calendar.date(from: combinedComponents)
+            }
+        }
+        
+        print("⚠️ Could not parse time string: '\(timeString)'")
+        return nil
+    }
+    
+    // Duration calculation removed - will be added in future update
     
     // MARK: - Flight Action Handlers
     
@@ -555,30 +642,23 @@ struct SkyLineBottomBarView: View {
                 
                 Spacer()
                 
-                // Center airplane icon and duration
-                VStack(spacing: 4) {
-                    ZStack {
-                        Circle()
-                            .fill(themeManager.currentTheme.colors.text)
-                            .frame(width: 32, height: 32)
-                        
-                        Image(systemName: "airplane")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.background)
-                            .rotationEffect(.degrees(90))
-                    }
+                // Center airplane icon
+                ZStack {
+                    Circle()
+                        .fill(themeManager.currentTheme.colors.text)
+                        .frame(width: 32, height: 32)
                     
-                    Text("2h 30m")
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
+                    Image(systemName: "airplane")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.background)
+                        .rotationEffect(.degrees(90))
                 }
                 
                 Spacer()
                 
                 // Arrival
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(DateFormatter.flightTimeArrival.string(from: Calendar.current.date(byAdding: .hour, value: 2, to: flight.date) ?? flight.date))
+                    Text(flight.arrival.displayTime)
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     
@@ -849,8 +929,6 @@ struct BoardingPassMenuContent: View {
     @ObservedObject private var scanner = BoardingPassScanner.shared
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isShowingPicker = false
-    @State private var extractedData: BoardingPassData?
-    @State private var showingConfirmation = false
     
     var body: some View {
         VStack(spacing: 20) {
@@ -961,26 +1039,6 @@ struct BoardingPassMenuContent: View {
                 processSelectedPhoto(newPhoto)
             }
         }
-        .sheet(isPresented: $showingConfirmation) {
-            if let data = extractedData {
-                SimpleBoardingPassConfirmationView(
-                    data: data,
-                    onConfirm: { confirmedData in
-                        showingConfirmation = false
-                        Task {
-                            await handleBoardingPassScanned(confirmedData)
-                        }
-                        extractedData = nil
-                        dismiss()
-                    },
-                    onCancel: {
-                        showingConfirmation = false
-                        extractedData = nil
-                    }
-                )
-                .environmentObject(themeManager)
-            }
-        }
     }
     
     private func processSelectedPhoto(_ photo: PhotosPickerItem) {
@@ -997,11 +1055,17 @@ struct BoardingPassMenuContent: View {
                 print("📸 Processing boarding pass image...")
                 
                 if let boardingPassData = await scanner.scanBoardingPass(from: uiImage) {
-                    await MainActor.run {
-                        extractedData = boardingPassData
-                        showingConfirmation = true
-                    }
                     print("✅ OCR completed successfully:", boardingPassData.summary)
+                    
+                    // Post notification to main view to show confirmation and close menu
+                    await MainActor.run {
+                        NotificationCenter.default.post(
+                            name: NSNotification.Name("BoardingPassScanned"),
+                            object: boardingPassData
+                        )
+                        print("📋 Posted notification for boarding pass: \(boardingPassData.summary)")
+                        dismiss() // Close the menu
+                    }
                 } else {
                     print("❌ OCR failed to extract boarding pass data")
                 }
@@ -1015,12 +1079,10 @@ struct BoardingPassMenuContent: View {
         }
     }
     
-    private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) {
-        // Access parent view's method through a shared approach or notification
-        print("🎫 Boarding pass scanned in menu:", boardingPassData.summary)
-        // We'll handle the flight creation in the parent view
+    private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
+        print("🎫 Boarding pass confirmed in menu:", boardingPassData.summary)
         
-        // Post a notification to handle this in the parent
+        // Post a notification to handle this in the parent view
         NotificationCenter.default.post(
             name: NSNotification.Name("BoardingPassScanned"), 
             object: boardingPassData
@@ -1028,101 +1090,6 @@ struct BoardingPassMenuContent: View {
     }
 }
 
-
-// MARK: - Simple Confirmation View
-
-struct SimpleBoardingPassConfirmationView: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    @State var data: BoardingPassData
-    let onConfirm: (BoardingPassData) -> Void
-    let onCancel: () -> Void
-    
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 48, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.success)
-                        
-                        Text("Boarding Pass Scanned")
-                            .font(.system(size: 20, weight: .bold, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                        
-                        Text("Please verify the details below")
-                            .font(.system(size: 14, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    }
-                    .padding(.top, 20)
-                    
-                    // Flight Details
-                    VStack(spacing: 16) {
-                        SimpleFormField(title: "Flight Number", value: $data.flightNumber, placeholder: "AA123")
-                        
-                        HStack(spacing: 12) {
-                            SimpleFormField(title: "From", value: $data.departureCode, placeholder: "LAX")
-                            SimpleFormField(title: "To", value: $data.arrivalCode, placeholder: "JFK")
-                        }
-                        
-                        HStack(spacing: 12) {
-                            SimpleFormField(title: "Departure", value: $data.departureTime, placeholder: "2:30 PM")
-                            SimpleFormField(title: "Arrival", value: $data.arrivalTime, placeholder: "8:45 PM")
-                        }
-                        
-                        HStack(spacing: 12) {
-                            SimpleFormField(title: "Gate", value: $data.gate, placeholder: "A12")
-                            SimpleFormField(title: "Seat", value: $data.seat, placeholder: "14A")
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                }
-            }
-            .background(themeManager.currentTheme.colors.background)
-            .navigationTitle("Confirm Flight Details")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { onCancel() }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save Flight") { onConfirm(data) }
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.primary)
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Simple Form Field
-
-struct SimpleFormField: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    let title: String
-    @Binding var value: String?
-    let placeholder: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-            
-            TextField(placeholder, text: Binding(
-                get: { value ?? "" },
-                set: { value = $0.isEmpty ? nil : $0 }
-            ))
-            .font(.system(size: 16, design: .monospaced))
-            .foregroundColor(themeManager.currentTheme.colors.text)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(themeManager.currentTheme.colors.surface)
-            .cornerRadius(8)
-        }
-    }
-}
 
 #Preview {
     SkyLineBottomBarView(

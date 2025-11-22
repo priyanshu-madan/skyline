@@ -209,6 +209,8 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         var gate: String?
         var confirmationCode: String?
         var departureTime: String?
+        var departureDate: String?
+        var arrivalTime: String?
         
         // Parse key-value pairs from AI response
         let lines = response.components(separatedBy: .newlines)
@@ -237,6 +239,10 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
                 confirmationCode = extractValue(from: line)
             } else if cleanLine.contains("departure time") && cleanLine.contains(":") {
                 departureTime = extractValue(from: line)
+            } else if cleanLine.contains("departure date") && cleanLine.contains(":") {
+                departureDate = extractValue(from: line)
+            } else if cleanLine.contains("arrival time") && cleanLine.contains(":") {
+                arrivalTime = extractValue(from: line)
             }
         }
         
@@ -262,9 +268,9 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
             arrivalAirport: nil,
             arrivalCity: arrivalCity,
             arrivalCode: correctedArrivalCode,
-            departureDate: nil,
+            departureDate: departureDate,
             departureTime: departureTime,
-            arrivalTime: nil,
+            arrivalTime: arrivalTime,
             seat: seat,
             gate: gate,
             terminal: nil,
@@ -381,7 +387,9 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         Departure City: [extract the departure city name - FROM where the flight ORIGINATES like Dubai, Seoul, Hyderabad, Delhi, or null if not found]
         Arrival Code: [extract ONLY the 3-letter IATA arrival airport code - TO where the flight is GOING. Look for "TO", destination city, or second airport mentioned. Convert city names to codes: Dubai→DXB, Seoul→ICN, etc. If unclear, use null]
         Arrival City: [extract the arrival city name - TO where the flight is GOING like Dubai, Seoul, Chandigarh, Mumbai, or null if not found]
-        Departure Time: [extract departure time in any format found, or null if not found]
+        Departure Time: [extract departure time in any format found like 21:30, 7:35 PM, 19:45, or null if not found]
+        Departure Date: [extract departure date in any format found like 30JUN24, June 30 2024, 2024-06-30, or null if not found]
+        Arrival Time: [extract arrival time in any format found - look for arrival, landing, or destination times. May be calculated from departure + flight duration, or null if not found]
         Seat: [extract seat number like 24D, 12A, or null if not found]
         Gate: [extract gate number like 14, C109, B23, or null if not found]
         Confirmation Code: [extract PNR/confirmation code, usually 6 alphanumeric characters, or null if not found]

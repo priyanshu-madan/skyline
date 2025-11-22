@@ -585,7 +585,7 @@ struct BottomSheetContentView: View {
             progress: 0.0, // Default progress
             flightDate: nil, // No specific date
             dataSource: .manual, // User-entered data
-            date: Calendar.current.startOfDay(for: Date())
+            date: boardingPassData.departureDate ?? Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         )
         
         // Add coordinates using AirportService

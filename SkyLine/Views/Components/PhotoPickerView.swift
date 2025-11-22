@@ -116,8 +116,7 @@ struct PhotoPickerView: View {
         .sheet(isPresented: $showingConfirmation) {
             if let data = extractedData {
                 BoardingPassConfirmationView(
-                    data: data,
-                    themeManager: themeManager,
+                    boardingPassData: data,
                     onConfirm: { confirmedData in
                         showingConfirmation = false
                         onFlightExtracted(confirmedData)
@@ -128,6 +127,7 @@ struct PhotoPickerView: View {
                         extractedData = nil
                     }
                 )
+                .environmentObject(themeManager)
             }
         }
     }
@@ -167,136 +167,6 @@ struct PhotoPickerView: View {
     }
 }
 
-// MARK: - Boarding Pass Confirmation View
-
-struct BoardingPassConfirmationView: View {
-    @State var data: BoardingPassData
-    let themeManager: ThemeManager
-    let onConfirm: (BoardingPassData) -> Void
-    let onCancel: () -> Void
-    
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 48, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.success)
-                        
-                        Text("Boarding Pass Scanned")
-                            .font(.system(.headline, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                        
-                        Text("Please verify the details below")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    }
-                    .padding(.top, 20)
-                    
-                    // Flight Details Form
-                    VStack(spacing: 16) {
-                        // Flight Number
-                        FormField(
-                            title: "Flight Number",
-                            value: $data.flightNumber,
-                            placeholder: "AA123",
-                            icon: "airplane"
-                        )
-                        
-                        // Route
-                        HStack(spacing: 12) {
-                            FormField(
-                                title: "From",
-                                value: $data.departureCode,
-                                placeholder: "LAX",
-                                icon: "location.circle"
-                            )
-                            
-                            Image(systemName: "arrow.right")
-                                .font(.system(.body, weight: .bold, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                .padding(.top, 20)
-                            
-                            FormField(
-                                title: "To",
-                                value: $data.arrivalCode,
-                                placeholder: "JFK",
-                                icon: "location.circle.fill"
-                            )
-                        }
-                        
-                        // Times
-                        HStack(spacing: 12) {
-                            FormField(
-                                title: "Departure",
-                                value: $data.departureTime,
-                                placeholder: "2:30 PM",
-                                icon: "clock"
-                            )
-                            
-                            FormField(
-                                title: "Arrival",
-                                value: $data.arrivalTime,
-                                placeholder: "8:45 PM",
-                                icon: "clock.fill"
-                            )
-                        }
-                        
-                        // Gate & Seat
-                        HStack(spacing: 12) {
-                            FormField(
-                                title: "Gate",
-                                value: $data.gate,
-                                placeholder: "A12",
-                                icon: "door.left.hand.open"
-                            )
-                            
-                            FormField(
-                                title: "Seat",
-                                value: $data.seat,
-                                placeholder: "14A",
-                                icon: "chair"
-                            )
-                        }
-                        
-                        // Confirmation Code
-                        FormField(
-                            title: "Confirmation Code",
-                            value: $data.confirmationCode,
-                            placeholder: "ABC123",
-                            icon: "qrcode"
-                        )
-                    }
-                    .padding(.horizontal, 20)
-                    
-                    Spacer(minLength: 20)
-                }
-            }
-            .background(themeManager.currentTheme.colors.background)
-            .navigationTitle("Confirm Flight Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        onCancel()
-                    }
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save Flight") {
-                        onConfirm(data)
-                    }
-                    .font(.system(.body, weight: .bold, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                    .disabled(!data.isValid)
-                }
-            }
-        }
-    }
-}
 
 // MARK: - Form Field Component
 
