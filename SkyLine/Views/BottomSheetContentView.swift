@@ -543,6 +543,12 @@ struct BottomSheetContentView: View {
     
     @MainActor
     private func createFlightFromBoardingPass(_ boardingPassData: BoardingPassData) async {
+        print("🔍 Creating flight from confirmed boarding pass data:")
+        print("   Departure Date: \(boardingPassData.departureDate?.formatted() ?? "nil")")
+        print("   Arrival Date: \(boardingPassData.arrivalDate?.formatted() ?? "nil")")
+        print("   Departure Time: \(boardingPassData.departureTime ?? "nil")")
+        print("   Arrival Time: \(boardingPassData.arrivalTime ?? "nil")")
+        
         guard let flightNumber = boardingPassData.flightNumber,
               let depCode = boardingPassData.departureCode,
               let arrCode = boardingPassData.arrivalCode else {
@@ -585,7 +591,7 @@ struct BottomSheetContentView: View {
             progress: 0.0, // Default progress
             flightDate: nil, // No specific date
             dataSource: .manual, // User-entered data
-            date: boardingPassData.departureDate ?? Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            date: extractFlightDateFromBoardingPass(boardingPassData)
         )
         
         // Add coordinates using AirportService
@@ -636,12 +642,35 @@ struct BottomSheetContentView: View {
             progress: flight.progress,
             flightDate: flight.flightDate,
             dataSource: flight.dataSource,
-            date: Flight.extractFlightDate(from: boardingPassData.departureTime ?? "")
+            date: extractFlightDateFromBoardingPass(boardingPassData)
         )
         
         // Save to FlightStore
         let _ = await flightStore.addFlight(updatedFlight)
         
         print("✅ Flight created from boarding pass:", updatedFlight.flightNumber)
+    }
+    
+    /// Extract flight date from confirmed boarding pass data
+    private func extractFlightDateFromBoardingPass(_ boardingPassData: BoardingPassData) -> Date {
+        // This function receives the CONFIRMED data from the confirmation page
+        // So we should trust what the user confirmed, not apply fallbacks
+        
+        // Use the departure date that was confirmed by the user
+        if let departureDate = boardingPassData.departureDate {
+            print("✅ Using confirmed departure date: \(departureDate.formatted())")
+            return departureDate
+        }
+        
+        // If somehow no departure date was confirmed, use arrival date
+        if let arrivalDate = boardingPassData.arrivalDate {
+            print("✅ Using confirmed arrival date as fallback: \(arrivalDate.formatted())")
+            return arrivalDate
+        }
+        
+        // This should rarely happen since the confirmation page should set proper dates
+        // But if it does, log a warning and use today
+        print("⚠️ Warning: No confirmed date available from boarding pass confirmation, using current date")
+        return Date()
     }
 }
