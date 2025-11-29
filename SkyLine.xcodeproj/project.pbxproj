@@ -32,6 +32,9 @@
 		A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D72EC7D4310050BE19 /* AirlineService.swift */; };
 		A94165DA2EC7D46B0050BE19 /* Airline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D92EC7D46B0050BE19 /* Airline.swift */; };
 		A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165DD2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift */; };
+		A94165E02ED375700050BE19 /* ConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165DF2ED375700050BE19 /* ConfigurationService.swift */; };
+		A94165E32ED377EB0050BE19 /* BoardingPassConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */; };
+		A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */ = {isa = PBXBuildFile; fileRef = A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */; };
 		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
 		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
 		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
@@ -97,6 +100,9 @@
 		A94165D72EC7D4310050BE19 /* AirlineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirlineService.swift; sourceTree = "<group>"; };
 		A94165D92EC7D46B0050BE19 /* Airline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Airline.swift; sourceTree = "<group>"; };
 		A94165DD2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingPassConfirmationView.swift; sourceTree = "<group>"; };
+		A94165DF2ED375700050BE19 /* ConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationService.swift; sourceTree = "<group>"; };
+		A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingPassConfig.swift; sourceTree = "<group>"; };
+		A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BoardingPassConfig.json; sourceTree = "<group>"; };
 		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
 		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
 		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
@@ -168,6 +174,8 @@
 		A93C59902E5B9C4F00266D7E /* SkyLine */ = {
 			isa = PBXGroup;
 			children = (
+				A94165E52ED3782D0050BE19 /* Resources */,
+				A94165E22ED377EB0050BE19 /* Configuration */,
 				A99F90F42E66699A00BE96FE /* Fonts */,
 				A99F90E92E65027900BE96FE /* SkyLine.entitlements */,
 				A99F90E82E64F8F600BE96FE /* Info.plist */,
@@ -221,6 +229,22 @@
 			path = Trips;
 			sourceTree = "<group>";
 		};
+		A94165E22ED377EB0050BE19 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		A94165E52ED3782D0050BE19 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		A99F90992E5BAB9700BE96FE /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
@@ -258,6 +282,7 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A94165DF2ED375700050BE19 /* ConfigurationService.swift */,
 				A94165D72EC7D4310050BE19 /* AirlineService.swift */,
 				A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */,
 				A94165CB2EA9D8670050BE19 /* TripStore.swift */,
@@ -413,6 +438,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */,
+				A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */,
 				A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */,
 				A99F90E52E5C123200BE96FE /* globe.html in Resources */,
 				A99F90C72E5BAE8B00BE96FE /* Assets.xcassets in Resources */,
@@ -467,6 +493,7 @@
 				A99F90E72E636C4500BE96FE /* BoardingPassScanner.swift in Sources */,
 				A94165CE2EA9DCA40050BE19 /* AddEntryView.swift in Sources */,
 				A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */,
+				A94165E32ED377EB0050BE19 /* BoardingPassConfig.swift in Sources */,
 				A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */,
 				A99F90F12E651D2B00BE96FE /* User.swift in Sources */,
 				A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */,
@@ -474,6 +501,7 @@
 				A94165CC2EA9D8670050BE19 /* TripStore.swift in Sources */,
 				A94165C92EA9D8560050BE19 /* TripEntry.swift in Sources */,
 				A94165CA2EA9D8560050BE19 /* Trip.swift in Sources */,
+				A94165E02ED375700050BE19 /* ConfigurationService.swift in Sources */,
 				A99F90D22E5BAE8B00BE96FE /* Flight.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

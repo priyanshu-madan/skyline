@@ -505,8 +505,9 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         legacyData.gate = enhancedData.gate
         legacyData.terminal = enhancedData.terminal
         legacyData.confirmationCode = enhancedData.confirmationCode
-        legacyData.departureTime = enhancedData.departureTime
-        legacyData.arrivalTime = enhancedData.arrivalTime
+        // Validate and set times - reject invalid times like "69:46"
+        legacyData.departureTime = validateTime(enhancedData.departureTime)
+        legacyData.arrivalTime = validateTime(enhancedData.arrivalTime)
         
         // Parse date if available
         if let dateString = enhancedData.departureDate {
@@ -514,6 +515,40 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         }
         
         return legacyData
+    }
+    
+    private func validateTime(_ timeString: String?) -> String? {
+        guard let timeString = timeString,
+              !timeString.isEmpty,
+              timeString.lowercased() != "null" else {
+            return nil
+        }
+        
+        // Check for valid time patterns and reject invalid ones like "69:46"
+        let timePatterns = [
+            #"^([01]?[0-9]|2[0-3]):([0-5][0-9])$"#, // 24-hour format: 00:00 to 23:59
+            #"^([01]?[0-9]|2[0-3])([0-5][0-9])$"#, // 4-digit 24-hour format: 0000 to 2359
+            #"^(1[0-2]|[1-9]):([0-5][0-9])\s*(AM|PM)$"#, // 12-hour format with AM/PM
+            #"^(1[0-2]|[1-9]):([0-5][0-9])\s*(am|pm)$"# // 12-hour format with lowercase am/pm
+        ]
+        
+        for pattern in timePatterns {
+            if timeString.range(of: pattern, options: .regularExpression) != nil {
+                print("✅ Valid time format: \(timeString)")
+                // Format 4-digit times to include colon (1425 -> 14:25)
+                if timeString.count == 4 && timeString.allSatisfy({ $0.isNumber }) {
+                    let hours = String(timeString.prefix(2))
+                    let minutes = String(timeString.suffix(2))
+                    let formattedTime = "\(hours):\(minutes)"
+                    print("🔧 Formatted 4-digit time: \(timeString) -> \(formattedTime)")
+                    return formattedTime
+                }
+                return timeString
+            }
+        }
+        
+        print("❌ Invalid time format rejected: \(timeString)")
+        return nil
     }
     
     private func parseDate(from dateString: String) -> Date? {

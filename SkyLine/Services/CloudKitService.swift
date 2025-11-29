@@ -69,6 +69,9 @@ class CloudKitService: ObservableObject {
         
         // Initialize trips schema
         await initializeTripsSchema()
+        
+        // Initialize configuration schema
+        await initializeConfigurationSchema()
     }
     
     // MARK: - Destination Images Schema
@@ -167,6 +170,24 @@ class CloudKitService: ObservableObject {
         }
     }
     
+    // MARK: - Configuration Schema
+    
+    private func initializeConfigurationSchema() async {
+        // Initialize Configuration record type for BoardingPassConfig
+        let sampleConfigRecord = CKRecord(recordType: "Configuration")
+        sampleConfigRecord["configType"] = "BoardingPassConfig"
+        sampleConfigRecord["configData"] = "{\"validationRules\":{\"flightNumberPattern\":\"^[A-Z]{2,3}[0-9]{1,4}$\"}}"
+        sampleConfigRecord["lastModified"] = Date()
+        
+        do {
+            let _ = try await database.save(sampleConfigRecord)
+            try await database.deleteRecord(withID: sampleConfigRecord.recordID)
+            print("✅ Configuration schema initialized")
+        } catch {
+            print("⚠️ Configuration schema initialization: \(error)")
+        }
+    }
+    
     // MARK: - Account Status
     
     func checkAccountStatus() async -> Bool {
@@ -253,7 +274,8 @@ class CloudKitService: ObservableObject {
         
         do {
             // Use a simpler query approach that works with CloudKit
-            let query = CKQuery(recordType: flightRecordType, predicate: NSPredicate(format: "flightNumber != %@", ""))
+            // Exclude empty flight numbers and schema initialization records
+            let query = CKQuery(recordType: flightRecordType, predicate: NSPredicate(format: "flightNumber != %@ AND flightNumber != %@", "", "SCHEMA_INIT"))
             
             let (matchResults, _) = try await database.records(matching: query)
             
@@ -373,6 +395,7 @@ class CloudKitService: ObservableObject {
         record["progress"] = flight.progress ?? 0.0
         record["flightDate"] = flight.flightDate
         record["dataSource"] = flight.dataSource.rawValue
+        record["date"] = flight.date
         
         // Departure airport
         record["departureAirport"] = flight.departure.airport
@@ -495,8 +518,27 @@ class CloudKitService: ObservableObject {
             progress: record["progress"] as? Double,
             flightDate: record["flightDate"] as? String,
             dataSource: dataSource,
-            date: record["date"] as? Date ?? Date()
+            date: record["date"] as? Date ?? extractDateFromDepartureTime(record["departureTime"] as? String)
         )
+    }
+    
+    private func extractDateFromDepartureTime(_ departureTime: String?) -> Date {
+        guard let departureTime = departureTime else {
+            print("⚠️ No departure time found, using current date as fallback")
+            return Date()
+        }
+        
+        // Try to parse as ISO8601 date (which includes the date component)
+        let isoFormatter = ISO8601DateFormatter()
+        if let date = isoFormatter.date(from: departureTime) {
+            print("✅ Extracted date from ISO8601 departure time: \(date)")
+            return date
+        }
+        
+        // If it's just a time string (like "14:25"), we can't extract a proper date
+        // Use current date but log this for debugging
+        print("⚠️ Departure time '\(departureTime)' is just time, not full date. Using current date as fallback")
+        return Date()
     }
     
     // MARK: - Conflict Resolution & Offline Support
