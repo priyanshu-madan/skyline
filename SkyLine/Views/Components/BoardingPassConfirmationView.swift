@@ -12,11 +12,31 @@ struct BoardingPassConfirmationView: View {
     let onConfirm: (BoardingPassData) -> Void
     let onCancel: () -> Void
     
-    @EnvironmentObject var themeManager: ThemeManager
+    @StateObject private var configService = ConfigurationService.shared
+    
     @State private var editedData: BoardingPassData
     @State private var showingValidationErrors = false
     @State private var departureTime = Date()
     @State private var arrivalTime = Date()
+    @State private var departureDate = Date()
+    @State private var arrivalDate = Date()
+    
+    // Track whether data was actually extracted from boarding pass
+    @State private var hasDepartureDate: Bool
+    @State private var hasArrivalDate: Bool
+    @State private var hasDepartureTime: Bool
+    @State private var hasArrivalTime: Bool
+    
+    // Validation states for real-time feedback
+    @State private var flightNumberError: String?
+    @State private var departureCodeError: String?
+    @State private var arrivalCodeError: String?
+    @State private var confirmationCodeError: String?
+    @State private var dateTimeError: String?
+    @State private var seatError: String?
+    @State private var gateError: String?
+    @State private var terminalError: String?
+    
     @Environment(\.dismiss) private var dismiss
     
     init(boardingPassData: BoardingPassData, onConfirm: @escaping (BoardingPassData) -> Void, onCancel: @escaping () -> Void) {
@@ -29,291 +49,720 @@ struct BoardingPassConfirmationView: View {
         let parsedDepartureTime = Self.parseTimeString(boardingPassData.departureTime)
         let parsedArrivalTime = Self.parseTimeString(boardingPassData.arrivalTime)
         
-        self._departureTime = State(initialValue: parsedDepartureTime ?? Date())
-        self._arrivalTime = State(initialValue: parsedArrivalTime ?? Date())
+        // Use actual boarding pass data if available, otherwise use current date as placeholder for date pickers
+        let currentDate = Date()
+        let flightDate = boardingPassData.departureDate ?? currentDate
+        let arrivalFlightDate = boardingPassData.arrivalDate ?? currentDate
+        
+        // For time pickers, combine extracted times with dates, or use current time as placeholder
+        let departureDateTime = parsedDepartureTime != nil ? 
+            Self.combineDateAndTime(date: flightDate, time: parsedDepartureTime!) : currentDate
+        let arrivalDateTime = parsedArrivalTime != nil ?
+            Self.combineDateAndTime(date: arrivalFlightDate, time: parsedArrivalTime!) : currentDate
+        
+        self._departureTime = State(initialValue: departureDateTime)
+        self._arrivalTime = State(initialValue: arrivalDateTime)
+        self._departureDate = State(initialValue: flightDate)
+        self._arrivalDate = State(initialValue: arrivalFlightDate)
+        
+        // Track what data was actually extracted
+        self._hasDepartureDate = State(initialValue: boardingPassData.departureDate != nil)
+        self._hasArrivalDate = State(initialValue: boardingPassData.arrivalDate != nil)
+        self._hasDepartureTime = State(initialValue: parsedDepartureTime != nil)
+        self._hasArrivalTime = State(initialValue: parsedArrivalTime != nil)
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
+        GeometryReader { geometry in
+            ZStack {
+                Color(UIColor.systemGroupedBackground)
+                    .ignoresSafeArea()
+                
+                VStack(spacing: 0) {
                     // Header
-                    headerSection
+                    header
                     
-                    // Flight Information Section
-                    flightInfoSection
-                    
-                    // Route Information Section
-                    routeSection
-                    
-                    // Time Information Section
-                    timeSection
-                    
-                    // Terminal & Gate Section
-                    terminalGateSection
-                    
-                    // Passenger Information Section
-                    passengerInfoSection
-                    
-                    // Action Buttons
-                    actionButtonsSection
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
-            }
-            .navigationTitle("Confirm Flight Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .background(themeManager.currentTheme.colors.background)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        onCancel()
+                    // Scrollable content
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Hero section
+                            heroSection
+                            
+                            // Content cards
+                            VStack(spacing: 12) {
+                                routeAndTimesCard
+                                flightInformationCard
+                                additionalDetailsCard
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 120) // Space for sticky buttons
+                        }
                     }
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .font(.system(size: 16, weight: .medium, design: .monospaced))
+                    
+                    Spacer()
+                }
+                
+                // Sticky bottom buttons
+                VStack {
+                    Spacer()
+                    stickyBottomButtons
                 }
             }
         }
         .alert("Validation Error", isPresented: $showingValidationErrors) {
             Button("OK") { }
         } message: {
-            Text("Please ensure flight number, departure airport, and arrival airport are filled in.")
+            Text(getValidationErrorMessage())
         }
         .onAppear {
             print("📋 BoardingPassConfirmationView appeared for flight: \(boardingPassData.flightNumber ?? "nil")")
         }
     }
     
-    private var headerSection: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "doc.text.viewfinder")
-                .font(.system(size: 48, weight: .medium, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.primary)
+    // MARK: - Header
+    
+    private var header: some View {
+        HStack {
+            Button(action: {
+                onCancel()
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Color(.systemBlue))
+            }
+            
+            Spacer()
+            
+            Text("Confirm Flight Details")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(.primary)
+            
+            Spacer()
+            
+            Button(action: {
+                resetToOriginal()
+            }) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(Color(.systemBlue))
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color(.separator)),
+            alignment: .bottom
+        )
+    }
+    
+    // MARK: - Hero Section
+    
+    private var heroSection: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color(.systemBlue).opacity(0.1))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(Color(.systemBlue))
+            }
+            
+            Text("Boarding Pass Scanned")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(.primary)
+            
+            Text("Review and edit if needed")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(Color(.systemBackground))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color(.systemGray5)),
+            alignment: .bottom
+        )
+    }
+    
+    // MARK: - Flight Information Card
+    
+    private var flightInformationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("FLIGHT INFORMATION")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+                .tracking(0.5)
             
             VStack(spacing: 8) {
-                Text("Boarding Pass Scanned")
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Text("Please review and edit the extracted flight information below")
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(24)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(16)
-    }
-    
-    private var flightInfoSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Flight Information")
-            
-            VStack(spacing: 12) {
-                EditableField(
-                    label: "Flight Number",
-                    value: Binding(
-                        get: { editedData.flightNumber ?? "" },
-                        set: { editedData.flightNumber = $0.isEmpty ? nil : $0.uppercased() }
-                    ),
-                    placeholder: "e.g., UA546",
-                    isRequired: true
-                )
-                
-                EditableField(
-                    label: "Confirmation Code",
-                    value: Binding(
-                        get: { editedData.confirmationCode ?? "" },
-                        set: { editedData.confirmationCode = $0.isEmpty ? nil : $0.uppercased() }
-                    ),
-                    placeholder: "e.g., ABC123",
-                    isRequired: false
-                )
-            }
-        }
-        .padding(20)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(12)
-    }
-    
-    private var routeSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Route")
-            
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("From")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .textCase(.uppercase)
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Flight Number")
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundColor(.secondary)
+                            
+                            Text("*")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.red)
+                        }
+                        
+                        TextField(configService.getPlaceholder(for: .flightNumber), text: Binding(
+                            get: { editedData.flightNumber ?? "" },
+                            set: { newValue in
+                                editedData.flightNumber = newValue.isEmpty ? nil : newValue.uppercased()
+                                // Real-time validation
+                                if !newValue.isEmpty && !isValidFlightNumber(newValue.uppercased()) {
+                                    flightNumberError = configService.getErrorMessage(for: .flightNumberInvalid)
+                                } else {
+                                    flightNumberError = nil
+                                }
+                                
+                                // Auto-suggest airline based on flight number using AirlineService
+                                Task {
+                                    if let airline = await AirlineService.shared.getAirlineFromFlightNumber(newValue.uppercased()) {
+                                        await MainActor.run {
+                                            if editedData.airline?.isEmpty != false {
+                                                editedData.airline = airline
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        ))
+                        .font(.system(size: 17, weight: .regular))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .overlay(textFieldStyle(hasError: flightNumberError != nil))
+                        
+                        errorText(flightNumberError)
+                    }
                     
-                    TextField("LAX", text: Binding(
-                        get: { editedData.departureCode ?? "" },
-                        set: { editedData.departureCode = $0.isEmpty ? nil : $0.uppercased() }
-                    ))
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(themeManager.currentTheme.colors.background)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.currentTheme.colors.primary.opacity(0.3), lineWidth: 1)
-                    )
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Confirmation")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.secondary)
+                        
+                        TextField(configService.getPlaceholder(for: .confirmationCode), text: Binding(
+                            get: { editedData.confirmationCode ?? "" },
+                            set: { newValue in
+                                editedData.confirmationCode = newValue.isEmpty ? nil : newValue.uppercased()
+                                // Real-time validation for optional field
+                                if !newValue.isEmpty && !isValidConfirmationCode(newValue.uppercased()) {
+                                    confirmationCodeError = configService.getErrorMessage(for: .confirmationCodeInvalid)
+                                } else {
+                                    confirmationCodeError = nil
+                                }
+                            }
+                        ))
+                        .font(.system(size: 17, weight: .regular))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .overlay(textFieldStyle(hasError: confirmationCodeError != nil))
+                        
+                        errorText(confirmationCodeError)
+                    }
                 }
                 
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Airline")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.secondary)
+                    
+                    TextField(configService.getPlaceholder(for: .airline), text: Binding(
+                        get: { editedData.airline ?? "" },
+                        set: { editedData.airline = $0.isEmpty ? nil : $0 }
+                    ))
+                    .font(.system(size: 17, weight: .regular))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                }
+            }
+        }
+        .padding(12)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: Color(.systemGray4).opacity(0.3), radius: 1, x: 0, y: 1)
+    }
+    
+    // MARK: - Route & Times Card
+    
+    private var routeAndTimesCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("FLIGHT DETAILS")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+                .tracking(0.5)
+            
+            HStack(alignment: .top, spacing: 12) {
+                // Departure Side
+                VStack(alignment: .center, spacing: 12) {
+                    Text("DEPARTURE")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .tracking(0.3)
+                    
+                    VStack(alignment: .center, spacing: 8) {
+                        // Airport Code
+                        VStack(spacing: 4) {
+                            TextField(configService.getPlaceholder(for: .departureAirport), text: Binding(
+                                get: { editedData.departureCode ?? "" },
+                                set: { newValue in
+                                    editedData.departureCode = newValue.isEmpty ? nil : newValue.uppercased()
+                                    // Real-time validation
+                                    if !newValue.isEmpty && !isValidAirportCode(newValue.uppercased()) {
+                                        departureCodeError = configService.getErrorMessage(for: .airportCodeInvalid)
+                                    } else {
+                                        departureCodeError = nil
+                                    }
+                                    
+                                    // Auto-suggest city name from airport code using AirportService
+                                    Task {
+                                        let airportInfo = await AirportService.shared.getAirportInfo(for: newValue.uppercased())
+                                        await MainActor.run {
+                                            if let city = airportInfo.city, editedData.departureCity?.isEmpty != false {
+                                                editedData.departureCity = city
+                                            }
+                                        }
+                                    }
+                                }
+                            ))
+                            .font(.system(size: 20, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+                            .overlay(textFieldStyle(hasError: departureCodeError != nil))
+                            
+                            if let error = departureCodeError {
+                                Text(error)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.red)
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                        
+                        // City
+                        TextField(configService.getPlaceholder(for: .departureCity), text: Binding(
+                            get: { editedData.departureCity ?? "" },
+                            set: { editedData.departureCity = $0.isEmpty ? nil : $0 }
+                        ))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.clear)
+                        
+                        // Date
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Date")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            if hasDepartureDate {
+                                DatePicker("", selection: $departureDate, displayedComponents: .date)
+                                    .datePickerStyle(.compact)
+                                    .labelsHidden()
+                                    .onChange(of: departureDate) { newDate in
+                                        editedData.departureDate = newDate
+                                        print("🔄 Updated departure date: \(newDate.formatted())")
+                                        // Trigger date/time validation
+                                        if let error = validateDateTimeLogic() {
+                                            dateTimeError = error
+                                        } else {
+                                            dateTimeError = nil
+                                        }
+                                    }
+                                    .frame(height: 36)
+                                    .padding(.horizontal, 8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                            } else {
+                                Button(action: {
+                                    hasDepartureDate = true
+                                    editedData.departureDate = departureDate
+                                    print("➕ Added departure date: \(departureDate.formatted())")
+                                }) {
+                                    HStack {
+                                        Text("N/A")
+                                            .font(.system(size: 17, weight: .regular))
+                                            .foregroundColor(.secondary)
+                                        
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(.blue)
+                                    }
+                                    .frame(height: 36)
+                                    .frame(maxWidth: .infinity)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color(.systemBlue).opacity(0.5), lineWidth: 1)
+                                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3]))
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Time
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Time")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            if hasDepartureTime {
+                                DatePicker("", selection: $departureTime, displayedComponents: .hourAndMinute)
+                                    .datePickerStyle(.compact)
+                                    .labelsHidden()
+                                    .onChange(of: departureTime) { newTime in
+                                        editedData.departureTime = formatTimeForBoardingPass(newTime)
+                                        // Trigger date/time validation
+                                        if let error = validateDateTimeLogic() {
+                                            dateTimeError = error
+                                        } else {
+                                            dateTimeError = nil
+                                        }
+                                    }
+                                    .frame(height: 36)
+                                    .padding(.horizontal, 8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                            } else {
+                                Button(action: {
+                                    hasDepartureTime = true
+                                    editedData.departureTime = formatTimeForBoardingPass(departureTime)
+                                }) {
+                                    Text("N/A")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                        .frame(height: 36)
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(8)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Arrow
                 VStack {
-                    Text("✈️")
-                        .font(.system(size: 24, design: .monospaced))
-                        .padding(.top, 20)
+                    Spacer()
+                    ZStack {
+                        Circle()
+                            .fill(Color(.systemBlue).opacity(0.1))
+                            .frame(width: 28, height: 28)
+                        
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(.systemBlue))
+                    }
+                    Spacer()
                 }
+                .frame(maxHeight: .infinity)
                 
-                VStack(alignment: .trailing, spacing: 8) {
-                    Text("To")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .textCase(.uppercase)
+                // Arrival Side
+                VStack(alignment: .center, spacing: 12) {
+                    Text("ARRIVAL")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .tracking(0.3)
                     
-                    TextField("JFK", text: Binding(
-                        get: { editedData.arrivalCode ?? "" },
-                        set: { editedData.arrivalCode = $0.isEmpty ? nil : $0.uppercased() }
-                    ))
-                    .font(.system(size: 24, weight: .bold, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                    .textFieldStyle(PlainTextFieldStyle())
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(themeManager.currentTheme.colors.background)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.currentTheme.colors.primary.opacity(0.3), lineWidth: 1)
-                    )
-                    .multilineTextAlignment(.center)
+                    VStack(alignment: .center, spacing: 8) {
+                        // Airport Code
+                        VStack(spacing: 4) {
+                            TextField(configService.getPlaceholder(for: .arrivalAirport), text: Binding(
+                                get: { editedData.arrivalCode ?? "" },
+                                set: { newValue in
+                                    editedData.arrivalCode = newValue.isEmpty ? nil : newValue.uppercased()
+                                    // Real-time validation
+                                    if !newValue.isEmpty {
+                                        if !isValidAirportCode(newValue.uppercased()) {
+                                            arrivalCodeError = configService.getErrorMessage(for: .airportCodeInvalid)
+                                        } else if newValue.uppercased() == editedData.departureCode {
+                                            arrivalCodeError = configService.getErrorMessage(for: .airportCodeSameAsOther)
+                                        } else {
+                                            arrivalCodeError = nil
+                                        }
+                                    } else {
+                                        arrivalCodeError = nil
+                                    }
+                                    
+                                    // Auto-suggest city name from airport code using AirportService
+                                    Task {
+                                        let airportInfo = await AirportService.shared.getAirportInfo(for: newValue.uppercased())
+                                        await MainActor.run {
+                                            if let city = airportInfo.city, editedData.arrivalCity?.isEmpty != false {
+                                                editedData.arrivalCity = city
+                                            }
+                                        }
+                                    }
+                                }
+                            ))
+                            .font(.system(size: 20, weight: .medium))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(10)
+                            .overlay(textFieldStyle(hasError: arrivalCodeError != nil))
+                            
+                            if let error = arrivalCodeError {
+                                Text(error)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.red)
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                        
+                        // City
+                        TextField(configService.getPlaceholder(for: .arrivalCity), text: Binding(
+                            get: { editedData.arrivalCity ?? "" },
+                            set: { editedData.arrivalCity = $0.isEmpty ? nil : $0 }
+                        ))
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.clear)
+                        
+                        // Date
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Date")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            if hasArrivalDate {
+                                DatePicker("", selection: $arrivalDate, displayedComponents: .date)
+                                    .datePickerStyle(.compact)
+                                    .labelsHidden()
+                                    .onChange(of: arrivalDate) { newDate in
+                                        editedData.arrivalDate = newDate
+                                        print("🔄 Updated arrival date: \(newDate.formatted())")
+                                        // Trigger date/time validation
+                                        if let error = validateDateTimeLogic() {
+                                            dateTimeError = error
+                                        } else {
+                                            dateTimeError = nil
+                                        }
+                                    }
+                                    .frame(height: 36)
+                                    .padding(.horizontal, 8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                            } else {
+                                Button(action: {
+                                    hasArrivalDate = true
+                                    editedData.arrivalDate = arrivalDate
+                                    print("➕ Added arrival date: \(arrivalDate.formatted())")
+                                }) {
+                                    Text("N/A")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                        .frame(height: 36)
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(8)
+                                }
+                            }
+                        }
+                        
+                        // Time
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Time")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                            
+                            if hasArrivalTime {
+                                DatePicker("", selection: $arrivalTime, displayedComponents: .hourAndMinute)
+                                    .datePickerStyle(.compact)
+                                    .labelsHidden()
+                                    .onChange(of: arrivalTime) { newTime in
+                                        editedData.arrivalTime = formatTimeForBoardingPass(newTime)
+                                        // Trigger date/time validation
+                                        if let error = validateDateTimeLogic() {
+                                            dateTimeError = error
+                                        } else {
+                                            dateTimeError = nil
+                                        }
+                                    }
+                                    .frame(height: 36)
+                                    .padding(.horizontal, 8)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(8)
+                            } else {
+                                Button(action: {
+                                    hasArrivalTime = true
+                                    editedData.arrivalTime = formatTimeForBoardingPass(arrivalTime)
+                                }) {
+                                    Text("N/A")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                        .frame(height: 36)
+                                        .frame(maxWidth: .infinity)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(8)
+                                }
+                            }
+                        }
+                    }
                 }
             }
+            
+            // Date/Time validation error display
+            if let dateTimeError = dateTimeError {
+                HStack {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 14))
+                        .foregroundColor(.orange)
+                    
+                    Text(dateTimeError)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.orange)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
+            }
         }
-        .padding(20)
-        .background(themeManager.currentTheme.colors.surface)
+        .padding(16)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
+        .shadow(color: Color(.systemGray4).opacity(0.3), radius: 1, x: 0, y: 1)
     }
     
-    private var timeSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Times")
+    // MARK: - Additional Details Card
+    
+    private var additionalDetailsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ADDITIONAL DETAILS")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.secondary)
+                .tracking(0.5)
             
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Departure")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .textCase(.uppercase)
-                    
-                    DatePicker("", selection: $departureTime, displayedComponents: .hourAndMinute)
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .onChange(of: departureTime) { newTime in
-                            editedData.departureTime = formatTimeForBoardingPass(newTime)
-                        }
-                        .font(.system(.body, design: .monospaced))
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Terminal")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.secondary)
+                        
+                        TextField(configService.getPlaceholder(for: .terminal), text: Binding(
+                            get: { editedData.terminal ?? "" },
+                            set: { editedData.terminal = $0.isEmpty ? nil : $0.uppercased() }
+                        ))
+                        .font(.system(size: 17, weight: .regular))
+                        .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
-                        .background(themeManager.currentTheme.colors.background)
-                        .cornerRadius(8)
-                }
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Arrival")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .textCase(.uppercase)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.clear, lineWidth: 0)
+                        )
+                    }
                     
-                    DatePicker("", selection: $arrivalTime, displayedComponents: .hourAndMinute)
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .onChange(of: arrivalTime) { newTime in
-                            editedData.arrivalTime = formatTimeForBoardingPass(newTime)
-                        }
-                        .font(.system(.body, design: .monospaced))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Gate")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.secondary)
+                        
+                        TextField(configService.getPlaceholder(for: .gate), text: Binding(
+                            get: { editedData.gate ?? "" },
+                            set: { editedData.gate = $0.isEmpty ? nil : $0.uppercased() }
+                        ))
+                        .font(.system(size: 17, weight: .regular))
+                        .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
-                        .background(themeManager.currentTheme.colors.background)
-                        .cornerRadius(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.clear, lineWidth: 0)
+                        )
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Seat")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.secondary)
+                        
+                        TextField(configService.getPlaceholder(for: .seat), text: Binding(
+                            get: { editedData.seat ?? "" },
+                            set: { newValue in
+                                editedData.seat = newValue.isEmpty ? nil : newValue.uppercased()
+                                // Real-time validation for optional field
+                                if !newValue.isEmpty && !isValidSeatNumber(newValue.uppercased()) {
+                                    seatError = configService.getErrorMessage(for: .seatNumberInvalid)
+                                } else {
+                                    seatError = nil
+                                }
+                            }
+                        ))
+                        .font(.system(size: 17, weight: .regular))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                        .overlay(textFieldStyle(hasError: seatError != nil))
+                        
+                        errorText(seatError)
+                    }
                 }
-            }
-        }
-        .padding(20)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(12)
-    }
-    
-    private var terminalGateSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Terminal & Gate")
-            
-            HStack(spacing: 16) {
-                EditableField(
-                    label: "Terminal",
-                    value: Binding(
-                        get: { editedData.terminal ?? "" },
-                        set: { editedData.terminal = $0.isEmpty ? nil : $0.uppercased() }
-                    ),
-                    placeholder: "A, B, C, etc.",
-                    isRequired: false
-                )
                 
-                EditableField(
-                    label: "Gate",
-                    value: Binding(
-                        get: { editedData.gate ?? "" },
-                        set: { editedData.gate = $0.isEmpty ? nil : $0.uppercased() }
-                    ),
-                    placeholder: "C109",
-                    isRequired: false
-                )
-            }
-        }
-        .padding(20)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(12)
-    }
-    
-    private var passengerInfoSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionHeader("Passenger Information")
-            
-            VStack(spacing: 12) {
-                EditableField(
-                    label: "Passenger Name",
-                    value: Binding(
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Passenger Name")
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundColor(.secondary)
+                    
+                    TextField(configService.getPlaceholder(for: .passengerName), text: Binding(
                         get: { editedData.passengerName ?? "" },
                         set: { editedData.passengerName = $0.isEmpty ? nil : $0.uppercased() }
-                    ),
-                    placeholder: "LAST/FIRST",
-                    isRequired: false
-                )
-                
-                EditableField(
-                    label: "Seat",
-                    value: Binding(
-                        get: { editedData.seat ?? "" },
-                        set: { editedData.seat = $0.isEmpty ? nil : $0.uppercased() }
-                    ),
-                    placeholder: "23D",
-                    isRequired: false
-                )
+                    ))
+                    .font(.system(size: 17, weight: .regular))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.clear, lineWidth: 0)
+                    )
+                }
             }
         }
-        .padding(20)
-        .background(themeManager.currentTheme.colors.surface)
+        .padding(12)
+        .background(Color(.systemBackground))
         .cornerRadius(12)
+        .shadow(color: Color(.systemGray4).opacity(0.3), radius: 1, x: 0, y: 1)
     }
     
-    private var actionButtonsSection: some View {
-        VStack(spacing: 12) {
+    // MARK: - Sticky Bottom Buttons
+    
+    private var stickyBottomButtons: some View {
+        VStack(spacing: 8) {
             Button(action: {
                 if validateData() {
                     let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
@@ -323,24 +772,13 @@ struct BoardingPassConfirmationView: View {
                     showingValidationErrors = true
                 }
             }) {
-                HStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    
-                    Text("SAVE FLIGHT")
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(
-                    LinearGradient(
-                        colors: [themeManager.currentTheme.colors.success, themeManager.currentTheme.colors.success.opacity(0.8)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(12)
+                Text(configService.getButtonText(for: .saveFlightButton))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color(.systemBlue))
+                    .cornerRadius(12)
             }
             
             Button(action: {
@@ -348,48 +786,247 @@ struct BoardingPassConfirmationView: View {
                 impactFeedback.impactOccurred()
                 onCancel()
             }) {
-                HStack(spacing: 12) {
-                    Image(systemName: "xmark.circle")
-                        .font(.system(size: 18, weight: .medium, design: .monospaced))
-                    
-                    Text("CANCEL")
-                        .font(.system(size: 16, weight: .medium, design: .monospaced))
-                }
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(themeManager.currentTheme.colors.background)
-                .cornerRadius(12)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                )
+                Text(configService.getButtonText(for: .cancelButton))
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(Color(.systemBlue))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color(.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(.systemBlue), lineWidth: 1)
+                    )
+                    .cornerRadius(12)
             }
         }
-        .padding(20)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(12)
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .background(Color(.systemBackground))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color(.separator)),
+            alignment: .top
+        )
     }
     
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            Spacer()
-        }
-    }
+    // MARK: - Helper Functions
     
     private func validateData() -> Bool {
-        return editedData.flightNumber != nil && 
-               !editedData.flightNumber!.isEmpty &&
-               editedData.departureCode != nil && 
-               !editedData.departureCode!.isEmpty &&
-               editedData.arrivalCode != nil && 
-               !editedData.arrivalCode!.isEmpty
+        // Clear all errors first
+        flightNumberError = nil
+        departureCodeError = nil
+        arrivalCodeError = nil
+        confirmationCodeError = nil
+        dateTimeError = nil
+        seatError = nil
+        gateError = nil
+        terminalError = nil
+        
+        var isValid = true
+        
+        // Validate flight number
+        if let flightNumber = editedData.flightNumber, !flightNumber.isEmpty {
+            if !isValidFlightNumber(flightNumber) {
+                flightNumberError = configService.getErrorMessage(for: .flightNumberInvalid)
+                isValid = false
+            }
+        } else {
+            flightNumberError = "Flight number is required"
+            isValid = false
+        }
+        
+        // Validate departure airport code
+        if let departureCode = editedData.departureCode, !departureCode.isEmpty {
+            if !isValidAirportCode(departureCode) {
+                departureCodeError = configService.getErrorMessage(for: .airportCodeInvalid)
+                isValid = false
+            }
+        } else {
+            departureCodeError = "Departure airport is required"
+            isValid = false
+        }
+        
+        // Validate arrival airport code
+        if let arrivalCode = editedData.arrivalCode, !arrivalCode.isEmpty {
+            if !isValidAirportCode(arrivalCode) {
+                arrivalCodeError = configService.getErrorMessage(for: .airportCodeInvalid)
+                isValid = false
+            } else if arrivalCode == editedData.departureCode {
+                arrivalCodeError = configService.getErrorMessage(for: .airportCodeSameAsOther)
+                isValid = false
+            }
+        } else {
+            arrivalCodeError = "Arrival airport is required"
+            isValid = false
+        }
+        
+        // Validate confirmation code (optional but if present should be valid)
+        if let confirmationCode = editedData.confirmationCode, !confirmationCode.isEmpty {
+            if !isValidConfirmationCode(confirmationCode) {
+                confirmationCodeError = configService.getErrorMessage(for: .confirmationCodeInvalid)
+                // Don't mark as invalid since confirmation is optional
+            }
+        }
+        
+        // Validate seat number (optional but if present should be valid)
+        if let seat = editedData.seat, !seat.isEmpty {
+            if !isValidSeatNumber(seat) {
+                seatError = configService.getErrorMessage(for: .seatNumberInvalid)
+                // Don't mark as invalid since seat is optional
+            }
+        }
+        
+        // Validate gate (optional but if present should be valid)
+        if let gate = editedData.gate, !gate.isEmpty {
+            if !isValidGate(gate) {
+                gateError = configService.getErrorMessage(for: .gateInvalid)
+                // Don't mark as invalid since gate is optional
+            }
+        }
+        
+        // Validate terminal (optional but if present should be valid)
+        if let terminal = editedData.terminal, !terminal.isEmpty {
+            if !isValidTerminal(terminal) {
+                terminalError = configService.getErrorMessage(for: .terminalInvalid)
+                // Don't mark as invalid since terminal is optional
+            }
+        }
+        
+        // Validate date/time logic
+        if let dateTimeValidationError = validateDateTimeLogic() {
+            dateTimeError = dateTimeValidationError
+            isValid = false
+        }
+        
+        return isValid
     }
     
-    // MARK: - Time Helper Functions
+    private func isValidFlightNumber(_ flightNumber: String) -> Bool {
+        let pattern = configService.getValidationPattern(for: .flightNumber)
+        return flightNumber.range(of: pattern, options: .regularExpression) != nil
+    }
+    
+    private func isValidAirportCode(_ code: String) -> Bool {
+        let pattern = configService.getValidationPattern(for: .airportCode)
+        return code.range(of: pattern, options: .regularExpression) != nil
+    }
+    
+    private func isValidConfirmationCode(_ code: String) -> Bool {
+        let range = configService.config.validationRules.confirmationCodeLengthRange
+        return code.count >= range.min && code.count <= range.max && code.allSatisfy { $0.isLetter || $0.isNumber }
+    }
+    
+    private func isValidSeatNumber(_ seat: String) -> Bool {
+        let pattern = configService.getValidationPattern(for: .seatNumber)
+        return seat.range(of: pattern, options: .regularExpression) != nil
+    }
+    
+    private func isValidGate(_ gate: String) -> Bool {
+        let pattern = configService.getValidationPattern(for: .gate)
+        return gate.range(of: pattern, options: .regularExpression) != nil
+    }
+    
+    private func isValidTerminal(_ terminal: String) -> Bool {
+        let maxLength = configService.config.validationRules.terminalMaxLength
+        return terminal.count <= maxLength && !terminal.isEmpty
+    }
+    
+    
+    private func resetToOriginal() {
+        // Reset all data to original boarding pass data
+        editedData = boardingPassData
+        
+        // Clear all errors
+        flightNumberError = nil
+        departureCodeError = nil
+        arrivalCodeError = nil
+        confirmationCodeError = nil
+        dateTimeError = nil
+        seatError = nil
+        gateError = nil
+        terminalError = nil
+        
+        // Reset state tracking
+        hasDepartureDate = boardingPassData.departureDate != nil
+        hasArrivalDate = boardingPassData.arrivalDate != nil
+        hasDepartureTime = Self.parseTimeString(boardingPassData.departureTime) != nil
+        hasArrivalTime = Self.parseTimeString(boardingPassData.arrivalTime) != nil
+        
+        // Reset date picker values
+        let currentDate = Date()
+        let flightDate = boardingPassData.departureDate ?? currentDate
+        let arrivalFlightDate = boardingPassData.arrivalDate ?? currentDate
+        
+        let parsedDepartureTime = Self.parseTimeString(boardingPassData.departureTime)
+        let parsedArrivalTime = Self.parseTimeString(boardingPassData.arrivalTime)
+        
+        departureDate = flightDate
+        arrivalDate = arrivalFlightDate
+        departureTime = parsedDepartureTime != nil ? 
+            Self.combineDateAndTime(date: flightDate, time: parsedDepartureTime!) : currentDate
+        arrivalTime = parsedArrivalTime != nil ?
+            Self.combineDateAndTime(date: arrivalFlightDate, time: parsedArrivalTime!) : currentDate
+            
+        // Add haptic feedback
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+        
+        print("🔄 Reset to original boarding pass data")
+    }
+    
+    private func validateDateTimeLogic() -> String? {
+        // Only validate if we have both departure and arrival dates/times
+        guard hasDepartureDate && hasArrivalDate && hasDepartureTime && hasArrivalTime else {
+            return nil // Skip validation if incomplete data
+        }
+        
+        let departureDateTime = Self.combineDateAndTime(date: departureDate, time: departureTime)
+        let arrivalDateTime = Self.combineDateAndTime(date: arrivalDate, time: arrivalTime)
+        
+        // Check if departure is in the past (more than 24 hours ago)
+        let dayAgo = Date().addingTimeInterval(-24 * 60 * 60)
+        if departureDateTime < dayAgo {
+            return "Departure date seems too far in the past"
+        }
+        
+        // Check if arrival is before departure
+        if arrivalDateTime <= departureDateTime {
+            return "Arrival must be after departure"
+        }
+        
+        // Check if flight duration is unrealistic (more than 24 hours)
+        let duration = arrivalDateTime.timeIntervalSince(departureDateTime)
+        if duration > 24 * 60 * 60 {
+            return "Flight duration seems unusually long"
+        }
+        
+        return nil
+    }
+    
+    private func getValidationErrorMessage() -> String {
+        var errors: [String] = []
+        
+        if let error = flightNumberError {
+            errors.append("Flight Number: \(error)")
+        }
+        if let error = departureCodeError {
+            errors.append("Departure Airport: \(error)")
+        }
+        if let error = arrivalCodeError {
+            errors.append("Arrival Airport: \(error)")
+        }
+        if let error = dateTimeError {
+            errors.append("Date/Time: \(error)")
+        }
+        
+        if errors.isEmpty {
+            return "Please correct the highlighted fields and try again."
+        } else {
+            return errors.joined(separator: "\n\n")
+        }
+    }
     
     private func formatTimeForBoardingPass(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -407,7 +1044,7 @@ struct BoardingPassConfirmationView: View {
         for format in timeFormats {
             let formatter = DateFormatter()
             formatter.dateFormat = format
-            formatter.locale = Locale(identifier: "en_US_POSIX") // Ensure consistent parsing
+            formatter.locale = Locale(identifier: "en_US_POSIX")
             
             if let date = formatter.date(from: timeString) {
                 return date
@@ -416,52 +1053,46 @@ struct BoardingPassConfirmationView: View {
         
         return nil
     }
-}
-
-// MARK: - Editable Field Component
-
-struct EditableField: View {
-    let label: String
-    @Binding var value: String
-    let placeholder: String
-    let isRequired: Bool
     
-    @EnvironmentObject var themeManager: ThemeManager
+    static func combineDateAndTime(date: Date, time: Date) -> Date {
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
+        
+        var combinedComponents = DateComponents()
+        combinedComponents.year = dateComponents.year
+        combinedComponents.month = dateComponents.month
+        combinedComponents.day = dateComponents.day
+        combinedComponents.hour = timeComponents.hour
+        combinedComponents.minute = timeComponents.minute
+        
+        return calendar.date(from: combinedComponents) ?? date
+    }
     
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(label)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .textCase(.uppercase)
-                
-                if isRequired {
-                    Text("*")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.error)
+    // MARK: - Validation Styling Helpers
+    
+    private func textFieldStyle(hasError: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 10)
+            .stroke(hasError ? Color.red : Color.clear, lineWidth: hasError ? 1.5 : 0)
+    }
+    
+    private func errorText(_ error: String?) -> some View {
+        Group {
+            if let error = error {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                    
+                    Text(error)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.red)
+                    
+                    Spacer()
                 }
-                
-                Spacer()
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
             }
-            
-            TextField(placeholder, text: $value)
-                .font(.system(size: 16, weight: .medium, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-                .textFieldStyle(PlainTextFieldStyle())
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(themeManager.currentTheme.colors.background)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(
-                            isRequired && value.isEmpty ? 
-                            themeManager.currentTheme.colors.error.opacity(0.5) :
-                            themeManager.currentTheme.colors.border,
-                            lineWidth: 1
-                        )
-                )
         }
     }
 }
@@ -469,17 +1100,17 @@ struct EditableField: View {
 #Preview("Boarding Pass Confirmation") {
     BoardingPassConfirmationView(
         boardingPassData: BoardingPassData(
-            flightNumber: "UA546",
-            departureCode: "EWR",
-            arrivalCode: "ORD",
+            flightNumber: "WY0153",
+            departureCode: "MCT",
+            arrivalCode: "ZRH",
             departureDate: nil,
-            departureTime: "7:35 PM",
-            arrivalTime: "9:45 PM",
-            gate: "C109",
-            terminal: "C",
-            seat: "23D",
+            departureTime: "14:30",
+            arrivalTime: "19:45",
+            gate: "A12",
+            terminal: "3",
+            seat: "12A",
             confirmationCode: "ABC123",
-            passengerName: "MADAN/PRIYANSHU"
+            passengerName: "JOHN DOE"
         ),
         onConfirm: { data in
             print("Confirmed:", data)
@@ -488,5 +1119,4 @@ struct EditableField: View {
             print("Cancelled")
         }
     )
-    .environmentObject(ThemeManager())
 }

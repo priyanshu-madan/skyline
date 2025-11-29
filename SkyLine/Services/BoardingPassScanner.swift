@@ -273,8 +273,10 @@ class BoardingPassScanner: ObservableObject {
         // Extract passenger name
         data.passengerName = extractPassengerName(from: textLines)
         
-        // ALWAYS determine airline from flight number - most reliable method
-        if let flightNumber = data.flightNumber {
+        // Determine airline - prefer existing AI extraction, fallback to flight number lookup
+        if let existingAirline = data.airline, !existingAirline.isEmpty {
+            print("✈️ Using existing airline from AI extraction: \(existingAirline)")
+        } else if let flightNumber = data.flightNumber {
             data.airline = await AirlineService.shared.getAirlineFromFlightNumber(flightNumber)
             if let airline = data.airline {
                 print("✈️ Determined airline from flight number \(flightNumber): \(airline)")
@@ -446,64 +448,143 @@ class BoardingPassScanner: ObservableObject {
     private func extractDateTime(from textLines: [String]) -> (date: Date?, departureTime: String?, arrivalTime: String?) {
         let allText = textLines.joined(separator: " ")
         
-        // Look for specific time patterns from the IndiGo boarding pass
+        // Extract departure and arrival times using comprehensive patterns
         var departureTime: String?
+        var arrivalTime: String?
         
-        if allText.contains("1945 Hrs") || allText.contains("1945") {
-            departureTime = "19:45"
-            print("🕐 Found departure time: 19:45 (1945 Hrs)")
-        } else if allText.contains("1900 Hrs") || allText.contains("1900") {
-            // This is boarding time, not departure time, but good fallback
-            print("🕐 Found boarding time: 19:00 (1900 Hrs)")
-        }
+        // Enhanced time extraction with comprehensive patterns and validation
+        var foundTimes: [(time: String, formatted: String)] = []
         
-        // Look for the United Airlines specific time: 7:35 PM
-        if allText.contains("7:35 PM") || allText.contains("7:35PM") {
-            departureTime = "7:35 PM"
-            print("🕐 Found departure time: 7:35 PM")
-        }
-        
-        // General time pattern matching for various formats
-        let timePatterns = [
-            #"\b(\d{1,2}):(\d{2})\s*(AM|PM)\b"#,     // 12-hour format with AM/PM
-            #"\b(\d{4})\s*Hrs\b"#,                   // 24-hour format like "1945 Hrs"
-            #"\b(\d{1,2}):(\d{2})\b"#                // Simple 24-hour format
+        // Look for various time formats commonly found on boarding passes
+        let timeExtractionPatterns: [(pattern: String, formatFunc: (String) -> String)] = [
+            // 12-hour format patterns
+            (pattern: #"\b(1[0-2]|[1-9]):([0-5][0-9])\s*(AM|PM)\b"#, formatFunc: { (time: String) in time }),
+            (pattern: #"\b(1[0-2]|[1-9])\.([0-5][0-9])\s*(AM|PM)\b"#, formatFunc: { (time: String) in time.replacingOccurrences(of: ".", with: ":") }),
+            
+            // 24-hour format patterns  
+            (pattern: #"\b([01]?[0-9]|2[0-3]):([0-5][0-9])\b"#, formatFunc: { (time: String) in time }),
+            (pattern: #"\b([01]?[0-9]|2[0-3])\.([0-5][0-9])\b"#, formatFunc: { (time: String) in time.replacingOccurrences(of: ".", with: ":") }),
+            
+            // Special boarding pass formats
+            (pattern: #"\b(\d{4})\s*Hrs?\b"#, formatFunc: { (time: String) in
+                let cleanTime = time.replacingOccurrences(of: " Hrs", with: "").replacingOccurrences(of: " Hr", with: "")
+                if cleanTime.count == 4 {
+                    let hours = String(cleanTime.prefix(2))
+                    let minutes = String(cleanTime.suffix(2))
+                    return "\(hours):\(minutes)"
+                }
+                return time
+            }),
+            
+            // Time without separators (like 1945, 0830)
+            (pattern: #"\b([01]?[0-9]|2[0-3])([0-5][0-9])\b"#, formatFunc: { (time: String) in
+                if time.count >= 3 && time.count <= 4 {
+                    let paddedTime = time.count == 3 ? "0\(time)" : time
+                    let hours = String(paddedTime.prefix(2))
+                    let minutes = String(paddedTime.suffix(2))
+                    return "\(hours):\(minutes)"
+                }
+                return time
+            })
         ]
         
-        var times: [String] = []
-        
-        for pattern in timePatterns {
-            for line in textLines {
+        for line in textLines {
+            for (pattern, formatFunc) in timeExtractionPatterns {
                 let timeMatches = line.ranges(of: pattern, options: .regularExpression)
                 for match in timeMatches {
-                    let timeString = String(line[match])
-                    if !times.contains(timeString) && !timeString.contains("Nov") && !timeString.contains("2025") {
-                        times.append(timeString)
-                        print("🕐 Found time: \(timeString)")
+                    let rawTime = String(line[match])
+                    let formattedTime = formatFunc(rawTime)
+                    
+                    // Validate the formatted time
+                    if isValidTime(formattedTime) && !foundTimes.contains(where: { $0.formatted == formattedTime }) {
+                        foundTimes.append((time: rawTime, formatted: formattedTime))
+                        print("🕐 Found valid time: \(rawTime) -> \(formattedTime)")
                     }
                 }
             }
         }
         
-        // If we haven't found departure time yet, use the first valid time
-        if departureTime == nil && !times.isEmpty {
-            departureTime = times.first
-            print("🕐 Using first time as departure: \(times.first ?? "")")
+        // Look for contextual clues to identify departure vs arrival times
+        let departureKeywords = ["DEPART", "DEP", "DEPARTURE", "BOARD", "BOARDING"]
+        let arrivalKeywords = ["ARRIVE", "ARR", "ARRIVAL", "LAND", "LANDING"]
+        
+        for line in textLines {
+            let upperLine = line.uppercased()
+            
+            // Check if this line contains departure context
+            if departureKeywords.contains(where: { upperLine.contains($0) }) {
+                for (rawTime, formattedTime) in foundTimes {
+                    if line.contains(rawTime) {
+                        departureTime = formattedTime
+                        print("🛫 Found departure time with context: \(formattedTime)")
+                        break
+                    }
+                }
+            }
+            
+            // Check if this line contains arrival context
+            if arrivalKeywords.contains(where: { upperLine.contains($0) }) {
+                for (rawTime, formattedTime) in foundTimes {
+                    if line.contains(rawTime) && formattedTime != departureTime {
+                        arrivalTime = formattedTime
+                        print("🛬 Found arrival time with context: \(formattedTime)")
+                        break
+                    }
+                }
+            }
         }
         
-        // Arrival time might be the second time found
-        let arrivalTime = times.count > 1 ? times[1] : nil
-        if let arrTime = arrivalTime {
-            print("🕐 Found arrival time: \(arrTime)")
+        // Fallback: use first two unique times if no context found
+        if departureTime == nil && !foundTimes.isEmpty {
+            departureTime = foundTimes[0].formatted
+            print("🕐 Using first time as departure: \(foundTimes[0].formatted)")
+        }
+        if arrivalTime == nil && foundTimes.count > 1 {
+            arrivalTime = foundTimes[1].formatted
+            print("🕐 Using second time as arrival: \(foundTimes[1].formatted)")
         }
         
-        // Extract date information
+        // Extract date information - look for various date patterns
         var flightDate: Date?
-        if allText.contains("12 Nov 2025") {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "dd MMM yyyy"
-            flightDate = formatter.date(from: "12 Nov 2025")
-            print("📅 Found flight date: 12 Nov 2025")
+        
+        // Common date patterns found on boarding passes
+        let datePatterns = [
+            #"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})"#, // "12 Nov 2025"
+            #"(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})"#, // "12 November 2025"
+            #"(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})"#, // "12/11/2025" or "12-11-2025"
+            #"(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})"#, // "2025/11/12" or "2025-11-12"
+            #"(\d{1,2})(\w{2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})"# // "12th Nov 2025"
+        ]
+        
+        let dateFormats = [
+            "dd MMM yyyy",
+            "dd MMMM yyyy", 
+            "dd/MM/yyyy",
+            "yyyy/MM/dd",
+            "dd'th' MMM yyyy"
+        ]
+        
+        for (patternIndex, pattern) in datePatterns.enumerated() {
+            for line in textLines {
+                if let match = line.range(of: pattern, options: .regularExpression) {
+                    let dateString = String(line[match])
+                        .replacingOccurrences(of: "th", with: "")
+                        .replacingOccurrences(of: "st", with: "")
+                        .replacingOccurrences(of: "nd", with: "")
+                        .replacingOccurrences(of: "rd", with: "")
+                    
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = dateFormats[min(patternIndex, dateFormats.count - 1)]
+                    formatter.locale = Locale(identifier: "en_US_POSIX")
+                    
+                    if let parsedDate = formatter.date(from: dateString) {
+                        flightDate = parsedDate
+                        print("📅 Found flight date: \(dateString) -> \(parsedDate)")
+                        break
+                    }
+                }
+            }
+            if flightDate != nil { break }
         }
         
         return (flightDate, departureTime, arrivalTime)
@@ -702,6 +783,22 @@ class BoardingPassScanner: ObservableObject {
         return nil
     }
     
+    private func isValidTime(_ timeString: String) -> Bool {
+        // Validate time format to reject invalid times like "69:46"
+        let timePatterns = [
+            #"^([01]?[0-9]|2[0-3]):([0-5][0-9])$"#, // 24-hour format: 00:00 to 23:59
+            #"^(1[0-2]|[1-9]):([0-5][0-9])\s*(AM|PM)$"#, // 12-hour format with AM/PM
+            #"^(1[0-2]|[1-9]):([0-5][0-9])\s*(am|pm)$"# // 12-hour format with lowercase am/pm
+        ]
+        
+        for pattern in timePatterns {
+            if timeString.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
+    }
+    
     private func extractPassengerName(from textLines: [String]) -> String? {
         let allText = textLines.joined(separator: " ")
         
@@ -768,6 +865,7 @@ struct BoardingPassData: CustomStringConvertible, Identifiable {
     var arrivalCity: String?
     var departureDate: Date?
     var departureTime: String?
+    var arrivalDate: Date?
     var arrivalTime: String?
     var gate: String?
     var terminal: String?

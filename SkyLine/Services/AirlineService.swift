@@ -178,6 +178,7 @@ class AirlineService: ObservableObject {
             "UK": ("Vistara", "India"),
             "EK": ("Emirates", "UAE"),
             "QR": ("Qatar Airways", "Qatar"),
+            "WY": ("Oman Air", "Oman"),
             "SQ": ("Singapore Airlines", "Singapore"),
             "LH": ("Lufthansa", "Germany"),
             "BA": ("British Airways", "United Kingdom"),
