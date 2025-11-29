@@ -622,7 +622,18 @@ class FlightStore: ObservableObject {
         }
         
         do {
-            flights = try JSONDecoder().decode([Flight].self, from: data)
+            let loadedFlights = try JSONDecoder().decode([Flight].self, from: data)
+            // Filter out any schema initialization records that might have been saved locally
+            flights = loadedFlights.filter { 
+                $0.flightNumber != "SCHEMA_INIT" && 
+                $0.airline != "Schema Initialization" 
+            }
+            
+            // If we filtered out any flights, save the cleaned data
+            if flights.count != loadedFlights.count {
+                print("🧹 Cleaned up \(loadedFlights.count - flights.count) schema initialization records")
+                saveFlights()
+            }
         } catch {
             // Failed to load flights
             flights = []
@@ -703,8 +714,12 @@ class FlightStore: ObservableObject {
         
         switch result {
         case .success(let cloudFlights):
-            // Filter out any flights that were explicitly deleted by the user
-            let filteredCloudFlights = cloudFlights.filter { !deletedFlightIds.contains($0.id) }
+            // Filter out any flights that were explicitly deleted by the user and schema initialization records
+            let filteredCloudFlights = cloudFlights.filter { 
+                !deletedFlightIds.contains($0.id) && 
+                $0.flightNumber != "SCHEMA_INIT" &&
+                $0.airline != "Schema Initialization"
+            }
             
             // Use CloudKit service's conflict resolution with filtered flights
             let resolvedFlights = cloudKitService.handleConflictResolution(
