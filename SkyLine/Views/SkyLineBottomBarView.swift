@@ -230,19 +230,94 @@ struct SkyLineBottomBarView: View {
                 TripsTabContent()
             case .flights:
                 if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
-                    FlightDetailsInSheet(
-                        flight: selectedFlight,
-                        onClose: {
-                            print("🔍 DEBUG: FlightDetailsInSheet close button tapped")
-                            onGlobeReset?()
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                selectedFlightForDetails = nil
-                                selectedDetent = .fraction(0.2)
-                                flightDetailsViewKey = UUID()
-                                print("🔍 DEBUG: Reset to selectedDetent 0.2")
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Flight Header
+                            VStack(spacing: 12) {
+                                Text(selectedFlight.flightNumber)
+                                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                                
+                                if let airline = selectedFlight.airline {
+                                    Text(airline)
+                                        .font(.system(size: 16, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                }
                             }
+                            .padding(.top, 20)
+                            
+                            // Route Information
+                            HStack(spacing: 20) {
+                                // Departure
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("DEPARTURE")
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    
+                                    Text(selectedFlight.departure.code)
+                                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                    
+                                    Text(selectedFlight.departure.airport)
+                                        .font(.system(size: 14, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                        .lineLimit(2)
+                                    
+                                    if !selectedFlight.departure.time.isEmpty {
+                                        Text(selectedFlight.departure.time)
+                                            .font(.system(size: 16, weight: .medium, design: .monospaced))
+                                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Image(systemName: "airplane")
+                                    .font(.system(size: 20, weight: .medium, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    .rotationEffect(.degrees(45))
+                                
+                                Spacer()
+                                
+                                // Arrival
+                                VStack(alignment: .trailing, spacing: 8) {
+                                    Text("ARRIVAL")
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    
+                                    Text(selectedFlight.arrival.code)
+                                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                    
+                                    Text(selectedFlight.arrival.airport)
+                                        .font(.system(size: 14, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.trailing)
+                                    
+                                    if !selectedFlight.arrival.time.isEmpty {
+                                        Text(selectedFlight.arrival.time)
+                                            .font(.system(size: 16, weight: .medium, design: .monospaced))
+                                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    }
+                                }
+                            }
+                            .padding(20)
+                            .background(themeManager.currentTheme.colors.surface)
+                            .cornerRadius(16)
+                            .padding(.horizontal, 20)
                         }
-                    )
+                    }
+                    .onTapGesture {
+                        print("🔍 DEBUG: Flight detail view close tapped")
+                        onGlobeReset?()
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            selectedFlightForDetails = nil
+                            selectedDetent = .fraction(0.2)
+                            flightDetailsViewKey = UUID()
+                            print("🔍 DEBUG: Reset to selectedDetent 0.2")
+                        }
+                    }
                     .id(flightDetailsViewKey)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .clipped()
@@ -251,7 +326,7 @@ struct SkyLineBottomBarView: View {
                         transaction.disablesAnimations = true
                     }
                     .onAppear {
-                        print("🔍 DEBUG: FlightDetailsInSheet appeared in SkyLineBottomBarView")
+                        print("🔍 DEBUG: FlightDetailView appeared in SkyLineBottomBarView")
                         print("🔍 DEBUG: Current selectedDetent: \(selectedDetent)")
                         print("🔍 DEBUG: Flight: \(selectedFlight.flightNumber)")
                         print("🔍 DEBUG: ViewKey: \(flightDetailsViewKey)")
