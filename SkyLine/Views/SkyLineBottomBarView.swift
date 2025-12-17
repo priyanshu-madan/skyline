@@ -33,7 +33,6 @@ extension DateFormatter {
 enum SkyLineTab: String, CaseIterable {
     case trips = "Trips"
     case flights = "Flights"
-    case search = "Search"
     case profile = "Profile"
     
     var symbolImage: String {
@@ -42,8 +41,6 @@ enum SkyLineTab: String, CaseIterable {
             return "suitcase"
         case .flights:
             return "airplane"
-        case .search:
-            return "magnifyingglass"
         case .profile:
             return "location.slash"
         }
@@ -89,9 +86,6 @@ struct SkyLineBottomBarView: View {
                     
                     IndividualTabView(.flights)
                         .tag(SkyLineTab.flights)
-                    
-                    IndividualTabView(.search)
-                        .tag(SkyLineTab.search)
                     
                     IndividualTabView(.profile)
                         .tag(SkyLineTab.profile)
@@ -334,8 +328,6 @@ struct SkyLineBottomBarView: View {
                 } else {
                     FlightsTabContent()
                 }
-            case .search:
-                SearchTabContent()
             case .profile:
                 ProfileTabContent()
             }
@@ -454,31 +446,6 @@ struct SkyLineBottomBarView: View {
         }
     }
     
-    @ViewBuilder
-    func SearchTabContent() -> some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 48, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-                
-                Text("Search Flights")
-                    .font(.system(.title2, design: .monospaced))
-                    .fontWeight(.semibold)
-                
-                Text("Find and track flight status")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-    }
     
     @ViewBuilder
     func ProfileTabContent() -> some View {
@@ -513,6 +480,21 @@ struct SkyLineBottomBarView: View {
     private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
         print("🎫 Boarding pass scanned successfully")
         print("📄 Data: \(boardingPassData.summary)")
+        print("🔍 Detailed BoardingPassData received in UI:")
+        print("   ✈️  Flight: \(boardingPassData.flightNumber ?? "N/A")")
+        print("   🏢 Airline: \(boardingPassData.airline ?? "N/A")")
+        print("   👤 Passenger: \(boardingPassData.passengerName ?? "N/A")")
+        print("   🛫 Departure: \(boardingPassData.departureCode ?? "N/A") (\(boardingPassData.departureCity ?? "N/A"))")
+        print("   🛬 Arrival: \(boardingPassData.arrivalCode ?? "N/A") (\(boardingPassData.arrivalCity ?? "N/A"))")
+        print("   🕐 Dep Time: \(boardingPassData.departureTime ?? "N/A")")
+        print("   🕐 Arr Time: \(boardingPassData.arrivalTime ?? "N/A")")
+        print("   📅 Dep Date: \(boardingPassData.departureDate?.description ?? "N/A")")
+        print("   📅 Arr Date: \(boardingPassData.arrivalDate?.description ?? "N/A")")
+        print("   💺 Seat: \(boardingPassData.seat ?? "N/A")")
+        print("   🚪 Gate: \(boardingPassData.gate ?? "N/A")")
+        print("   🏢 Terminal: \(boardingPassData.terminal ?? "N/A")")
+        print("   🎫 Confirmation: \(boardingPassData.confirmationCode ?? "N/A")")
+        print("   ✅ Is Valid: \(boardingPassData.isValid)")
         
         // Show confirmation sheet with compact time pickers by setting the data
         await MainActor.run {
@@ -593,7 +575,7 @@ struct SkyLineBottomBarView: View {
         )
         
         // Create flight object
-        return Flight(
+        let flight = Flight(
             id: "boarding-pass-\(UUID().uuidString)",
             flightNumber: data.flightNumber ?? "Unknown",
             airline: data.airline, // Use the airline extracted from boarding pass
@@ -611,6 +593,15 @@ struct SkyLineBottomBarView: View {
             dataSource: .pkpass,
             date: flightDate
         )
+        
+        print("✈️ Created Flight object from BoardingPass:")
+        print("   Flight: \(flight.flightNumber) (\(flight.airline ?? "No Airline"))")
+        print("   Route: \(flight.departure.code) (\(flight.departure.city)) → \(flight.arrival.code) (\(flight.arrival.city))")
+        print("   Times: \(flight.departure.time) → \(flight.arrival.time)")
+        print("   Date: \(DateFormatter.flightCardDate.string(from: flight.date))")
+        print("   Coordinates: (\(flight.departure.latitude ?? 0), \(flight.departure.longitude ?? 0)) → (\(flight.arrival.latitude ?? 0), \(flight.arrival.longitude ?? 0))")
+        
+        return flight
     }
     
     // MARK: - Helper Functions
@@ -1001,7 +992,7 @@ enum CustomMenuStyle: String, CaseIterable {
 struct BoardingPassMenuContent: View {
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.dismiss) var dismiss
-    @ObservedObject private var scanner = BoardingPassScanner.shared
+    @ObservedObject private var unifiedService = UnifiedBoardingPassService.shared
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isShowingPicker = false
     
@@ -1048,10 +1039,10 @@ struct BoardingPassMenuContent: View {
                     )
                     .cornerRadius(10)
                 }
-                .disabled(scanner.isProcessing)
+                .disabled(unifiedService.isProcessing)
                 
                 // Processing State
-                if scanner.isProcessing {
+                if unifiedService.isProcessing {
                     HStack(spacing: 10) {
                         ProgressView()
                             .scaleEffect(0.8)
@@ -1069,7 +1060,7 @@ struct BoardingPassMenuContent: View {
                 }
                 
                 // Error State
-                if let error = scanner.lastError {
+                if let error = unifiedService.lastResult?.error {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
@@ -1121,15 +1112,13 @@ struct BoardingPassMenuContent: View {
             do {
                 guard let imageData = try await photo.loadTransferable(type: Data.self),
                       let uiImage = UIImage(data: imageData) else {
-                    await MainActor.run {
-                        scanner.lastError = "Failed to load selected image"
-                    }
+                    print("❌ Failed to load selected image")
                     return
                 }
                 
                 print("📸 Processing boarding pass image...")
                 
-                if let boardingPassData = await scanner.scanBoardingPass(from: uiImage) {
+                if let boardingPassData = await unifiedService.parseImage(uiImage) {
                     print("✅ OCR completed successfully:", boardingPassData.summary)
                     
                     // Post notification to main view to show confirmation and close menu
@@ -1146,9 +1135,7 @@ struct BoardingPassMenuContent: View {
                 }
                 
             } catch {
-                await MainActor.run {
-                    scanner.lastError = "Error loading image: \(error.localizedDescription)"
-                }
+                print("❌ Error loading image: \(error.localizedDescription)")
                 print("❌ Error processing photo:", error)
             }
         }

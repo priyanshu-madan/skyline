@@ -57,5 +57,16 @@
       "departureTooOld": "Departure date seems too far in the past"
     },
     "hapticFeedbackEnabled": true
+  },
+  "parsingConfig": {
+    "parsingMethod": "openrouter",
+    "openRouterConfig": {
+      "preferredModel": "openai/gpt-4o",
+      "maxTokens": 2000,
+      "temperature": 0.1,
+      "maxCostPerRequest": 0.05
+    },
+    "enableFallbacks": true,
+    "fallbackOrder": ["openrouter", "apple_intelligence", "vision_framework"]
   }
 }

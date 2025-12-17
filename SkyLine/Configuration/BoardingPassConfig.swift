@@ -14,12 +14,14 @@ struct BoardingPassConfig: Codable {
     let timeFormats: TimeFormats
     let businessRules: BusinessRules
     let uiConfig: UIConfig
+    let parsingConfig: ParsingConfig
     
     static let `default` = BoardingPassConfig(
         validationRules: ValidationRules(),
         timeFormats: TimeFormats(),
         businessRules: BusinessRules(),
-        uiConfig: UIConfig()
+        uiConfig: UIConfig(),
+        parsingConfig: ParsingConfig.default
     )
 }
 
@@ -223,4 +225,56 @@ struct ErrorMessages: Codable {
         self.flightTooLong = flightTooLong
         self.departureTooOld = departureTooOld
     }
+}
+
+// MARK: - Parsing Configuration
+
+enum ParsingMethod: String, CaseIterable, Codable {
+    case openRouter = "openrouter"
+    case appleIntelligence = "apple_intelligence" 
+    case visionFramework = "vision_framework"
+    
+    var displayName: String {
+        switch self {
+        case .openRouter: return "OpenRouter AI"
+        case .appleIntelligence: return "Apple Intelligence"
+        case .visionFramework: return "Vision Framework"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .openRouter: return "Advanced AI models via OpenRouter API"
+        case .appleIntelligence: return "On-device Apple Intelligence"
+        case .visionFramework: return "Basic OCR text recognition"
+        }
+    }
+}
+
+struct ParsingConfig: Codable {
+    let parsingMethod: ParsingMethod
+    let openRouterConfig: OpenRouterParsingConfig
+    let enableFallbacks: Bool
+    let fallbackOrder: [ParsingMethod]
+    
+    static let `default` = ParsingConfig(
+        parsingMethod: .openRouter,
+        openRouterConfig: OpenRouterParsingConfig.default,
+        enableFallbacks: true,
+        fallbackOrder: [.openRouter, .appleIntelligence, .visionFramework]
+    )
+}
+
+struct OpenRouterParsingConfig: Codable {
+    let preferredModel: String
+    let maxTokens: Int
+    let temperature: Double
+    let maxCostPerRequest: Double
+    
+    static let `default` = OpenRouterParsingConfig(
+        preferredModel: "openai/gpt-4o",
+        maxTokens: 2000,
+        temperature: 0.1,
+        maxCostPerRequest: 0.05
+    )
 }

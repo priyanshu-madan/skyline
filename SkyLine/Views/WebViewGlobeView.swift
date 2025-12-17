@@ -354,8 +354,8 @@ struct WebViewGlobeView: View {
         guard isGlobeReady else { return }
         
         // Determine what data to show based on provided tab
-        let shouldShowFlights = tab == .flights || tab == .search || tab == .profile || tab == nil  // Show flights on Flights tab
-        let shouldShowCities = tab == .trips || tab == .search || tab == .profile || tab == nil    // Show cities on Trips tab
+        let shouldShowFlights = tab == .flights || tab == .profile || tab == nil  // Show flights on Flights tab
+        let shouldShowCities = tab == .trips || tab == .profile || tab == nil    // Show cities on Trips tab
         
         print("🎯 Globe data update - Tab: \(tab?.rawValue ?? "none"), Show flights: \(shouldShowFlights), Show cities: \(shouldShowCities)")
         
