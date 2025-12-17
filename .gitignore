@@ -72,9 +72,12 @@ Temporary Items
 *.tgz
 *.tar.gz
 
-# API Keys and Secrets
+# API Keys and Secrets (keep Info.plist template tracked)
 SkyLine/Config-Private.plist
 SkyLine/Info-Private.plist
 **/API_KEYS.plist
 **/*secret*
 **/*private*
+
+# Local API key files (add your specific filename here if different)
+# SkyLine/Info-Local.plist
