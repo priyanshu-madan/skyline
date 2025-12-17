@@ -71,3 +71,10 @@ Temporary Items
 *.pid.lock
 *.tgz
 *.tar.gz
+
+# API Keys and Secrets
+SkyLine/Config-Private.plist
+SkyLine/Info-Private.plist
+**/API_KEYS.plist
+**/*secret*
+**/*private*
