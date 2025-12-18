@@ -229,7 +229,9 @@ class FlightAPIService: ObservableObject {
             progress: nil,
             flightDate: aviationFlight.flight_date,
             dataSource: .aviationstack,
-            date: Flight.extractFlightDate(from: aviationFlight.departure.scheduled ?? "")
+            date: Flight.extractFlightDate(from: aviationFlight.departure.scheduled ?? ""),
+            isUserConfirmed: false,
+            userConfirmedFields: .none
         )
     }
     
@@ -287,7 +289,9 @@ class FlightAPIService: ObservableObject {
             progress: nil,
             flightDate: ISO8601DateFormatter().string(from: Date()),
             dataSource: .opensky,
-            date: Calendar.current.startOfDay(for: Date())
+            date: Calendar.current.startOfDay(for: Date()),
+            isUserConfirmed: false,
+            userConfirmedFields: .none
         )
     }
     

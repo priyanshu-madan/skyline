@@ -23,6 +23,10 @@ struct Flight: Codable, Identifiable, Hashable {
     let dataSource: DataSource
     let date: Date
     
+    // User confirmation tracking
+    let isUserConfirmed: Bool
+    let userConfirmedFields: UserConfirmedFields
+    
     var isDeparted: Bool {
         status == .departed || status == .inAir || status == .landed
     }
@@ -233,6 +237,34 @@ enum DataSource: String, Codable {
     }
 }
 
+// MARK: - User Confirmation Tracking
+struct UserConfirmedFields: Codable, Hashable {
+    let departureTime: Bool
+    let arrivalTime: Bool
+    let flightDate: Bool
+    let gate: Bool
+    let terminal: Bool
+    let seat: Bool
+    
+    static let none = UserConfirmedFields(
+        departureTime: false,
+        arrivalTime: false, 
+        flightDate: false,
+        gate: false,
+        terminal: false,
+        seat: false
+    )
+    
+    static let all = UserConfirmedFields(
+        departureTime: true,
+        arrivalTime: true,
+        flightDate: true,
+        gate: true,
+        terminal: true,
+        seat: true
+    )
+}
+
 // MARK: - Flight Search Result
 struct FlightSearchResult: Codable {
     let flights: [Flight]
@@ -281,7 +313,9 @@ extension Flight {
         progress: 0.0,
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .aviationstack,
-        date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date(),
+        isUserConfirmed: false,
+        userConfirmedFields: .none
     )
     
     static let sampleInAir = Flight(
@@ -330,7 +364,9 @@ extension Flight {
         progress: 0.45,
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .combined,
-        date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date()
+        date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+        isUserConfirmed: false,
+        userConfirmedFields: .none
     )
     
     // Additional sample flights matching Figma design
@@ -372,7 +408,9 @@ extension Flight {
         progress: 0.0,
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .manual,
-        date: Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date()
+        date: Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date(),
+        isUserConfirmed: false,
+        userConfirmedFields: .none
     )
     
     static let sampleJakartaDenpasar = Flight(
@@ -413,6 +451,8 @@ extension Flight {
         progress: 0.3,
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .manual,
-        date: Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
+        date: Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date(),
+        isUserConfirmed: false,
+        userConfirmedFields: .none
     )
 }

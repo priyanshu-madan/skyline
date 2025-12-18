@@ -439,6 +439,15 @@ class CloudKitService: ObservableObject {
             record["positionLastUpdate"] = position.lastUpdate
         }
         
+        // User confirmation tracking
+        record["isUserConfirmed"] = flight.isUserConfirmed
+        record["confirmedDepartureTime"] = flight.userConfirmedFields.departureTime
+        record["confirmedArrivalTime"] = flight.userConfirmedFields.arrivalTime
+        record["confirmedFlightDate"] = flight.userConfirmedFields.flightDate
+        record["confirmedGate"] = flight.userConfirmedFields.gate
+        record["confirmedTerminal"] = flight.userConfirmedFields.terminal
+        record["confirmedSeat"] = flight.userConfirmedFields.seat
+        
         return record
     }
     
@@ -518,7 +527,16 @@ class CloudKitService: ObservableObject {
             progress: record["progress"] as? Double,
             flightDate: record["flightDate"] as? String,
             dataSource: dataSource,
-            date: record["date"] as? Date ?? extractDateFromDepartureTime(record["departureTime"] as? String)
+            date: record["date"] as? Date ?? extractDateFromDepartureTime(record["departureTime"] as? String),
+            isUserConfirmed: record["isUserConfirmed"] as? Bool ?? false,
+            userConfirmedFields: UserConfirmedFields(
+                departureTime: record["confirmedDepartureTime"] as? Bool ?? false,
+                arrivalTime: record["confirmedArrivalTime"] as? Bool ?? false,
+                flightDate: record["confirmedFlightDate"] as? Bool ?? false,
+                gate: record["confirmedGate"] as? Bool ?? false,
+                terminal: record["confirmedTerminal"] as? Bool ?? false,
+                seat: record["confirmedSeat"] as? Bool ?? false
+            )
         )
     }
     

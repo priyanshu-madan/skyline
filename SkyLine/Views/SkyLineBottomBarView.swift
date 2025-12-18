@@ -258,7 +258,7 @@ struct SkyLineBottomBarView: View {
                                         .lineLimit(2)
                                     
                                     if !selectedFlight.departure.time.isEmpty {
-                                        Text(selectedFlight.departure.time)
+                                        Text(selectedFlight.departure.displayTime)
                                             .font(.system(size: 16, weight: .medium, design: .monospaced))
                                             .foregroundColor(themeManager.currentTheme.colors.primary)
                                     }
@@ -290,7 +290,7 @@ struct SkyLineBottomBarView: View {
                                         .multilineTextAlignment(.trailing)
                                     
                                     if !selectedFlight.arrival.time.isEmpty {
-                                        Text(selectedFlight.arrival.time)
+                                        Text(selectedFlight.arrival.displayTime)
                                             .font(.system(size: 16, weight: .medium, design: .monospaced))
                                             .foregroundColor(themeManager.currentTheme.colors.primary)
                                     }
@@ -591,7 +591,16 @@ struct SkyLineBottomBarView: View {
             progress: 0.0,
             flightDate: ISO8601DateFormatter().string(from: flightDate),
             dataSource: .pkpass,
-            date: flightDate
+            date: flightDate,
+            isUserConfirmed: true, // Boarding pass data is user-confirmed
+            userConfirmedFields: UserConfirmedFields(
+                departureTime: data.departureTime != nil,
+                arrivalTime: data.arrivalTime != nil,
+                flightDate: data.departureDate != nil,
+                gate: data.gate != nil,
+                terminal: data.terminal != nil,
+                seat: data.seat != nil
+            )
         )
         
         print("✈️ Created Flight object from BoardingPass:")
@@ -692,7 +701,7 @@ struct SkyLineBottomBarView: View {
             HStack(spacing: 16) {
                 // Departure
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(DateFormatter.flightTime.string(from: flight.date))
+                    Text(flight.departure.displayTime)
                         .font(.system(size: 14, weight: .regular, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     

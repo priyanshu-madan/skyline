@@ -35,18 +35,36 @@ class FlightStore: ObservableObject {
     
     var sortedFlights: [Flight] {
         flights.sorted { first, second in
-            // Sort by status priority first, then by departure time
-            let statusPriority: [FlightStatus] = [.boarding, .departed, .inAir, .delayed, .landed, .cancelled]
-            let firstPriority = statusPriority.firstIndex(of: first.status) ?? statusPriority.count
-            let secondPriority = statusPriority.firstIndex(of: second.status) ?? statusPriority.count
+            // Sort by departure time (earliest first)
+            let firstDate = first.date
+            let secondDate = second.date
             
-            if firstPriority != secondPriority {
-                return firstPriority < secondPriority
+            // If both flights have the same date, sort by departure time
+            if Calendar.current.isDate(firstDate, inSameDayAs: secondDate) {
+                // Try to extract hour from departure time for same-day flights
+                let firstHour = extractHourFromTime(first.departure.time)
+                let secondHour = extractHourFromTime(second.departure.time)
+                
+                if firstHour != secondHour {
+                    return firstHour < secondHour
+                }
+                
+                // If same time, sort by flight number
+                return first.flightNumber < second.flightNumber
             }
             
-            // If same status, sort by flight number
-            return first.flightNumber < second.flightNumber
+            // Sort by date (earliest first)
+            return firstDate < secondDate
         }
+    }
+    
+    // Helper function to extract hour from time string (e.g., "14:25" -> 14)
+    private func extractHourFromTime(_ timeString: String) -> Int {
+        let components = timeString.split(separator: ":")
+        if let hourString = components.first, let hour = Int(hourString) {
+            return hour
+        }
+        return 0 // Default to 0 if can't parse
     }
     
     var upcomingFlights: [Flight] {
@@ -146,6 +164,52 @@ class FlightStore: ObservableObject {
     }
     
     @MainActor
+    func updateFlightRespectingConfirmedData(_ flight: Flight, with newData: Flight) -> Flight {
+        // Never overwrite user-confirmed data
+        guard !flight.isUserConfirmed else {
+            print("🔒 Skipping update for confirmed flight: \(flight.flightNumber)")
+            return flight
+        }
+        
+        // For non-confirmed flights, update with new data
+        var updatedFlight = newData
+        updatedFlight = Flight(
+            id: flight.id, // Keep original ID
+            flightNumber: flight.flightNumber, // Keep original flight number
+            airline: newData.airline ?? flight.airline,
+            departure: mergeAirportData(original: flight.departure, new: newData.departure, confirmedFields: flight.userConfirmedFields),
+            arrival: mergeAirportData(original: flight.arrival, new: newData.arrival, confirmedFields: flight.userConfirmedFields),
+            status: newData.status,
+            aircraft: newData.aircraft ?? flight.aircraft,
+            currentPosition: newData.currentPosition ?? flight.currentPosition,
+            progress: newData.progress ?? flight.progress,
+            flightDate: flight.userConfirmedFields.flightDate ? flight.flightDate : newData.flightDate,
+            dataSource: flight.dataSource, // Keep original data source
+            date: flight.userConfirmedFields.flightDate ? flight.date : newData.date,
+            isUserConfirmed: flight.isUserConfirmed,
+            userConfirmedFields: flight.userConfirmedFields
+        )
+        
+        print("🔄 Updated flight \(flight.flightNumber) while preserving confirmed data")
+        return updatedFlight
+    }
+    
+    private func mergeAirportData(original: Airport, new: Airport, confirmedFields: UserConfirmedFields) -> Airport {
+        return Airport(
+            airport: new.airport.isEmpty ? original.airport : new.airport,
+            code: original.code, // Never change the airport code
+            city: new.city.isEmpty ? original.city : new.city,
+            latitude: new.latitude ?? original.latitude,
+            longitude: new.longitude ?? original.longitude,
+            time: confirmedFields.departureTime ? original.time : (new.time.isEmpty ? original.time : new.time),
+            actualTime: new.actualTime ?? original.actualTime,
+            terminal: confirmedFields.terminal ? original.terminal : new.terminal,
+            gate: confirmedFields.gate ? original.gate : new.gate,
+            delay: new.delay ?? original.delay
+        )
+    }
+
+    @MainActor
     func updateAllFlightsWithEnhancedData() async {
         print("🔄 Updating all flights with enhanced airport data...")
         
@@ -222,7 +286,9 @@ class FlightStore: ObservableObject {
                 progress: flight.progress,
                 flightDate: flight.flightDate,
                 dataSource: flight.dataSource,
-                date: flight.date
+                date: flight.date,
+                isUserConfirmed: flight.isUserConfirmed,
+                userConfirmedFields: flight.userConfirmedFields
             )
             
                 flights[i] = updatedFlight
@@ -324,7 +390,9 @@ class FlightStore: ObservableObject {
                         progress: flight.progress,
                         flightDate: flight.flightDate,
                         dataSource: flight.dataSource,
-                        date: properDate
+                        date: properDate,
+                        isUserConfirmed: flight.isUserConfirmed,
+                        userConfirmedFields: flight.userConfirmedFields
                     )
                     updatedFlights.append(updatedFlight)
                     print("✅ Fixed date for flight \(flight.flightNumber): \(DateFormatter.flightCardDate.string(from: properDate))")
@@ -409,7 +477,9 @@ class FlightStore: ObservableObject {
                     progress: flight.progress,
                     flightDate: flight.flightDate,
                     dataSource: flight.dataSource,
-                    date: flight.date
+                    date: flight.date,
+                    isUserConfirmed: flight.isUserConfirmed,
+                    userConfirmedFields: flight.userConfirmedFields
                 )
                 
                 flights[index] = updatedFlight
@@ -869,7 +939,9 @@ class FlightStore: ObservableObject {
                             progress: updatedFlight.progress,
                             flightDate: updatedFlight.flightDate,
                             dataSource: updatedFlight.dataSource,
-                            date: flight.date
+                            date: flight.date,
+                            isUserConfirmed: flight.isUserConfirmed,
+                            userConfirmedFields: flight.userConfirmedFields
                         )
                         refreshedFlights.append(preservedFlight)
                     } else {
@@ -930,7 +1002,9 @@ class FlightStore: ObservableObject {
                 progress: Double.random(in: 0...1),
                 flightDate: ISO8601DateFormatter().string(from: Date()),
                 dataSource: .aviationstack,
-                date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)))
+                date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600))),
+                isUserConfirmed: false,
+                userConfirmedFields: .none
             )
         ]
         
