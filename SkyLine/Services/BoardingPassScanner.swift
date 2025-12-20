@@ -872,6 +872,7 @@ struct BoardingPassData: CustomStringConvertible, Identifiable {
     var seat: String?
     var confirmationCode: String?
     var passengerName: String?
+    var flightDuration: String?
     
     var isValid: Bool {
         return flightNumber != nil && departureCode != nil && arrivalCode != nil

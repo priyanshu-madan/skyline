@@ -996,12 +996,6 @@ struct BoardingPassConfirmationView: View {
             return "Arrival must be after departure"
         }
         
-        // Check if flight duration is unrealistic (more than 24 hours)
-        let duration = arrivalDateTime.timeIntervalSince(departureDateTime)
-        if duration > 24 * 60 * 60 {
-            return "Flight duration seems unusually long"
-        }
-        
         return nil
     }
     

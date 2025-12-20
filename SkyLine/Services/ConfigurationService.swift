@@ -159,8 +159,6 @@ class ConfigurationService: ObservableObject {
             return config.uiConfig.errorMessages.terminalInvalid
         case .arrivalBeforeDeparture:
             return config.uiConfig.errorMessages.arrivalBeforeDeparture
-        case .flightTooLong:
-            return config.uiConfig.errorMessages.flightTooLong
         case .departureTooOld:
             return config.uiConfig.errorMessages.departureTooOld
         }
@@ -230,7 +228,6 @@ enum ValidationError {
     case gateInvalid
     case terminalInvalid
     case arrivalBeforeDeparture
-    case flightTooLong
     case departureTooOld
 }
 

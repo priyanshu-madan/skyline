@@ -21,7 +21,10 @@ struct Flight: Codable, Identifiable, Hashable {
     let progress: Double? // 0.0 to 1.0
     let flightDate: String?
     let dataSource: DataSource
-    let date: Date
+    let date: Date // Legacy field for backward compatibility
+    let departureDate: Date?
+    let arrivalDate: Date?
+    let flightDuration: String? // Duration from OpenRouter (e.g. "5H 25M")
     
     // User confirmation tracking
     let isUserConfirmed: Bool
@@ -241,7 +244,9 @@ enum DataSource: String, Codable {
 struct UserConfirmedFields: Codable, Hashable {
     let departureTime: Bool
     let arrivalTime: Bool
-    let flightDate: Bool
+    let flightDate: Bool // Legacy field for backward compatibility
+    let departureDate: Bool
+    let arrivalDate: Bool
     let gate: Bool
     let terminal: Bool
     let seat: Bool
@@ -250,6 +255,8 @@ struct UserConfirmedFields: Codable, Hashable {
         departureTime: false,
         arrivalTime: false, 
         flightDate: false,
+        departureDate: false,
+        arrivalDate: false,
         gate: false,
         terminal: false,
         seat: false
@@ -259,6 +266,8 @@ struct UserConfirmedFields: Codable, Hashable {
         departureTime: true,
         arrivalTime: true,
         flightDate: true,
+        departureDate: true,
+        arrivalDate: true,
         gate: true,
         terminal: true,
         seat: true
@@ -314,6 +323,9 @@ extension Flight {
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .aviationstack,
         date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date(),
+        departureDate: Calendar.current.date(byAdding: .day, value: 1, to: Date()),
+        arrivalDate: Calendar.current.date(byAdding: .day, value: 1, to: Date()),
+        flightDuration: "5H 25M",
         isUserConfirmed: false,
         userConfirmedFields: .none
     )
@@ -365,6 +377,9 @@ extension Flight {
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .combined,
         date: Calendar.current.date(byAdding: .day, value: -1, to: Date()) ?? Date(),
+        departureDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()),
+        arrivalDate: Calendar.current.date(byAdding: .day, value: -1, to: Date()),
+        flightDuration: "4H 15M",
         isUserConfirmed: false,
         userConfirmedFields: .none
     )
@@ -409,6 +424,9 @@ extension Flight {
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .manual,
         date: Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date(),
+        departureDate: Calendar.current.date(byAdding: .day, value: 2, to: Date()),
+        arrivalDate: Calendar.current.date(byAdding: .day, value: 2, to: Date()),
+        flightDuration: "9H 00M",
         isUserConfirmed: false,
         userConfirmedFields: .none
     )
@@ -452,6 +470,9 @@ extension Flight {
         flightDate: ISO8601DateFormatter().string(from: Date()),
         dataSource: .manual,
         date: Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date(),
+        departureDate: Calendar.current.date(byAdding: .day, value: 3, to: Date()),
+        arrivalDate: Calendar.current.date(byAdding: .day, value: 3, to: Date()),
+        flightDuration: "1H 15M",
         isUserConfirmed: false,
         userConfirmedFields: .none
     )

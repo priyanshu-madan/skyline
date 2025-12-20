@@ -528,11 +528,16 @@ class CloudKitService: ObservableObject {
             flightDate: record["flightDate"] as? String,
             dataSource: dataSource,
             date: record["date"] as? Date ?? extractDateFromDepartureTime(record["departureTime"] as? String),
+            departureDate: record["departureDate"] as? Date,
+            arrivalDate: record["arrivalDate"] as? Date,
+            flightDuration: record["flightDuration"] as? String,
             isUserConfirmed: record["isUserConfirmed"] as? Bool ?? false,
             userConfirmedFields: UserConfirmedFields(
                 departureTime: record["confirmedDepartureTime"] as? Bool ?? false,
                 arrivalTime: record["confirmedArrivalTime"] as? Bool ?? false,
                 flightDate: record["confirmedFlightDate"] as? Bool ?? false,
+                departureDate: record["confirmedDepartureDate"] as? Bool ?? false,
+                arrivalDate: record["confirmedArrivalDate"] as? Bool ?? false,
                 gate: record["confirmedGate"] as? Bool ?? false,
                 terminal: record["confirmedTerminal"] as? Bool ?? false,
                 seat: record["confirmedSeat"] as? Bool ?? false

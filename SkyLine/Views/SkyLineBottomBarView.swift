@@ -224,94 +224,7 @@ struct SkyLineBottomBarView: View {
                 TripsTabContent()
             case .flights:
                 if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // Flight Header
-                            VStack(spacing: 12) {
-                                Text(selectedFlight.flightNumber)
-                                    .font(.system(size: 28, weight: .bold, design: .monospaced))
-                                    .foregroundColor(themeManager.currentTheme.colors.text)
-                                
-                                if let airline = selectedFlight.airline {
-                                    Text(airline)
-                                        .font(.system(size: 16, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                }
-                            }
-                            .padding(.top, 20)
-                            
-                            // Route Information
-                            HStack(spacing: 20) {
-                                // Departure
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("DEPARTURE")
-                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    
-                                    Text(selectedFlight.departure.code)
-                                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
-                                    
-                                    Text(selectedFlight.departure.airport)
-                                        .font(.system(size: 14, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
-                                        .lineLimit(2)
-                                    
-                                    if !selectedFlight.departure.time.isEmpty {
-                                        Text(selectedFlight.departure.displayTime)
-                                            .font(.system(size: 16, weight: .medium, design: .monospaced))
-                                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                                    }
-                                }
-                                
-                                Spacer()
-                                
-                                Image(systemName: "airplane")
-                                    .font(.system(size: 20, weight: .medium, design: .monospaced))
-                                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                                    .rotationEffect(.degrees(45))
-                                
-                                Spacer()
-                                
-                                // Arrival
-                                VStack(alignment: .trailing, spacing: 8) {
-                                    Text("ARRIVAL")
-                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    
-                                    Text(selectedFlight.arrival.code)
-                                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
-                                    
-                                    Text(selectedFlight.arrival.airport)
-                                        .font(.system(size: 14, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
-                                        .lineLimit(2)
-                                        .multilineTextAlignment(.trailing)
-                                    
-                                    if !selectedFlight.arrival.time.isEmpty {
-                                        Text(selectedFlight.arrival.displayTime)
-                                            .font(.system(size: 16, weight: .medium, design: .monospaced))
-                                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                                    }
-                                }
-                            }
-                            .padding(20)
-                            .background(themeManager.currentTheme.colors.surface)
-                            .cornerRadius(16)
-                            .padding(.horizontal, 20)
-                        }
-                    }
-                    .onTapGesture {
-                        print("🔍 DEBUG: Flight detail view close tapped")
-                        onGlobeReset?()
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            selectedFlightForDetails = nil
-                            selectedDetent = .fraction(0.2)
-                            flightDetailsViewKey = UUID()
-                            print("🔍 DEBUG: Reset to selectedDetent 0.2")
-                        }
-                    }
+                    ModernFlightDetailContent(flight: selectedFlight, theme: themeManager)
                     .id(flightDetailsViewKey)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .clipped()
@@ -473,11 +386,590 @@ struct SkyLineBottomBarView: View {
         .frame(maxWidth: .infinity)
     }
     
+    // MARK: - Modern Flight Detail Content Component
+    
+    func ModernFlightDetailContent(flight: Flight, theme: ThemeManager) -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Header - exactly like Builder.io
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Flight Details")
+                            .font(.system(size: 22, weight: .black, design: .monospaced))
+                            .tracking(-0.5)
+                            .foregroundColor(theme.currentTheme.colors.text)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        print("🔍 DEBUG: Close button tapped")
+                        
+                        // Haptic feedback
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                        impactFeedback.impactOccurred()
+                        
+                        // Reset globe and close flight details
+                        onGlobeReset?()
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            selectedFlightForDetails = nil
+                            selectedDetent = .fraction(0.2)
+                            flightDetailsViewKey = UUID()
+                            print("🔍 DEBUG: Reset to selectedDetent 0.2 from close button")
+                        }
+                    }) {
+                        ZStack {
+                            Circle()
+                                .fill(theme.currentTheme.colors.border.opacity(0.5))
+                                .frame(width: 40, height: 40)
+                                .blur(radius: 8)
+                            
+                            Circle()
+                                .fill(theme.currentTheme.colors.surface.opacity(0.8))
+                                .frame(width: 40, height: 40)
+                                .overlay(
+                                    Circle()
+                                        .stroke(theme.currentTheme.colors.border.opacity(0.5), lineWidth: 1)
+                                )
+                            
+                            Image(systemName: "xmark")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundColor(theme.currentTheme.colors.text)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                
+                // Main Boarding Pass Card
+                VStack(spacing: 0) {
+                    // Card with gradient background and blur effect
+                    ZStack {
+                        // Background gradient
+                        RoundedRectangle(cornerRadius: 32)
+                            .fill(
+                                LinearGradient(
+                                    gradient: Gradient(stops: [
+                                        .init(color: theme.currentTheme.colors.surface.opacity(0.9), location: 0),
+                                        .init(color: theme.currentTheme.colors.surface.opacity(0.7), location: 1)
+                                    ]),
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 32)
+                                    .stroke(.white.opacity(0.1), lineWidth: 1)
+                            )
+                        
+                        // Large airplane watermark
+                        HStack {
+                            Spacer()
+                            VStack {
+                                Image(systemName: "airplane")
+                                    .font(.system(size: 156, weight: .ultraLight))
+                                    .foregroundColor(theme.currentTheme.colors.text.opacity(0.03))
+                                    .rotationEffect(.degrees(320))
+                                    .padding(.top, 24)
+                                    .padding(.trailing, 32)
+                                Spacer()
+                            }
+                        }
+                        
+                        // Main content
+                        VStack(spacing: 16) {
+                            // Top section: Airline & Flight info
+                            VStack(spacing: 20) {
+                                // Airline and flight number
+                                HStack {
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 16)
+                                                .fill(theme.currentTheme.colors.primary.opacity(0.1))
+                                                .frame(width: 48, height: 48)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 16)
+                                                        .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
+                                                )
+                                                .shadow(color: theme.currentTheme.colors.primary.opacity(0.1), radius: 10)
+                                            
+                                            Image(systemName: "airplane")
+                                                .font(.system(size: 24, weight: .medium))
+                                                .foregroundColor(theme.currentTheme.colors.primary)
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("AIRLINE")
+                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                .tracking(1.5)
+                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                                .textCase(.uppercase)
+                                            
+                                            Text(flight.airline ?? "American Airlines")
+                                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                                .foregroundColor(theme.currentTheme.colors.text)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("FLIGHT")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .tracking(1.5)
+                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                            .textCase(.uppercase)
+                                        
+                                        Text(flight.flightNumber)
+                                            .font(.system(size: 14, weight: .black))
+                                            .foregroundColor(theme.currentTheme.colors.text)
+                                    }
+                                }
+                                
+                                // Route section with large airport codes
+                                HStack {
+                                    // Departure
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(flight.departure.code)
+                                            .font(.system(size: 53, weight: .black, design: .monospaced))
+                                            .tracking(-2)
+                                            .foregroundColor(theme.currentTheme.colors.text)
+                                        
+                                        Text(flight.departure.city)
+                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                            .tracking(1.5)
+                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                            .textCase(.uppercase)
+                                        
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(flight.departure.displayTime)
+                                                .font(.system(size: 20, weight: .black, design: .monospaced))
+                                                .foregroundColor(theme.currentTheme.colors.primary)
+                                            
+                                            Text(formatDate(flight.departureDate ?? flight.date))
+                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                .tracking(0.5)
+                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                                .textCase(.uppercase)
+                                        }
+                                        .padding(.top, 16)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    // Flight path
+                                    VStack(spacing: 8) {
+                                        HStack(spacing: 12) {
+                                            Rectangle()
+                                                .fill(
+                                                    LinearGradient(
+                                                        gradient: Gradient(stops: [
+                                                            .init(color: .clear, location: 0),
+                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 0.5),
+                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 1)
+                                                        ]),
+                                                        startPoint: .leading,
+                                                        endPoint: .trailing
+                                                    )
+                                                )
+                                                .frame(height: 1)
+                                                .cornerRadius(0.5)
+                                            
+                                            ZStack {
+                                                Circle()
+                                                    .fill(theme.currentTheme.colors.primary.opacity(0.2))
+                                                    .frame(width: 20, height: 20)
+                                                    .blur(radius: 8)
+                                                
+                                                Image(systemName: "airplane")
+                                                    .font(.system(size: 20, weight: .medium))
+                                                    .foregroundColor(theme.currentTheme.colors.primary)
+                                                    .rotationEffect(.degrees(0))
+                                            }
+                                            
+                                            Rectangle()
+                                                .fill(
+                                                    LinearGradient(
+                                                        gradient: Gradient(stops: [
+                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 0),
+                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 0.5),
+                                                            .init(color: .clear, location: 1)
+                                                        ]),
+                                                        startPoint: .leading,
+                                                        endPoint: .trailing
+                                                    )
+                                                )
+                                                .frame(height: 1)
+                                                .cornerRadius(0.5)
+                                        }
+                                        
+                                        HStack(spacing: 6) {
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .fill(theme.currentTheme.colors.primary.opacity(0.1))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
+                                                )
+                                                .frame(width: 60, height: 20)
+                                                .overlay(
+                                                    Text(flight.flightDuration ?? calculateFlightDuration(flight: flight))
+                                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                        .tracking(1.2)
+                                                        .foregroundColor(theme.currentTheme.colors.primary)
+                                                        .textCase(.uppercase)
+                                                )
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.horizontal, 16)
+                                    
+                                    Spacer()
+                                    
+                                    // Arrival
+                                    VStack(alignment: .trailing, spacing: 4) {
+                                        Text(flight.arrival.code)
+                                            .font(.system(size: 53, weight: .black, design: .monospaced))
+                                            .tracking(-2)
+                                            .foregroundColor(theme.currentTheme.colors.text)
+                                        
+                                        Text(flight.arrival.city)
+                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                            .tracking(1.5)
+                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                            .textCase(.uppercase)
+                                        
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            Text(flight.arrival.displayTime)
+                                                .font(.system(size: 20, weight: .black, design: .monospaced))
+                                                .foregroundColor(theme.currentTheme.colors.primary)
+                                            
+                                            Text(formatDate(flight.arrivalDate ?? flight.date))
+                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                .tracking(0.5)
+                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                                .textCase(.uppercase)
+                                        }
+                                        .padding(.top, 16)
+                                    }
+                                }
+                                
+                                // Passenger info section
+                                HStack {
+                                    HStack(spacing: 16) {
+                                        ZStack {
+                                            Circle()
+                                                .fill(theme.currentTheme.colors.primary.opacity(0.1))
+                                                .frame(width: 40, height: 40)
+                                                .overlay(
+                                                    Circle()
+                                                        .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
+                                                )
+                                            
+                                            Image(systemName: "person")
+                                                .font(.system(size: 20, weight: .medium))
+                                                .foregroundColor(theme.currentTheme.colors.primary)
+                                        }
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("PASSENGER")
+                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                .tracking(1.5)
+                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                                .textCase(.uppercase)
+                                            
+                                            Text("Priyanshu Madan")
+                                                .font(.system(size: 14, weight: .black, design: .monospaced))
+                                                .foregroundColor(theme.currentTheme.colors.text)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("CLASS")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .tracking(1.5)
+                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                            .textCase(.uppercase)
+                                        
+                                        Text("Business")
+                                            .font(.system(size: 14, weight: .black))
+                                            .foregroundColor(theme.currentTheme.colors.text)
+                                    }
+                                }
+                                .padding(16)
+                                .background(.white.opacity(0.03))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(.white.opacity(0.05), lineWidth: 1)
+                                )
+                                .cornerRadius(16)
+                            }
+                            .padding(.top, 20)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+                            
+                            // Perforation line
+                            ZStack {
+                                // Dotted line in center
+                                Rectangle()
+                                    .fill(.clear)
+                                    .frame(height: 2)
+                                    .overlay(
+                                        GeometryReader { geometry in
+                                            Path { path in
+                                                let dashLength: CGFloat = 8
+                                                let gapLength: CGFloat = 4
+                                                let totalLength = dashLength + gapLength
+                                                let width = geometry.size.width
+                                                let numberOfDashes = Int(width / totalLength)
+                                                let startX = (width - CGFloat(numberOfDashes) * totalLength) / 2
+                                                
+                                                for i in 0..<numberOfDashes {
+                                                    let x = startX + CGFloat(i) * totalLength
+                                                    path.move(to: CGPoint(x: x, y: 1))
+                                                    path.addLine(to: CGPoint(x: x + dashLength, y: 1))
+                                                }
+                                            }
+                                            .stroke(.white.opacity(0.1), lineWidth: 2)
+                                        }
+                                    )
+                                    .padding(.horizontal, 40)
+                                
+                                // Left circle cutout
+                                HStack {
+                                    Circle()
+                                        .fill(Color.black)
+                                        .frame(width: 36, height: 36)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(.white.opacity(0.05), lineWidth: 1)
+                                        )
+                                        .shadow(color: .black.opacity(0.4), radius: 6, x: -4, y: 0)
+                                        .offset(x: -18)
+                                    
+                                    Spacer()
+                                    
+                                    // Right circle cutout
+                                    Circle()
+                                        .fill(Color.black)
+                                        .frame(width: 36, height: 36)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(.white.opacity(0.05), lineWidth: 1)
+                                        )
+                                        .shadow(color: .black.opacity(0.4), radius: 6, x: 4, y: 0)
+                                        .offset(x: 18)
+                                }
+                            }
+                            .frame(height: 36)
+                            
+                            // Bottom section: Barcode
+                            VStack(spacing: 16) {
+                                // Barcode
+                                HStack(spacing: 2) {
+                                    ForEach(0..<80, id: \.self) { i in
+                                        let widths: [CGFloat] = [1, 2, 3, 1, 4, 2, 1, 3]
+                                        Rectangle()
+                                            .fill(theme.currentTheme.colors.text.opacity(0.6))
+                                            .frame(width: widths[i % 8], height: 80)
+                                            .opacity(Double.random(in: 0.1...1) > 0.1 ? 1 : 0.4)
+                                            .cornerRadius(widths[i % 8] / 2)
+                                    }
+                                }
+                                .frame(height: 80)
+                                .padding(.horizontal, 24)
+                                
+                                // PNR and Ticket info
+                                HStack {
+                                    Text("PNR: G7X9K2")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .tracking(1.6)
+                                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                        .textCase(.uppercase)
+                                    
+                                    Spacer()
+                                    
+                                    Text("TKT: 0012345678901")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .tracking(1.6)
+                                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                                        .textCase(.uppercase)
+                                }
+                                .padding(.horizontal, 40)
+                            }
+                            .padding(.bottom, 16)
+                            .background(.white.opacity(0.02))
+                        }
+                    }
+                }
+                
+                // Action buttons
+                HStack(spacing: 16) {
+                    // Add to Apple Wallet button
+                    Button(action: {
+                        // TODO: Add to Apple Wallet
+                    }) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.white)
+                                    .frame(width: 32, height: 32)
+                                
+                                Image(systemName: "square.and.arrow.down")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.black)
+                            }
+                            
+                            Text("Add to Apple Wallet")
+                                .font(.system(size: 18, weight: .black, design: .monospaced))
+                                .foregroundColor(.white)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 80)
+                        .background(.black)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 40)
+                                .stroke(.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .cornerRadius(40)
+                        .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 8)
+                        .overlay(
+                            // Shine effect
+                            RoundedRectangle(cornerRadius: 40)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(stops: [
+                                            .init(color: .clear, location: 0),
+                                            .init(color: .white.opacity(0.05), location: 0.5),
+                                            .init(color: .clear, location: 1)
+                                        ]),
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                        )
+                    }
+                    
+                    // Share button
+                    Button(action: {
+                        // TODO: Share flight
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundColor(theme.currentTheme.colors.text)
+                    }
+                    .frame(width: 80, height: 80)
+                    .background(theme.currentTheme.colors.surface.opacity(0.5))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 40)
+                            .stroke(.white.opacity(0.1), lineWidth: 1)
+                    )
+                    .cornerRadius(40)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 100)
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
+    }
+    
+    private func calculateFlightDuration(flight: Flight) -> String {
+        // Use separate departure and arrival dates if available
+        let departureDate = flight.departureDate ?? flight.date
+        let arrivalDate = flight.arrivalDate ?? flight.date
+        
+        // Parse departure and arrival times using their respective dates
+        let departureTime = parseTimeString(flight.departure.time, date: departureDate)
+        let arrivalTime = parseTimeString(flight.arrival.time, date: arrivalDate)
+        
+        guard let depTime = departureTime, let arrTime = arrivalTime else {
+            return "N/A"
+        }
+        
+        // Calculate duration directly (no need for overnight logic since we use actual dates)
+        let duration = arrTime.timeIntervalSince(depTime)
+        let hours = Int(duration) / 3600
+        let minutes = Int(duration) % 3600 / 60
+        
+        // Handle negative durations (shouldn't happen but just in case)
+        if duration < 0 {
+            return "N/A"
+        }
+        
+        return String(format: "%dH %02dM", hours, minutes)
+    }
+    
+    private func parseTimeString(_ timeString: String, date: Date) -> Date? {
+        let timeFormats = ["HH:mm", "H:mm", "h:mm a", "h:mm"]
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        
+        for format in timeFormats {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            if let timeDate = formatter.date(from: timeString) {
+                let timeComponents = calendar.dateComponents([.hour, .minute], from: timeDate)
+                
+                var combinedComponents = DateComponents()
+                combinedComponents.year = dateComponents.year
+                combinedComponents.month = dateComponents.month
+                combinedComponents.day = dateComponents.day
+                combinedComponents.hour = timeComponents.hour
+                combinedComponents.minute = timeComponents.minute
+                
+                return calendar.date(from: combinedComponents)
+            }
+        }
+        
+        return nil
+    }
+    
     // MARK: - Boarding Pass Handler
     
     @State private var scannedBoardingPassData: BoardingPassData?
+}
+
+// MARK: - Preview for the new Boarding Pass UI
+#Preview("Modern Boarding Pass UI") {
+    NavigationView {
+        SkyLineBottomBarView(
+            selectedDetent: .constant(.large)
+        )
+        .environmentObject(ThemeManager())
+        .environmentObject(FlightStore())
+        .environmentObject(AuthenticationService.shared)
+    }
+}
+
+#Preview("Boarding Pass Component Only") {
+    struct PreviewWrapper: View {
+        @StateObject private var themeManager = ThemeManager()
+        @StateObject private var flightStore = FlightStore()
+        
+        var body: some View {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                
+                SkyLineBottomBarView(selectedDetent: .constant(.large))
+                    .environmentObject(themeManager)
+                    .environmentObject(flightStore)
+                    .environmentObject(AuthenticationService.shared)
+            }
+        }
+    }
     
-    private func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
+    return PreviewWrapper()
+}
+
+private extension SkyLineBottomBarView {
+    func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
         print("🎫 Boarding pass scanned successfully")
         print("📄 Data: \(boardingPassData.summary)")
         print("🔍 Detailed BoardingPassData received in UI:")
@@ -504,41 +996,52 @@ struct SkyLineBottomBarView: View {
     }
     
     private func createFlightFromBoardingPass(_ data: BoardingPassData) async -> Flight {
-        // Use boarding pass date if available, otherwise use a future date (not current date)
-        let flightDate: Date
-        if let boardingPassDate = data.departureDate {
-            flightDate = boardingPassDate
+        // Extract departure and arrival dates separately
+        let departureDate: Date
+        if let boardingPassDepartureDate = data.departureDate {
+            departureDate = boardingPassDepartureDate
         } else {
-            // If no date from boarding pass, use tomorrow instead of today
-            flightDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            // If no departure date from boarding pass, use tomorrow instead of today
+            departureDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
         }
+        
+        let arrivalDate: Date
+        if let boardingPassArrivalDate = data.arrivalDate {
+            arrivalDate = boardingPassArrivalDate
+        } else {
+            // If no specific arrival date, assume same day as departure
+            arrivalDate = departureDate
+        }
+        
+        // Legacy flight date for backward compatibility
+        let flightDate = departureDate
         
         // Look up coordinates for departure airport (async with dynamic fetching)
         let (depName, depCity, _, depCoordinates) = await AirportService.shared.getAirportInfo(for: data.departureCode ?? "")
         let (arrName, arrCity, _, arrCoordinates) = await AirportService.shared.getAirportInfo(for: data.arrivalCode ?? "")
         
-        // Format departure time - combine date with time from boarding pass
+        // Format departure time - combine departure date with time from boarding pass
         let departureTimeString: String
         let departureDateTime: Date
         if let boardingPassTime = data.departureTime {
-            // Combine flight date with boarding pass time
-            departureDateTime = combineDateAndTime(date: flightDate, timeString: boardingPassTime) ?? flightDate
+            // Combine departure date with boarding pass time
+            departureDateTime = combineDateAndTime(date: departureDate, timeString: boardingPassTime) ?? departureDate
             departureTimeString = boardingPassTime // Keep the original time string for display
-            print("✈️ Using boarding pass departure time: \(boardingPassTime)")
+            print("✈️ Using boarding pass departure time: \(boardingPassTime) on date: \(departureDate)")
         } else {
             // Fallback to ISO format if no time available
-            departureDateTime = flightDate
-            departureTimeString = ISO8601DateFormatter().string(from: flightDate)
+            departureDateTime = departureDate
+            departureTimeString = ISO8601DateFormatter().string(from: departureDate)
         }
         
-        // Format arrival time - only use if extracted from boarding pass, otherwise N/A
+        // Format arrival time - combine arrival date with time from boarding pass
         let arrivalTimeString: String
         let arrivalDateTime: Date
         if let boardingPassArrivalTime = data.arrivalTime {
-            // Use the actual arrival time from boarding pass
-            arrivalDateTime = combineDateAndTime(date: flightDate, timeString: boardingPassArrivalTime) ?? flightDate.addingTimeInterval(7200)
+            // Combine arrival date with boarding pass time (this is the key fix!)
+            arrivalDateTime = combineDateAndTime(date: arrivalDate, timeString: boardingPassArrivalTime) ?? arrivalDate.addingTimeInterval(7200)
             arrivalTimeString = boardingPassArrivalTime
-            print("✈️ Using boarding pass arrival time: \(boardingPassArrivalTime)")
+            print("✈️ Using boarding pass arrival time: \(boardingPassArrivalTime) on date: \(arrivalDate)")
         } else {
             // No arrival time on boarding pass - show N/A
             arrivalDateTime = departureDateTime.addingTimeInterval(7200) // Still need a date for internal use
@@ -592,11 +1095,16 @@ struct SkyLineBottomBarView: View {
             flightDate: ISO8601DateFormatter().string(from: flightDate),
             dataSource: .pkpass,
             date: flightDate,
+            departureDate: departureDate,
+            arrivalDate: arrivalDate,
+            flightDuration: data.flightDuration,
             isUserConfirmed: true, // Boarding pass data is user-confirmed
             userConfirmedFields: UserConfirmedFields(
                 departureTime: data.departureTime != nil,
                 arrivalTime: data.arrivalTime != nil,
                 flightDate: data.departureDate != nil,
+                departureDate: data.departureDate != nil,
+                arrivalDate: data.arrivalDate != nil,
                 gate: data.gate != nil,
                 terminal: data.terminal != nil,
                 seat: data.seat != nil

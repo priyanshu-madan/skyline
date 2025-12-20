@@ -16,7 +16,6 @@
     "locale": "en_US_POSIX"
   },
   "businessRules": {
-    "maxFlightDurationHours": 24,
     "allowPastDatesHours": 24,
     "minFlightDurationMinutes": 30,
     "autoSuggestionEnabled": true,
@@ -53,7 +52,6 @@
       "gateInvalid": "Invalid format (e.g., A12, C3)",
       "terminalInvalid": "Invalid format (e.g., 1, T2, North)",
       "arrivalBeforeDeparture": "Arrival must be after departure",
-      "flightTooLong": "Flight duration seems unusually long",
       "departureTooOld": "Departure date seems too far in the past"
     },
     "hapticFeedbackEnabled": true

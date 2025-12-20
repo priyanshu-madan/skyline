@@ -186,6 +186,9 @@ class FlightStore: ObservableObject {
             flightDate: flight.userConfirmedFields.flightDate ? flight.flightDate : newData.flightDate,
             dataSource: flight.dataSource, // Keep original data source
             date: flight.userConfirmedFields.flightDate ? flight.date : newData.date,
+            departureDate: flight.userConfirmedFields.departureDate ? flight.departureDate : newData.departureDate,
+            arrivalDate: flight.userConfirmedFields.arrivalDate ? flight.arrivalDate : newData.arrivalDate,
+            flightDuration: newData.flightDuration ?? flight.flightDuration,
             isUserConfirmed: flight.isUserConfirmed,
             userConfirmedFields: flight.userConfirmedFields
         )
@@ -287,6 +290,9 @@ class FlightStore: ObservableObject {
                 flightDate: flight.flightDate,
                 dataSource: flight.dataSource,
                 date: flight.date,
+                departureDate: flight.departureDate,
+                arrivalDate: flight.arrivalDate,
+                flightDuration: flight.flightDuration,
                 isUserConfirmed: flight.isUserConfirmed,
                 userConfirmedFields: flight.userConfirmedFields
             )
@@ -391,6 +397,9 @@ class FlightStore: ObservableObject {
                         flightDate: flight.flightDate,
                         dataSource: flight.dataSource,
                         date: properDate,
+                        departureDate: flight.departureDate,
+                        arrivalDate: flight.arrivalDate,
+                        flightDuration: flight.flightDuration,
                         isUserConfirmed: flight.isUserConfirmed,
                         userConfirmedFields: flight.userConfirmedFields
                     )
@@ -478,6 +487,9 @@ class FlightStore: ObservableObject {
                     flightDate: flight.flightDate,
                     dataSource: flight.dataSource,
                     date: flight.date,
+                    departureDate: flight.departureDate,
+                    arrivalDate: flight.arrivalDate,
+                    flightDuration: flight.flightDuration,
                     isUserConfirmed: flight.isUserConfirmed,
                     userConfirmedFields: flight.userConfirmedFields
                 )
@@ -940,6 +952,9 @@ class FlightStore: ObservableObject {
                             flightDate: updatedFlight.flightDate,
                             dataSource: updatedFlight.dataSource,
                             date: flight.date,
+                            departureDate: flight.departureDate,
+                            arrivalDate: flight.arrivalDate,
+                            flightDuration: flight.flightDuration,
                             isUserConfirmed: flight.isUserConfirmed,
                             userConfirmedFields: flight.userConfirmedFields
                         )
@@ -1003,6 +1018,9 @@ class FlightStore: ObservableObject {
                 flightDate: ISO8601DateFormatter().string(from: Date()),
                 dataSource: .aviationstack,
                 date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600))),
+                departureDate: nil,
+                arrivalDate: nil,
+                flightDuration: nil,
                 isUserConfirmed: false,
                 userConfirmedFields: .none
             )

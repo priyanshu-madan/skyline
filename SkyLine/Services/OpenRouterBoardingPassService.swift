@@ -160,12 +160,17 @@ struct OpenRouterBoardingPassData: Codable {
     let arrivalTime: String?
     let flightDate: String?
     let flightDateRaw: String?
+    let departureDate: String?
+    let arrivalDate: String?
+    let departureDateRaw: String?
+    let arrivalDateRaw: String?
     let seat: String?
     let gate: String?
     let terminal: String?
     let ticketNumber: String?
     let confirmationCode: String?
     let boardingTime: String?
+    let flightDuration: String?
     let errors: [String]?
     let extractedText: String?
 }
@@ -351,12 +356,17 @@ class OpenRouterBoardingPassService: ObservableObject {
           "arrivalTime": string | null,
           "flightDate": string | null,
           "flightDateRaw": string | null,
+          "departureDate": string | null,
+          "arrivalDate": string | null,
+          "departureDateRaw": string | null,
+          "arrivalDateRaw": string | null,
           "seat": string | null,
           "gate": string | null,
           "terminal": string | null,
           "ticketNumber": string | null,
           "confirmationCode": string | null,
           "boardingTime": string | null,
+          "flightDuration": string | null,
           "errors": string[],
           "extractedText": string
         }
@@ -377,41 +387,69 @@ class OpenRouterBoardingPassService: ObservableObject {
         7. Use 3-letter IATA codes ONLY if explicitly printed.
         8. If only a city or airport name is shown, set airport fields to null.
 
-        DATES
-        9. flightDate: Convert to YYYY-MM-DD ONLY if day, month, and year are explicitly present.
-        10. flightDateRaw: Include the exact date text as it appears on the boarding pass.
-        11. If year is missing in flightDate, set to null and preserve original in flightDateRaw.
+        DATES (INTELLIGENT CALCULATION REQUIRED)
+        9. departureDate: Convert to YYYY-MM-DD ONLY if day, month, and year are explicitly present.
+        10. arrivalDate: Use your intelligence to calculate the correct arrival date:
+            - If both departure and arrival dates are shown, extract both separately
+            - If only one date is visible, calculate arrival date using your knowledge of:
+              * Airport timezones (LAX=PST/PDT, JFK=EST/EDT, NRT=JST, etc.)
+              * Typical flight durations between airports
+              * International date line crossings
+              * Time zone differences
+            - Examples:
+              * LAX 11:30 PM → JFK 7:30 AM: arrival date = departure date + 1 day
+              * SFO 2:00 PM → NRT 4:30 PM: arrival date = departure date + 1 day (crosses date line)
+              * JFK 9:00 AM → LAX 12:30 PM: arrival date = same as departure date (timezone compensation)
+        11. departureDateRaw: Include the exact departure date text as it appears on the boarding pass.
+        12. arrivalDateRaw: Include the exact arrival date text if shown separately.
+        13. flightDate: Convert to YYYY-MM-DD ONLY if day, month, and year are explicitly present (legacy field).
+        14. flightDateRaw: Include the exact date text as it appears on the boarding pass (legacy field).
+        15. If uncertain about arrival date calculation, set arrivalDate to null rather than guessing.
+        16. PRIORITY: Use departureDate/arrivalDate over legacy flightDate when possible.
 
         TIMES
-        12. Convert times to 24-hour HH:mm format ONLY if clearly readable.
-        13. Examples:
+        17. Convert times to 24-hour HH:mm format ONLY if clearly readable.
+        18. Examples:
             - "2:30 PM" → "14:30"
             - "1425" → "14:25"
-        14. If uncertain, set time fields to null.
+        19. If uncertain, set time fields to null.
+        
+        FLIGHT DURATION (INTELLIGENT CALCULATION REQUIRED)
+        20. flightDuration: Calculate the actual flight duration using your intelligence:
+            - Use your knowledge of airport timezones and flight routes
+            - Consider time zone differences between departure and arrival airports
+            - Account for international date line crossings
+            - Format as "XH YYM" (e.g., "5H 25M", "12H 45M", "1H 05M")
+            - Examples:
+              * LAX 11:30 PM Dec 23 → JFK 7:30 AM Dec 24: duration = "5H 00M" (PST to EST)
+              * SFO 2:00 PM Dec 23 → NRT 4:30 PM Dec 24: duration = "11H 30M" (crosses date line)
+              * JFK 9:00 AM Dec 23 → LAX 12:30 PM Dec 23: duration = "6H 30M" (EST to PST)
+            - If you cannot accurately calculate duration, set to null
+            - ONLY calculate if you have both departure and arrival times
 
         FLIGHT
-        15. Extract flight number exactly (e.g., WY0153, AA123).
-        16. Extract airline name ONLY if explicitly printed.
+        21. Extract flight number exactly (e.g., WY0153, AA123).
+        22. Extract airline name ONLY if explicitly printed.
 
         SEAT / GATE / TERMINAL
-        17. Extract only if clearly labeled (SEAT, GATE, TERMINAL).
-        18. If multiple values exist, choose the most clearly labeled one.
+        23. Extract only if clearly labeled (SEAT, GATE, TERMINAL).
+        24. If multiple values exist, choose the most clearly labeled one.
 
         TICKET / CONFIRMATION
-        19. ticketNumber: Extract ticket number if labeled as:
+        25. ticketNumber: Extract ticket number if labeled as:
             - Ticket No
             - Ticket Number
             - E-Ticket
-        20. confirmationCode: Extract confirmation code if labeled as:
+        26. confirmationCode: Extract confirmation code if labeled as:
             - PNR
             - Booking Ref
             - Record Locator
             - Confirmation
-        21. Extract ONLY if explicitly visible and clearly labeled.
+        27. Extract ONLY if explicitly visible and clearly labeled.
 
         DEBUGGING
-        22. extractedText should include ONLY relevant flight-related text.
-        23. Do NOT dump all OCR text.
+        28. extractedText should include ONLY relevant flight-related text.
+        29. Do NOT dump all OCR text.
 
         CONFIDENCE SCORING (MANDATORY):
 
@@ -421,8 +459,9 @@ class OpenRouterBoardingPassService: ObservableObject {
         +0.1 if passengerName is present
         +0.1 if departureAirport is present
         +0.1 if arrivalAirport is present
-        +0.1 if flightDate is present
+        +0.1 if departureDate OR flightDate is present
         +0.1 if departureTime is present
+        +0.1 if flightDuration is successfully calculated
         Cap at 1.0
         """
         
@@ -528,14 +567,16 @@ class OpenRouterBoardingPassService: ObservableObject {
             print("   👤 Passenger: \(boardingPassData.passengerName ?? "N/A")")
             print("   🛫 Departure: \(boardingPassData.departureAirport ?? "N/A") at \(boardingPassData.departureTime ?? "N/A")")
             print("   🛬 Arrival: \(boardingPassData.arrivalAirport ?? "N/A") at \(boardingPassData.arrivalTime ?? "N/A")")
-            print("   📅 Flight Date: '\(boardingPassData.flightDate ?? "N/A")'")
-            print("   📅 Flight Date Raw: '\(boardingPassData.flightDateRaw ?? "N/A")'")
+            print("   📅 Departure Date: '\(boardingPassData.departureDate ?? "N/A")' (Raw: '\(boardingPassData.departureDateRaw ?? "N/A")')")
+            print("   📅 Arrival Date: '\(boardingPassData.arrivalDate ?? "N/A")' (Raw: '\(boardingPassData.arrivalDateRaw ?? "N/A")')")
+            print("   📅 Legacy Flight Date: '\(boardingPassData.flightDate ?? "N/A")' (Raw: '\(boardingPassData.flightDateRaw ?? "N/A")')")
             print("   💺 Seat: \(boardingPassData.seat ?? "N/A")")
             print("   🚪 Gate: \(boardingPassData.gate ?? "N/A")")
             print("   🏢 Terminal: \(boardingPassData.terminal ?? "N/A")")
             print("   🎟️ Ticket Number: \(boardingPassData.ticketNumber ?? "N/A")")
             print("   🎫 Confirmation: \(boardingPassData.confirmationCode ?? "N/A")")
             print("   🕐 Boarding: \(boardingPassData.boardingTime ?? "N/A")")
+            print("   ⏱️ Flight Duration: \(boardingPassData.flightDuration ?? "N/A")")
             if let errors = boardingPassData.errors, !errors.isEmpty {
                 print("   ⚠️  Errors: \(errors.joined(separator: ", "))")
             }
@@ -572,99 +613,125 @@ class OpenRouterBoardingPassService: ObservableObject {
         boardingPassData.seat = data.seat
         boardingPassData.confirmationCode = data.confirmationCode
         boardingPassData.passengerName = data.passengerName
+        boardingPassData.flightDuration = data.flightDuration
         
-        // Parse date if provided - try multiple formats
-        // First try the processed flightDate, then fall back to flightDateRaw
-        var dateStringToUse: String?
-        var dateSource = ""
+        // Parse departure and arrival dates separately
+        // Priority: departureDate/arrivalDate over legacy flightDate
         
-        if let flightDate = data.flightDate, !flightDate.isEmpty && flightDate != "N/A" {
-            dateStringToUse = flightDate
-            dateSource = "flightDate"
-        } else if let flightDateRaw = data.flightDateRaw, !flightDateRaw.isEmpty && flightDateRaw != "N/A" {
-            dateStringToUse = flightDateRaw
-            dateSource = "flightDateRaw"
+        // Parse departure date
+        if let departureDate = parseDateString(data.departureDate, fallback: data.departureDateRaw, source: "departure") {
+            boardingPassData.departureDate = departureDate
+            print("📅 OpenRouter: Set departure date: \(departureDate)")
+        } else if let legacyDate = parseDateString(data.flightDate, fallback: data.flightDateRaw, source: "legacy flight") {
+            boardingPassData.departureDate = legacyDate
+            print("📅 OpenRouter: Set departure date from legacy field: \(legacyDate)")
+        } else {
+            print("⚠️ OpenRouter: No departure date available to parse")
         }
         
-        if let dateString = dateStringToUse {
-            print("🗓️ OpenRouter: Attempting to parse date string: '\(dateString)' from \(dateSource)")
-            
-            var parsedDate: Date?
-            
-            // Try ISO8601 first
-            let iso8601Formatter = ISO8601DateFormatter()
-            parsedDate = iso8601Formatter.date(from: dateString)
-            
-            if parsedDate != nil {
-                print("✅ OpenRouter: Successfully parsed date with ISO8601 format")
-            } else {
-                // Try common date formats including boarding pass specific formats
-                let dateFormats = [
-                    "yyyy-MM-dd",
-                    "MM/dd/yyyy",
-                    "dd/MM/yyyy", 
-                    "MMM dd, yyyy",
-                    "dd MMM yyyy",
-                    "MMMM dd, yyyy",
-                    "yyyy/MM/dd",
-                    "dd-MM-yyyy",
-                    "MM-dd-yyyy",
-                    "ddMMM",        // 08APR
-                    "ddMMMM",       // 08APRIL
-                    "MMM dd",       // APR 08
-                    "MMMM dd",      // APRIL 08
-                    "dd-MMM",       // 08-APR
-                    "dd MMM",       // 08 APR
-                    "MMM-dd",       // APR-08
-                    "MMMdd",        // APR08
-                    "dd/MMM",       // 08/APR
-                    "MMM/dd"        // APR/08
-                ]
-                
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "en_US_POSIX")
-                
-                for format in dateFormats {
-                    formatter.dateFormat = format
-                    if let date = formatter.date(from: dateString) {
-                        parsedDate = date
-                        print("✅ OpenRouter: Successfully parsed date with format: \(format)")
-                        break
-                    }
-                }
-                
-                // If we still don't have a date and the string looks like it might need a year
-                if parsedDate == nil && (dateString.contains("APR") || dateString.contains("JAN") || dateString.contains("FEB") || 
-                                       dateString.contains("MAR") || dateString.contains("MAY") || dateString.contains("JUN") ||
-                                       dateString.contains("JUL") || dateString.contains("AUG") || dateString.contains("SEP") ||
-                                       dateString.contains("OCT") || dateString.contains("NOV") || dateString.contains("DEC")) {
-                    // Try adding current year for partial dates like "08APR"
-                    let currentYear = Calendar.current.component(.year, from: Date())
-                    let dateStringWithYear = "\(dateString)\(currentYear)"
-                    
-                    let yearFormats = ["ddMMMMyyyy", "MMMddyyyy"]
-                    for format in yearFormats {
-                        formatter.dateFormat = format
-                        if let date = formatter.date(from: dateStringWithYear) {
-                            parsedDate = date
-                            print("✅ OpenRouter: Successfully parsed date with year added: \(format)")
-                            break
-                        }
-                    }
-                }
-            }
-            
-            if let date = parsedDate {
-                boardingPassData.departureDate = date
-                print("📅 OpenRouter: Set departure date: \(date)")
-            } else {
-                print("❌ OpenRouter: Failed to parse date string: '\(dateString)' from \(dateSource) - tried all formats")
-            }
+        // Parse arrival date (use intelligent calculation from OpenRouter)
+        if let arrivalDate = parseDateString(data.arrivalDate, fallback: data.arrivalDateRaw, source: "arrival") {
+            boardingPassData.arrivalDate = arrivalDate
+            print("📅 OpenRouter: Set arrival date: \(arrivalDate)")
+        } else if let departureDate = boardingPassData.departureDate {
+            // Fallback: use departure date if arrival date couldn't be calculated
+            boardingPassData.arrivalDate = departureDate
+            print("📅 OpenRouter: Using departure date as fallback for arrival date")
         } else {
-            print("⚠️ OpenRouter: No date string available to parse")
+            print("⚠️ OpenRouter: No arrival date available to parse")
         }
         
         return boardingPassData
+    }
+    
+    private func parseDateString(_ primary: String?, fallback: String?, source: String) -> Date? {
+        var dateStringToUse: String?
+        var dateSource = ""
+        
+        if let primaryDate = primary, !primaryDate.isEmpty && primaryDate != "N/A" {
+            dateStringToUse = primaryDate
+            dateSource = "\(source) (primary)"
+        } else if let fallbackDate = fallback, !fallbackDate.isEmpty && fallbackDate != "N/A" {
+            dateStringToUse = fallbackDate
+            dateSource = "\(source) (fallback)"
+        }
+        
+        guard let dateString = dateStringToUse else {
+            return nil
+        }
+        
+        print("🗓️ OpenRouter: Attempting to parse \(source) date string: '\(dateString)' from \(dateSource)")
+        
+        var parsedDate: Date?
+        
+        // Try ISO8601 first
+        let iso8601Formatter = ISO8601DateFormatter()
+        parsedDate = iso8601Formatter.date(from: dateString)
+        
+        if parsedDate != nil {
+            print("✅ OpenRouter: Successfully parsed \(source) date with ISO8601 format")
+        } else {
+            // Try common date formats including boarding pass specific formats
+            let dateFormats = [
+                "yyyy-MM-dd",
+                "MM/dd/yyyy",
+                "dd/MM/yyyy", 
+                "MMM dd, yyyy",
+                "dd MMM yyyy",
+                "MMMM dd, yyyy",
+                "yyyy/MM/dd",
+                "dd-MM-yyyy",
+                "MM-dd-yyyy",
+                "ddMMM",        // 08APR
+                "ddMMMM",       // 08APRIL
+                "MMM dd",       // APR 08
+                "MMMM dd",      // APRIL 08
+                "dd-MMM",       // 08-APR
+                "dd MMM",       // 08 APR
+                "MMM-dd",       // APR-08
+                "MMMdd",        // APR08
+                "dd/MMM",       // 08/APR
+                "MMM/dd"        // APR/08
+            ]
+            
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            
+            for format in dateFormats {
+                formatter.dateFormat = format
+                if let date = formatter.date(from: dateString) {
+                    parsedDate = date
+                    print("✅ OpenRouter: Successfully parsed \(source) date with format: \(format)")
+                    break
+                }
+            }
+            
+            // If we still don't have a date and the string looks like it might need a year
+            if parsedDate == nil && (dateString.contains("APR") || dateString.contains("JAN") || dateString.contains("FEB") || 
+                                   dateString.contains("MAR") || dateString.contains("MAY") || dateString.contains("JUN") ||
+                                   dateString.contains("JUL") || dateString.contains("AUG") || dateString.contains("SEP") ||
+                                   dateString.contains("OCT") || dateString.contains("NOV") || dateString.contains("DEC")) {
+                // Try adding current year for partial dates like "08APR"
+                let currentYear = Calendar.current.component(.year, from: Date())
+                let dateStringWithYear = "\(dateString)\(currentYear)"
+                
+                let yearFormats = ["ddMMMMyyyy", "MMMddyyyy"]
+                for format in yearFormats {
+                    formatter.dateFormat = format
+                    if let date = formatter.date(from: dateStringWithYear) {
+                        parsedDate = date
+                        print("✅ OpenRouter: Successfully parsed \(source) date with year added: \(format)")
+                        break
+                    }
+                }
+            }
+        }
+        
+        if parsedDate == nil {
+            print("❌ OpenRouter: Failed to parse \(source) date string: '\(dateString)' from \(dateSource) - tried all formats")
+        }
+        
+        return parsedDate
     }
 }
 

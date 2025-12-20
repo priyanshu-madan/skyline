@@ -83,20 +83,17 @@ struct TimeFormats: Codable {
 // MARK: - Business Rules
 
 struct BusinessRules: Codable {
-    let maxFlightDurationHours: Int
     let allowPastDatesHours: Int
     let minFlightDurationMinutes: Int
     let autoSuggestionEnabled: Bool
     let realTimeValidationEnabled: Bool
     
     init(
-        maxFlightDurationHours: Int = 24,
         allowPastDatesHours: Int = 24,
         minFlightDurationMinutes: Int = 30,
         autoSuggestionEnabled: Bool = true,
         realTimeValidationEnabled: Bool = true
     ) {
-        self.maxFlightDurationHours = maxFlightDurationHours
         self.allowPastDatesHours = allowPastDatesHours
         self.minFlightDurationMinutes = minFlightDurationMinutes
         self.autoSuggestionEnabled = autoSuggestionEnabled
@@ -197,7 +194,6 @@ struct ErrorMessages: Codable {
     let gateInvalid: String
     let terminalInvalid: String
     let arrivalBeforeDeparture: String
-    let flightTooLong: String
     let departureTooOld: String
     
     init(
@@ -210,7 +206,6 @@ struct ErrorMessages: Codable {
         gateInvalid: String = "Invalid format (e.g., A12, C3)",
         terminalInvalid: String = "Invalid format (e.g., 1, T2, North)",
         arrivalBeforeDeparture: String = "Arrival must be after departure",
-        flightTooLong: String = "Flight duration seems unusually long",
         departureTooOld: String = "Departure date seems too far in the past"
     ) {
         self.flightNumberInvalid = flightNumberInvalid
@@ -222,7 +217,6 @@ struct ErrorMessages: Codable {
         self.gateInvalid = gateInvalid
         self.terminalInvalid = terminalInvalid
         self.arrivalBeforeDeparture = arrivalBeforeDeparture
-        self.flightTooLong = flightTooLong
         self.departureTooOld = departureTooOld
     }
 }
