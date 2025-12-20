@@ -2,7 +2,7 @@
 //  FlightDetailView.swift
 //  SkyLine
 //
-//  Detailed flight information view
+//  Modern flight details view inspired by Builder.io design
 //
 
 import SwiftUI
@@ -13,51 +13,39 @@ struct FlightDetailView: View {
     let theme: ThemeManager
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var flightStore: FlightStore
-    @State private var region = MKCoordinateRegion()
     @State private var showingDeleteAlert = false
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header Section
-                    headerSection
+                    // Header with flight number and aircraft
+                    modernHeaderSection
                     
-                    // Route Map Section
-                    if let depCoord = flight.departure.coordinate,
-                       let arrCoord = flight.arrival.coordinate {
-                        mapSection(departure: depCoord, arrival: arrCoord)
-                    }
+                    // Flight metrics grid
+                    flightMetricsSection
                     
-                    // Flight Information
-                    flightInfoSection
+                    // Route visualization
+                    routeSection
                     
-                    // Aircraft Information
-                    if let aircraft = flight.aircraft {
-                        aircraftInfoSection(aircraft)
-                    }
+                    // Flight status card
+                    statusCard
                     
-                    // Current Position (if available)
-                    if let position = flight.currentPosition {
-                        currentPositionSection(position)
-                    }
-                    
-                    // Actions Section
+                    // Actions section
                     actionsSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
             }
-            .navigationTitle("Flight Details")
-            .navigationBarTitleDisplayMode(.inline)
             .background(theme.currentTheme.colors.background)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Back") {
                         dismiss()
                     }
                     .foregroundColor(theme.currentTheme.colors.primary)
-                    .font(AppTypography.bodyBold)
                 }
             }
         }
@@ -72,336 +60,409 @@ struct FlightDetailView: View {
         } message: {
             Text("Are you sure you want to delete this flight from your saved flights?")
         }
-        .onAppear {
-            setupMapRegion()
-        }
     }
     
-    private var headerSection: some View {
+    // MARK: - Modern Header Section
+    
+    private var modernHeaderSection: some View {
         VStack(spacing: 16) {
-            // Flight Number and Airline
-            VStack(spacing: 8) {
-                Text(flight.flightNumber)
-                    .font(.system(size: 32, weight: .bold, design: .monospaced))
-                    .foregroundColor(theme.currentTheme.colors.text)
-                
-                if let airline = flight.airline {
-                    Text(airline)
-                        .font(AppTypography.headline)
-                        .foregroundColor(theme.currentTheme.colors.textSecondary)
-                }
-            }
-            
-            // Status Badge
-            StatusBadgeView(status: flight.status, theme: theme)
-                .scaleEffect(1.2)
-        }
-        .padding(24)
-        .background(theme.currentTheme.colors.surface)
-        .cornerRadius(AppRadius.lg)
-    }
-    
-    private func mapSection(departure: CLLocationCoordinate2D, arrival: CLLocationCoordinate2D) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Route")
-                .font(AppTypography.headline)
-                .foregroundColor(theme.currentTheme.colors.text)
-            
-            Map(coordinateRegion: $region, annotationItems: mapAnnotations) { annotation in
-                MapPin(coordinate: annotation.coordinate, tint: annotation.color)
-            }
-            .frame(height: 200)
-            .cornerRadius(AppRadius.lg)
-            .disabled(true) // Make map non-interactive
-        }
-        .padding(20)
-        .background(theme.currentTheme.colors.surface)
-        .cornerRadius(AppRadius.lg)
-    }
-    
-    private var flightInfoSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Flight Information")
-                .font(AppTypography.headline)
-                .foregroundColor(theme.currentTheme.colors.text)
-            
-            VStack(spacing: 16) {
-                // Departure Info
-                airportInfoView(
-                    title: "Departure",
-                    airport: flight.departure,
-                    isArrival: false
-                )
-                
-                Divider()
-                    .background(theme.currentTheme.colors.border)
-                
-                // Arrival Info
-                airportInfoView(
-                    title: "Arrival",
-                    airport: flight.arrival,
-                    isArrival: true
-                )
-            }
-        }
-        .padding(20)
-        .background(theme.currentTheme.colors.surface)
-        .cornerRadius(AppRadius.lg)
-    }
-    
-    private func airportInfoView(title: String, airport: Airport, isArrival: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(AppTypography.captionBold)
-                .foregroundColor(theme.currentTheme.colors.textSecondary)
-                .textCase(.uppercase)
-            
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(airport.code)
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                    Text("Flight Details")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundColor(theme.currentTheme.colors.text)
                     
-                    Text(airport.airport)
-                        .font(AppTypography.body)
-                        .foregroundColor(theme.currentTheme.colors.textSecondary)
-                        .lineLimit(2)
-                    
-                    Text(airport.city)
-                        .font(AppTypography.caption)
-                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                    if let aircraft = flight.aircraft?.type {
+                        Text(aircraft)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(theme.currentTheme.colors.textSecondary)
+                    } else {
+                        Text("Aircraft Information")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(theme.currentTheme.colors.textSecondary)
+                    }
                 }
                 
                 Spacer()
                 
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(airport.displayTime)
-                        .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                // Airplane icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(theme.currentTheme.colors.primary.opacity(0.1))
+                        .frame(width: 48, height: 48)
+                    
+                    Image(systemName: "airplane")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundColor(theme.currentTheme.colors.primary)
+                }
+            }
+        }
+        .padding(24)
+        .background(theme.currentTheme.colors.surface)
+        .cornerRadius(24)
+        .shadow(color: theme.currentTheme.colors.border.opacity(0.1), radius: 20, x: 0, y: 8)
+    }
+    
+    // MARK: - Flight Metrics Section
+    
+    private var flightMetricsSection: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 2), spacing: 16) {
+            // Speed
+            MetricCard(
+                icon: "speedometer",
+                title: "SPEED",
+                value: speedValue,
+                unit: speedUnit,
+                theme: theme
+            )
+            
+            // Altitude
+            MetricCard(
+                icon: "arrow.up.circle",
+                title: "ALTITUDE",
+                value: altitudeValue,
+                unit: altitudeUnit,
+                theme: theme
+            )
+            
+            // Status
+            MetricCard(
+                icon: "info.circle",
+                title: "STATUS",
+                value: flight.status.displayName,
+                unit: "",
+                theme: theme
+            )
+            
+            // Progress
+            MetricCard(
+                icon: "chart.line.uptrend.xyaxis",
+                title: "PROGRESS",
+                value: progressValue,
+                unit: "%",
+                theme: theme
+            )
+        }
+    }
+    
+    // MARK: - Route Section
+    
+    private var routeSection: some View {
+        VStack(spacing: 24) {
+            // Route visualization
+            HStack {
+                // Departure
+                VStack(spacing: 4) {
+                    Text(flight.departure.code)
+                        .font(.system(size: 32, weight: .black, design: .rounded))
                         .foregroundColor(theme.currentTheme.colors.text)
                     
-                    if let date = flight.flightDate {
-                        Text(formatFlightDate(date))
-                            .font(AppTypography.caption)
-                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                    }
-                    
-                    if airport.hasDelay {
-                        Text(airport.delayText)
-                            .font(AppTypography.captionBold)
-                            .foregroundColor(theme.currentTheme.colors.error)
-                    }
-                }
-            }
-            
-            // Terminal and Gate info
-            if let terminal = airport.terminal, let gate = airport.gate {
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Terminal")
-                            .font(AppTypography.caption)
-                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                        Text(terminal)
-                            .font(AppTypography.bodyBold)
-                            .foregroundColor(theme.currentTheme.colors.text)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Gate")
-                            .font(AppTypography.caption)
-                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                        Text(gate)
-                            .font(AppTypography.bodyBold)
-                            .foregroundColor(theme.currentTheme.colors.text)
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.top, 8)
-            }
-        }
-    }
-    
-    private func aircraftInfoSection(_ aircraft: Aircraft) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Aircraft Information")
-                .font(AppTypography.headline)
-                .foregroundColor(theme.currentTheme.colors.text)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                if let type = aircraft.type, !type.isEmpty {
-                    infoRow(label: "Aircraft Type", value: type)
+                    Text(flight.departure.city)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                        .textCase(.uppercase)
                 }
                 
-                if let registration = aircraft.registration, !registration.isEmpty {
-                    infoRow(label: "Registration", value: registration)
-                }
+                Spacer()
                 
-                if let icao24 = aircraft.icao24, !icao24.isEmpty {
-                    infoRow(label: "ICAO24", value: icao24)
-                }
-            }
-        }
-        .padding(20)
-        .background(theme.currentTheme.colors.surface)
-        .cornerRadius(AppRadius.lg)
-    }
-    
-    private func currentPositionSection(_ position: FlightPosition) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Current Position")
-                .font(AppTypography.headline)
-                .foregroundColor(theme.currentTheme.colors.text)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 8) {
-                        infoRow(label: "Altitude", value: position.altitudeInFeet)
-                        infoRow(label: "Speed", value: position.speedInKnots)
-                    }
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .trailing, spacing: 8) {
-                        infoRow(label: "Heading", value: "\(Int(position.heading))°", alignment: .trailing)
+                // Flight path
+                VStack(spacing: 8) {
+                    ZStack {
+                        // Progress line background
+                        Rectangle()
+                            .fill(theme.currentTheme.colors.border)
+                            .frame(height: 2)
                         
-                        if let isGround = position.isGround {
-                            infoRow(
-                                label: "Status", 
-                                value: isGround ? "On Ground" : "In Air",
-                                alignment: .trailing
-                            )
+                        // Progress line fill
+                        HStack {
+                            Rectangle()
+                                .fill(theme.currentTheme.colors.primary)
+                                .frame(width: progressLineWidth, height: 2)
+                            Spacer()
+                        }
+                        
+                        // Airplane icon on the line
+                        HStack {
+                            Spacer()
+                            ZStack {
+                                Circle()
+                                    .fill(theme.currentTheme.colors.surface)
+                                    .frame(width: 24, height: 24)
+                                
+                                Image(systemName: "airplane")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(theme.currentTheme.colors.primary)
+                                    .rotationEffect(.degrees(90))
+                            }
+                            .offset(x: progressOffset)
+                            Spacer()
                         }
                     }
+                    .frame(height: 24)
+                    
+                    Text(statusText)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.primary)
+                        .textCase(.uppercase)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
                 
-                if let lastUpdate = position.lastUpdate {
-                    Text("Last updated: \(formatLastUpdate(lastUpdate))")
-                        .font(AppTypography.caption)
+                Spacer()
+                
+                // Arrival
+                VStack(spacing: 4) {
+                    Text(flight.arrival.code)
+                        .font(.system(size: 32, weight: .black, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.text)
+                    
+                    Text(flight.arrival.city)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundColor(theme.currentTheme.colors.textSecondary)
-                        .padding(.top, 8)
+                        .textCase(.uppercase)
                 }
             }
         }
-        .padding(20)
+        .padding(24)
         .background(theme.currentTheme.colors.surface)
-        .cornerRadius(AppRadius.lg)
+        .cornerRadius(24)
+        .shadow(color: theme.currentTheme.colors.border.opacity(0.1), radius: 20, x: 0, y: 8)
     }
     
-    private var actionsSection: some View {
+    // MARK: - Status Card
+    
+    private var statusCard: some View {
         VStack(spacing: 12) {
+            HStack {
+                Text("Flight Information")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundColor(theme.currentTheme.colors.textSecondary)
+                
+                Spacer()
+                
+                Text(flight.departure.displayTime)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(theme.currentTheme.colors.text)
+            }
+            
+            HStack {
+                Text("Estimated Arrival")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundColor(theme.currentTheme.colors.textSecondary)
+                
+                Spacer()
+                
+                Text(flight.arrival.displayTime)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(theme.currentTheme.colors.text)
+            }
+            
+            if let gate = flight.arrival.gate {
+                HStack {
+                    Text("Gate")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                    
+                    Spacer()
+                    
+                    Text(gate)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.text)
+                }
+            }
+            
+            if let terminal = flight.arrival.terminal {
+                HStack {
+                    Text("Terminal")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                    
+                    Spacer()
+                    
+                    Text(terminal)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.text)
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    theme.currentTheme.colors.primary.opacity(0.05),
+                    theme.currentTheme.colors.primary.opacity(0.02)
+                ]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
+        )
+        .cornerRadius(16)
+    }
+    
+    // MARK: - Actions Section
+    
+    private var actionsSection: some View {
+        VStack(spacing: 16) {
+            // Track Live Flight Button
+            Button(action: {
+                // TODO: Implement live tracking
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "location")
+                        .font(.system(size: 16, weight: .semibold))
+                    
+                    Text("Track Live Flight")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            theme.currentTheme.colors.primary,
+                            theme.currentTheme.colors.primary.opacity(0.8)
+                        ]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .cornerRadius(16)
+                .shadow(color: theme.currentTheme.colors.primary.opacity(0.3), radius: 20, x: 0, y: 8)
+            }
+            
+            // Delete Flight Button
             Button(action: {
                 showingDeleteAlert = true
             }) {
                 HStack(spacing: 12) {
                     Image(systemName: "trash")
+                        .font(.system(size: 16, weight: .semibold))
+                    
                     Text("Remove Flight")
-                        .font(AppTypography.bodyBold)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
                 }
-                .foregroundColor(.white)
+                .foregroundColor(theme.currentTheme.colors.error)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(theme.currentTheme.colors.error)
-                .cornerRadius(AppRadius.md)
+                .frame(height: 56)
+                .background(theme.currentTheme.colors.error.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(theme.currentTheme.colors.error.opacity(0.3), lineWidth: 1)
+                )
+                .cornerRadius(16)
             }
         }
-        .padding(20)
-        .background(theme.currentTheme.colors.surface)
-        .cornerRadius(AppRadius.lg)
     }
     
-    private func infoRow(label: String, value: String, alignment: HorizontalAlignment = .leading) -> some View {
-        VStack(alignment: alignment, spacing: 2) {
-            Text(label)
-                .font(AppTypography.caption)
-                .foregroundColor(theme.currentTheme.colors.textSecondary)
-            Text(value)
-                .font(AppTypography.bodyBold)
-                .foregroundColor(theme.currentTheme.colors.text)
+    // MARK: - Computed Properties
+    
+    private var speedValue: String {
+        if let position = flight.currentPosition {
+            return String(format: "%.0f", position.speed)
         }
+        return "N/A"
     }
     
-    // MARK: - Helper Functions
-    
-    private var mapAnnotations: [MapAnnotation] -> {
-        var annotations: [MapAnnotation] = []
-        
-        if let depCoord = flight.departure.coordinate {
-            annotations.append(MapAnnotation(
-                id: "departure",
-                coordinate: depCoord,
-                title: flight.departure.code,
-                color: .blue
-            ))
-        }
-        
-        if let arrCoord = flight.arrival.coordinate {
-            annotations.append(MapAnnotation(
-                id: "arrival",
-                coordinate: arrCoord,
-                title: flight.arrival.code,
-                color: .green
-            ))
-        }
-        
-        if let currentPos = flight.currentPosition {
-            annotations.append(MapAnnotation(
-                id: "current",
-                coordinate: currentPos.coordinate,
-                title: "Current Position",
-                color: .red
-            ))
-        }
-        
-        return annotations
+    private var speedUnit: String {
+        return flight.currentPosition != nil ? "km/h" : ""
     }
     
-    private func setupMapRegion() {
-        guard let depCoord = flight.departure.coordinate,
-              let arrCoord = flight.arrival.coordinate else { return }
-        
-        let centerLat = (depCoord.latitude + arrCoord.latitude) / 2
-        let centerLon = (depCoord.longitude + arrCoord.longitude) / 2
-        
-        let latDelta = abs(depCoord.latitude - arrCoord.latitude) * 1.5
-        let lonDelta = abs(depCoord.longitude - arrCoord.longitude) * 1.5
-        
-        region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
-            span: MKCoordinateSpan(
-                latitudeDelta: max(latDelta, 0.1),
-                longitudeDelta: max(lonDelta, 0.1)
-            )
-        )
+    private var altitudeValue: String {
+        if let position = flight.currentPosition {
+            let feet = Int(position.altitude * 3.28084)
+            return feet.formatted()
+        }
+        return "N/A"
     }
     
-    private func formatFlightDate(_ dateString: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: dateString) else {
-            return dateString
-        }
-        
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
-        return formatter.string(from: date)
+    private var altitudeUnit: String {
+        return flight.currentPosition != nil ? "ft" : ""
     }
     
-    private func formatLastUpdate(_ updateString: String) -> String {
-        guard let date = ISO8601DateFormatter().date(from: updateString) else {
-            return updateString
+    private var progressValue: String {
+        if let progress = flight.progress {
+            return String(format: "%.0f", progress * 100)
         }
-        
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .named
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return "0"
+    }
+    
+    private var progressLineWidth: CGFloat {
+        let progress = flight.progress ?? 0.0
+        return 120 * progress // Assuming 120pt wide line
+    }
+    
+    private var progressOffset: CGFloat {
+        let progress = flight.progress ?? 0.0
+        return (120 * progress) - 60 // Center at start, move right with progress
+    }
+    
+    private var statusText: String {
+        switch flight.status {
+        case .boarding:
+            return "Boarding"
+        case .departed:
+            return "Departed" 
+        case .inAir:
+            return "In Flight"
+        case .landed:
+            return "Landed"
+        case .delayed:
+            return "Delayed"
+        case .cancelled:
+            return "Cancelled"
+        }
     }
 }
 
-// MARK: - Map Annotation Model
+// MARK: - Metric Card Component
 
-struct MapAnnotation: Identifiable {
-    let id: String
-    let coordinate: CLLocationCoordinate2D
+struct MetricCard: View {
+    let icon: String
     let title: String
-    let color: Color
+    let value: String
+    let unit: String
+    let theme: ThemeManager
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(theme.currentTheme.colors.textSecondary)
+                
+                Text(title)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundColor(theme.currentTheme.colors.textSecondary)
+                    .textCase(.uppercase)
+                    .tracking(1)
+            }
+            
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(theme.currentTheme.colors.text)
+                
+                if !unit.isEmpty {
+                    Text(unit)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(theme.currentTheme.colors.textSecondary)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.currentTheme.colors.surface.opacity(0.5))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(theme.currentTheme.colors.border.opacity(0.5), lineWidth: 1)
+        )
+        .cornerRadius(16)
+    }
 }
 
 #Preview {
