@@ -806,9 +806,9 @@ struct SkyLineBottomBarView: View {
                 
                 // Action buttons
                 HStack(spacing: 16) {
-                    // Add to Apple Wallet button
+                    // Add to Trip button
                     Button(action: {
-                        // TODO: Add to Apple Wallet
+                        showingAddToTripSheet = true
                     }) {
                         HStack(spacing: 12) {
                             ZStack {
@@ -816,12 +816,12 @@ struct SkyLineBottomBarView: View {
                                     .fill(.white)
                                     .frame(width: 32, height: 32)
                                 
-                                Image(systemName: "square.and.arrow.down")
+                                Image(systemName: "folder.badge.plus")
                                     .font(.system(size: 20, weight: .medium))
                                     .foregroundColor(.black)
                             }
                             
-                            Text("Add to Apple Wallet")
+                            Text("Add to Trip")
                                 .font(.system(size: 18, weight: .black, design: .monospaced))
                                 .foregroundColor(.white)
                         }
@@ -871,6 +871,17 @@ struct SkyLineBottomBarView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
             .padding(.bottom, 100)
+        }
+        .sheet(isPresented: $showingAddToTripSheet) {
+            if let flight = selectedFlightForDetails {
+                AddFlightToTripView(flight: flight)
+                    .environmentObject(themeManager)
+                    .environmentObject(TripStore.shared)
+            } else {
+                AddFlightToTripView(flight: flightStore.selectedFlight ?? Flight.sample)
+                    .environmentObject(themeManager)
+                    .environmentObject(TripStore.shared)
+            }
         }
     }
     
@@ -934,6 +945,7 @@ struct SkyLineBottomBarView: View {
     // MARK: - Boarding Pass Handler
     
     @State private var scannedBoardingPassData: BoardingPassData?
+    @State private var showingAddToTripSheet = false
 }
 
 // MARK: - Preview for the new Boarding Pass UI

@@ -98,6 +98,7 @@ enum TripEntryType: String, CaseIterable, Codable {
     case sightseeing = "sightseeing"
     case accommodation = "accommodation"
     case transportation = "transportation"
+    case flight = "flight"
     case shopping = "shopping"
     case note = "note"
     case photo = "photo"
@@ -114,6 +115,8 @@ enum TripEntryType: String, CaseIterable, Codable {
             return "Accommodation"
         case .transportation:
             return "Transportation"
+        case .flight:
+            return "Flight"
         case .shopping:
             return "Shopping"
         case .note:
@@ -135,6 +138,8 @@ enum TripEntryType: String, CaseIterable, Codable {
             return "bed.double"
         case .transportation:
             return "car"
+        case .flight:
+            return "airplane"
         case .shopping:
             return "bag"
         case .note:
@@ -156,6 +161,8 @@ enum TripEntryType: String, CaseIterable, Codable {
             return "🏨"
         case .transportation:
             return "🚗"
+        case .flight:
+            return "✈️"
         case .shopping:
             return "🛍️"
         case .note:
@@ -177,6 +184,8 @@ enum TripEntryType: String, CaseIterable, Codable {
             return "green"
         case .transportation:
             return "red"
+        case .flight:
+            return "cyan"
         case .shopping:
             return "pink"
         case .note:

@@ -182,6 +182,7 @@ struct AddEntryView: View {
         case .shopping: return "Vintage finds in Harajuku"
         case .note: return "Random thoughts about the trip"
         case .photo: return "Beautiful sunset view"
+        case .flight: return "Flight AA1234 to Tokyo"
         }
     }
     
@@ -192,6 +193,7 @@ struct AddEntryView: View {
         case .sightseeing: return "360-degree views of the entire city. You can see for miles in every direction."
         case .accommodation: return "Traditional Japanese room with tatami mats. So peaceful and authentic."
         case .transportation: return "Smooth and fast ride. Amazing how quiet it is at 200 mph."
+        case .flight: return "Great flight with amazing views. Smooth takeoff and landing."
         case .shopping: return "Found some unique pieces that you can't get anywhere else."
         case .note: return "Just some thoughts about this incredible experience..."
         case .photo: return "Had to capture this amazing moment."

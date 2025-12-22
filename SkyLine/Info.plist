@@ -5,7 +5,7 @@
 	<key>MISTRAL_API_KEY</key>
 	<string>YOUR_MISTRAL_API_KEY_HERE</string>
 	<key>OPENROUTER_API_KEY</key>
-	<string>YOUR_OPENROUTER_API_KEY_HERE</string>
+	<string>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</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Access photos to scan boarding passes from Apple Wallet screenshots for automatic flight import</string>
 	<key>NSCameraUsageDescription</key>

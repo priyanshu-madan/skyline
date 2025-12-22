@@ -102,6 +102,26 @@ struct TripsContentView: View {
     @ObservedObject var tripStore: TripStore
     let onTripSelected: (Trip) -> Void
     
+    @State private var deletingTripId: String?
+    
+    private func deleteTrip(_ trip: Trip) {
+        deletingTripId = trip.id
+        Task {
+            let result = await tripStore.deleteTrip(trip.id)
+            await MainActor.run {
+                deletingTripId = nil
+                switch result {
+                case .success:
+                    // Deletion successful - UI will update automatically via @Published
+                    break
+                case .failure(let error):
+                    print("Failed to delete trip: \(error)")
+                    // Could show an error alert here if needed
+                }
+            }
+        }
+    }
+    
     var body: some View {
         LazyVStack(spacing: 24) {
             // Show subtle loading indicator when refreshing
@@ -125,7 +145,9 @@ struct TripsContentView: View {
                         TripSectionView(
                             title: "Active Trips",
                             trips: tripStore.activeTrips,
-                            onTripSelected: onTripSelected
+                            onTripSelected: onTripSelected,
+                            onTripDeleted: deleteTrip,
+                            deletingTripId: deletingTripId
                         )
                     }
                     
@@ -133,7 +155,9 @@ struct TripsContentView: View {
                         TripSectionView(
                             title: "Upcoming Trips",
                             trips: tripStore.upcomingTrips,
-                            onTripSelected: onTripSelected
+                            onTripSelected: onTripSelected,
+                            onTripDeleted: deleteTrip,
+                            deletingTripId: deletingTripId
                         )
                     }
                 }
@@ -144,7 +168,9 @@ struct TripsContentView: View {
                 TripSectionView(
                     title: "Past Adventures",
                     trips: tripStore.completedTrips,
-                    onTripSelected: onTripSelected
+                    onTripSelected: onTripSelected,
+                    onTripDeleted: deleteTrip,
+                    deletingTripId: deletingTripId
                 )
             }
         }
@@ -159,6 +185,8 @@ struct TripSectionView: View {
     let title: String
     let trips: [Trip]
     let onTripSelected: (Trip) -> Void
+    let onTripDeleted: (Trip) -> Void
+    let deletingTripId: String?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -182,9 +210,16 @@ struct TripSectionView: View {
             
             LazyVStack(spacing: 12) {
                 ForEach(trips) { trip in
-                    TripCard(trip: trip) {
-                        onTripSelected(trip)
-                    }
+                    TripCard(
+                        trip: trip,
+                        onTap: {
+                            onTripSelected(trip)
+                        },
+                        onDelete: { trip in
+                            onTripDeleted(trip)
+                        },
+                        isDeleting: deletingTripId == trip.id
+                    )
                 }
             }
         }
@@ -196,6 +231,10 @@ struct TripCard: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
     let onTap: () -> Void
+    let onDelete: (Trip) -> Void
+    let isDeleting: Bool
+    
+    @State private var showingDeleteConfirmation = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -271,8 +310,45 @@ struct TripCard: View {
             x: 0,
             y: 2
         )
+        .overlay(
+            // Deleting overlay
+            Group {
+                if isDeleting {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.3))
+                        .overlay(
+                            VStack(spacing: 8) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .scaleEffect(1.2)
+                                
+                                Text("Deleting...")
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .fontWeight(.medium)
+                            }
+                        )
+                        .cornerRadius(16)
+                }
+            }
+        )
         .onTapGesture {
-            onTap()
+            if !isDeleting {
+                onTap()
+            }
+        }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            if !isDeleting {
+                showingDeleteConfirmation = true
+            }
+        }
+        .confirmationDialog("Delete Trip", isPresented: $showingDeleteConfirmation) {
+            Button("Delete Trip", role: .destructive) {
+                onDelete(trip)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to delete \"\(trip.title)\"? This action cannot be undone.")
         }
     }
     
