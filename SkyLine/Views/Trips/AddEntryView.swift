@@ -30,7 +30,7 @@ struct AddEntryView: View {
     @State private var error: String?
     @State private var showingLocationPicker = false
     
-    @StateObject private var locationManager = LocationManager()
+    @StateObject private var locationManager = SkyLineLocationManager()
     
     private var isValidEntry: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

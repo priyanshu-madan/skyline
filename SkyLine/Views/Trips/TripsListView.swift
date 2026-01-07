@@ -13,6 +13,14 @@ struct TripsListView: View {
     @State private var showingAddTrip = false
     @State private var selectedTrip: Trip?
     
+    let onFlightSelected: ((Flight, Trip) -> Void)?
+    let externalTripSelection: Trip?
+    
+    init(onFlightSelected: ((Flight, Trip) -> Void)? = nil, externalTripSelection: Trip? = nil) {
+        self.onFlightSelected = onFlightSelected
+        self.externalTripSelection = externalTripSelection
+    }
+    
     var body: some View {
         ScrollView {
             if tripStore.isLoading && tripStore.trips.isEmpty {
@@ -39,9 +47,20 @@ struct TripsListView: View {
                 .environmentObject(tripStore)
         }
         .sheet(item: $selectedTrip) { trip in
-            TripDetailView(trip: trip)
+            TripDetailView(trip: trip, onFlightSelected: onFlightSelected)
                 .environmentObject(themeManager)
                 .environmentObject(tripStore)
+        }
+        .onAppear {
+            // Handle external trip selection
+            if let externalTrip = externalTripSelection {
+                selectedTrip = externalTrip
+            }
+        }
+        .onChange(of: externalTripSelection) { _, newTrip in
+            if let trip = newTrip {
+                selectedTrip = trip
+            }
         }
     }
 }

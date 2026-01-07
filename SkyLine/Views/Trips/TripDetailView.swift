@@ -7,15 +7,41 @@
 
 import SwiftUI
 
+enum PresentedSheet: Identifiable {
+    case addEntry
+    case editEntry(TripEntry)
+    case uploadItinerary
+    case addEntryMenu
+    
+    var id: String {
+        switch self {
+        case .addEntry:
+            return "addEntry"
+        case .editEntry(let entry):
+            return "editEntry_\(entry.id)"
+        case .uploadItinerary:
+            return "uploadItinerary"
+        case .addEntryMenu:
+            return "addEntryMenu"
+        }
+    }
+}
+
 struct TripDetailView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
+    @EnvironmentObject var flightStore: FlightStore
     @Environment(\.dismiss) private var dismiss
     
     let trip: Trip
-    @State private var showingAddEntry = false
-    @State private var selectedEntry: TripEntry?
+    let onFlightSelected: ((Flight, Trip) -> Void)?
+    @State private var presentedSheet: PresentedSheet?
     @State private var refreshID = UUID()
+    
+    init(trip: Trip, onFlightSelected: ((Flight, Trip) -> Void)? = nil) {
+        self.trip = trip
+        self.onFlightSelected = onFlightSelected
+    }
     
     private var entries: [TripEntry] {
         tripStore.getEntries(for: trip.id).sortedByTimestamp()
@@ -35,12 +61,15 @@ struct TripDetailView: View {
                         
                         // Timeline content
                         if entries.isEmpty {
-                            EmptyTimelineView(onAddEntry: { showingAddEntry = true })
+                            EmptyTimelineView(onAddEntry: { presentedSheet = .addEntryMenu })
                         } else {
                             TimelineView(
                                 groupedEntries: groupedEntries,
                                 onEntryTap: { entry in
-                                    selectedEntry = entry
+                                    handleEntryTap(entry)
+                                },
+                                onEntryLongPress: { entry in
+                                    handleEntryLongPress(entry)
                                 }
                             )
                         }
@@ -54,7 +83,7 @@ struct TripDetailView: View {
                         Spacer()
                         
                         Button {
-                            showingAddEntry = true
+                            presentedSheet = .addEntryMenu
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(.title2, design: .monospaced))
@@ -116,22 +145,158 @@ struct TripDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingAddEntry) {
-            AddEntryView(tripId: trip.id)
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .addEntry:
+                AddEntryView(tripId: trip.id)
+                    .environmentObject(themeManager)
+                    .environmentObject(tripStore)
+            case .editEntry(let entry):
+                EditEntryView(entry: entry)
+                    .environmentObject(themeManager)
+                    .environmentObject(tripStore)
+            case .uploadItinerary:
+                UploadItineraryView { parsedItinerary in
+                    handleProcessedItinerary(parsedItinerary)
+                }
                 .environmentObject(themeManager)
-                .environmentObject(tripStore)
-        }
-        .sheet(item: $selectedEntry) { entry in
-            EntryDetailView(entry: entry)
+            case .addEntryMenu:
+                AddEntryMenuView(trip: trip) { option in
+                    presentedSheet = nil
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        switch option {
+                        case .manual:
+                            presentedSheet = .addEntry
+                        case .importFiles:
+                            presentedSheet = .uploadItinerary
+                        case .askAI:
+                            // Future implementation
+                            break
+                        }
+                    }
+                }
                 .environmentObject(themeManager)
+            }
         }
         .id(refreshID)
         .onAppear {
             Task {
                 await tripStore.fetchEntriesForTrip(trip.id)
+                await migrateFlightEntries()
                 refreshID = UUID()
             }
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func handleProcessedItinerary(_ parsedItinerary: ParsedItinerary) {
+        Task {
+            do {
+                // Convert all items to trip entries for this specific trip
+                let tripEntries = parsedItinerary.toTripEntries(tripId: trip.id)
+                
+                // Add each entry to the trip
+                for entry in tripEntries {
+                    let result = await tripStore.addEntry(entry)
+                    if case .failure(let error) = result {
+                        print("Failed to add entry: \(error.localizedDescription)")
+                        return
+                    }
+                }
+                
+                await MainActor.run {
+                    presentedSheet = nil
+                    refreshID = UUID()
+                }
+                
+            } catch {
+                print("Failed to add entries: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func handleEntryTap(_ entry: TripEntry) {
+        // Only handle flight entries for tap - show flight details
+        if entry.entryType == .flight {
+            if let flightId = entry.flightId {
+                // Find the flight in the flight store and navigate to details
+                if let flight = flightStore.flights.first(where: { $0.id == flightId }) {
+                    // Dismiss the trip view and navigate to flight details in main UI
+                    dismiss()
+                    onFlightSelected?(flight, trip)
+                }
+            }
+        }
+        // For non-flight entries, do nothing on tap
+    }
+    
+    private func handleEntryLongPress(_ entry: TripEntry) {
+        // Long press always shows edit view for any entry type
+        presentedSheet = .editEntry(entry)
+    }
+    
+    /// Migrates existing flight entries that are missing flightId
+    private func migrateFlightEntries() async {
+        let flightEntries = tripStore.getEntries(for: trip.id).filter { 
+            $0.entryType == .flight && $0.flightId == nil 
+        }
+        
+        // Only migrate if there are entries that need migration
+        guard !flightEntries.isEmpty else { return }
+        
+        for entry in flightEntries {
+            // Try to find a matching flight based on the title
+            if let matchedFlight = findFlightForEntry(entry) {
+                // Create updated entry with flightId
+                let updatedEntry = TripEntry(
+                    id: entry.id,
+                    tripId: entry.tripId,
+                    timestamp: entry.timestamp,
+                    entryType: entry.entryType,
+                    title: entry.title,
+                    content: entry.content,
+                    imageURLs: entry.imageURLs,
+                    latitude: entry.latitude,
+                    longitude: entry.longitude,
+                    locationName: entry.locationName,
+                    flightId: matchedFlight.id,
+                    createdAt: entry.createdAt,
+                    updatedAt: Date()
+                )
+                
+                // Update the entry
+                await tripStore.updateEntry(updatedEntry)
+            }
+        }
+    }
+    
+    /// Try to find a matching flight for an entry based on title and content
+    private func findFlightForEntry(_ entry: TripEntry) -> Flight? {
+        // Extract flight number from title (e.g., "Flight AA4335 - JFK to CVG")
+        let title = entry.title
+        let components = title.components(separatedBy: " ")
+        
+        for i in 0..<components.count {
+            if components[i] == "Flight" && i + 1 < components.count {
+                let flightNumber = components[i + 1]
+                
+                // Look for flight with matching flight number
+                if let flight = flightStore.flights.first(where: { $0.flightNumber == flightNumber }) {
+                    return flight
+                }
+            }
+        }
+        
+        // If no exact match, try to match by airport codes in title
+        for flight in flightStore.flights {
+            if title.contains(flight.departure.code) && title.contains(flight.arrival.code) {
+                return flight
+            }
+        }
+        
+        return nil
     }
 }
 
@@ -288,6 +453,7 @@ struct TimelineView: View {
     
     let groupedEntries: [(Date, [TripEntry])]
     let onEntryTap: (TripEntry) -> Void
+    let onEntryLongPress: (TripEntry) -> Void
     
     var body: some View {
         LazyVStack(spacing: 0) {
@@ -305,7 +471,8 @@ struct TimelineView: View {
                     TimelineEntryView(
                         entry: entry,
                         isLast: entryIndex == entries.count - 1 && dayIndex == groupedEntries.count - 1,
-                        onTap: { onEntryTap(entry) }
+                        onTap: { onEntryTap(entry) },
+                        onLongPress: { onEntryLongPress(entry) }
                     )
                     .padding(.horizontal, 20)
                 }
@@ -356,6 +523,7 @@ struct TimelineEntryView: View {
     let entry: TripEntry
     let isLast: Bool
     let onTap: () -> Void
+    let onLongPress: () -> Void
     
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -383,7 +551,7 @@ struct TimelineEntryView: View {
             .frame(width: 16)
             
             // Entry content
-            TimelineEntryCard(entry: entry, onTap: onTap)
+            TimelineEntryCard(entry: entry, onTap: onTap, onLongPress: onLongPress)
                 .padding(.bottom, isLast ? 0 : 16)
         }
     }
@@ -416,6 +584,7 @@ struct TimelineEntryCard: View {
     
     let entry: TripEntry
     let onTap: () -> Void
+    let onLongPress: () -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -520,6 +689,9 @@ struct TimelineEntryCard: View {
         .onTapGesture {
             onTap()
         }
+        .onLongPressGesture {
+            onLongPress()
+        }
     }
 }
 
@@ -576,6 +748,160 @@ struct EntryDetailView: View {
     var body: some View {
         Text("Entry Detail View - \(entry.title)")
             .font(.system(.title, design: .monospaced))
+    }
+}
+
+// MARK: - Add Entry Menu View
+
+enum AddEntryOption {
+    case manual
+    case importFiles
+    case askAI
+    
+    var title: String {
+        switch self {
+        case .manual: return "Manual Entry"
+        case .importFiles: return "Import from Files"
+        case .askAI: return "Ask AI to Plan"
+        }
+    }
+    
+    var subtitle: String {
+        switch self {
+        case .manual: return "Add activities manually"
+        case .importFiles: return "Upload images or documents"
+        case .askAI: return "Let AI create your itinerary"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .manual: return "pencil"
+        case .importFiles: return "doc.text.magnifyingglass"
+        case .askAI: return "wand.and.stars"
+        }
+    }
+    
+    var isEnabled: Bool {
+        switch self {
+        case .manual, .importFiles: return true
+        case .askAI: return false // Future implementation
+        }
+    }
+}
+
+struct AddEntryMenuView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+    
+    let trip: Trip
+    let onSelection: (AddEntryOption) -> Void
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 12) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                    
+                    Text("Add to Trip")
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                    
+                    Text("Choose how you'd like to add activities to \"\(trip.title)\"")
+                        .font(.system(.body, design: .rounded))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 20)
+                
+                // Options
+                VStack(spacing: 16) {
+                    ForEach([AddEntryOption.manual, .importFiles, .askAI], id: \.title) { option in
+                        AddEntryOptionButton(
+                            option: option,
+                            onTap: {
+                                if option.isEnabled {
+                                    onSelection(option)
+                                }
+                            }
+                        )
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .navigationTitle("Add Entry")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct AddEntryOptionButton: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    let option: AddEntryOption
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 16) {
+                Image(systemName: option.icon)
+                    .font(.system(size: 24))
+                    .foregroundColor(option.isEnabled ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
+                    .frame(width: 40)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(option.title)
+                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                            .foregroundColor(option.isEnabled ? themeManager.currentTheme.colors.text : themeManager.currentTheme.colors.textSecondary)
+                        
+                        if !option.isEnabled {
+                            Text("Coming Soon")
+                                .font(.system(.caption, design: .rounded, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(themeManager.currentTheme.colors.primary)
+                                .cornerRadius(4)
+                        }
+                    }
+                    
+                    Text(option.subtitle)
+                        .font(.system(.body, design: .rounded))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .multilineTextAlignment(.leading)
+                }
+                
+                Spacer()
+                
+                if option.isEnabled {
+                    Image(systemName: "chevron.right")
+                        .font(.system(.body, design: .rounded, weight: .medium))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                }
+            }
+            .padding()
+            .background(option.isEnabled ? themeManager.currentTheme.colors.surface : themeManager.currentTheme.colors.surface.opacity(0.5))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(option.isEnabled ? themeManager.currentTheme.colors.border : themeManager.currentTheme.colors.border.opacity(0.5), lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(!option.isEnabled)
     }
 }
 

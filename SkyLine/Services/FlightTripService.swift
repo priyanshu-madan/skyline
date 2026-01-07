@@ -58,7 +58,8 @@ class FlightTripService: ObservableObject {
             content: content.trimmingCharacters(in: .whitespacesAndNewlines),
             latitude: latitude,
             longitude: longitude,
-            locationName: locationName
+            locationName: locationName,
+            flightId: flight.id
         )
     }
     
@@ -125,6 +126,11 @@ class FlightTripService: ObservableObject {
     
     /// Adds flight to an existing trip
     func addFlightToTrip(_ flight: Flight, tripId: String) async -> Result<TripEntry, FlightTripError> {
+        // Check if flight already exists in this trip
+        if await isFlightAlreadyInTrip(flight, tripId: tripId) {
+            return .failure(.flightAlreadyExists)
+        }
+        
         let entry = createTripEntryFromFlight(flight, for: tripId)
         
         let result = await tripStore.addEntry(entry)
@@ -216,6 +222,24 @@ class FlightTripService: ObservableObject {
         
         return nil
     }
+    
+    /// Checks if a flight already exists in a trip
+    private func isFlightAlreadyInTrip(_ flight: Flight, tripId: String) async -> Bool {
+        let tripEntries = tripStore.getEntries(for: tripId)
+        
+        // Check for entries with matching flightId
+        if tripEntries.contains(where: { $0.flightId == flight.id }) {
+            return true
+        }
+        
+        // Also check for entries with similar flight details (for older entries without flightId)
+        let flightTitle = "Flight \(flight.flightNumber) - \(flight.departure.code) to \(flight.arrival.code)"
+        if tripEntries.contains(where: { $0.entryType == .flight && $0.title == flightTitle }) {
+            return true
+        }
+        
+        return false
+    }
 }
 
 // MARK: - FlightTripError
@@ -224,6 +248,7 @@ enum FlightTripError: Error {
     case addEntryFailed(String)
     case tripNotFound
     case invalidFlightData
+    case flightAlreadyExists
     
     var localizedDescription: String {
         switch self {
@@ -235,6 +260,8 @@ enum FlightTripError: Error {
             return "Trip not found"
         case .invalidFlightData:
             return "Invalid flight data"
+        case .flightAlreadyExists:
+            return "This flight is already in your trip"
         }
     }
 }

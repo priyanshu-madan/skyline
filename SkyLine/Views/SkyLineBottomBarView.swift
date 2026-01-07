@@ -8,6 +8,11 @@
 import SwiftUI
 import PhotosUI
 
+enum FlightNavigationContext {
+    case flights        // Navigated from flights tab
+    case trip(Trip)     // Navigated from a specific trip
+}
+
 // MARK: - DateFormatter Extensions
 extension DateFormatter {
     static let flightCardDate: DateFormatter = {
@@ -58,6 +63,9 @@ struct SkyLineBottomBarView: View {
     @State private var selectedFlightId: String? = nil
     @State private var selectedFlightForDetails: Flight? = nil
     @State private var flightDetailsViewKey: UUID = UUID()
+    @State private var flightNavigationContext: FlightNavigationContext = .flights
+    @State private var tripToReopen: Trip? = nil
+    @State private var showingSmartTripImport = false
     
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
@@ -121,6 +129,12 @@ struct SkyLineBottomBarView: View {
             AddTripView()
                 .environmentObject(themeManager)
                 .environmentObject(tripStore)
+        }
+        .sheet(isPresented: $showingSmartTripImport) {
+            UploadItineraryView { parsedItinerary in
+                handleSmartTripImport(parsedItinerary)
+            }
+            .environmentObject(themeManager)
         }
         .sheet(item: $scannedBoardingPassData) { boardingPassData in
             BoardingPassConfirmationView(
@@ -197,11 +211,26 @@ struct SkyLineBottomBarView: View {
                                 BoardingPassMenuContent()
                                     .environmentObject(themeManager)
                             }
+                        } else if tab == .trips {
+                            CustomMenuView(style: .glass) {
+                                Image(systemName: "plus")
+                                    .font(.system(.title3, design: .monospaced))
+                                    .fontWeight(.semibold)
+                                    .frame(width: 30, height: 30)
+                            } content: {
+                                TripMenuContent(
+                                    onManualEntry: {
+                                        addTripView.toggle()
+                                    },
+                                    onSmartImport: {
+                                        showingSmartTripImport.toggle()
+                                    }
+                                )
+                                .environmentObject(themeManager)
+                            }
                         } else {
                             Button {
-                                if tab == .trips {
-                                    addTripView.toggle()
-                                }
+                                // Handle other tabs if needed
                             } label: {
                                 Image(systemName: "plus")
                                     .font(.system(.title3, design: .monospaced))
@@ -303,11 +332,79 @@ struct SkyLineBottomBarView: View {
         }
     }
     
+    // MARK: - Flight Selection Handler
+    
+    private func handleFlightSelectedFromTrip(_ flight: Flight, _ trip: Trip) {
+        // Set navigation context to remember we came from a trip
+        flightNavigationContext = .trip(trip)
+        
+        // Switch to flights tab
+        activeTab = .flights
+        
+        // Select the flight for details view
+        selectedFlightForDetails = flight
+        selectedFlightId = flight.id
+        
+        // Update the detent to show flight details
+        selectedDetent = .fraction(0.6)
+        
+        // Refresh the view to ensure proper display
+        flightDetailsViewKey = UUID()
+        
+        // Call the parent callback if needed
+        onTabChanged?(.flights)
+        onFlightSelected?(flight)
+    }
+    
+    private func handleSmartTripImport(_ parsedItinerary: ParsedItinerary) {
+        Task {
+            // Use the parsed itinerary to suggest a trip
+            if let suggestedTrip = parsedItinerary.suggestTrip() {
+                // Create the trip first
+                let result = await tripStore.addTrip(suggestedTrip)
+                
+                switch result {
+                case .success:
+                    print("✅ Trip created from smart import: \(suggestedTrip.title)")
+                    
+                    // Then add all the parsed entries to the trip
+                    let tripEntries = parsedItinerary.toTripEntries(tripId: suggestedTrip.id)
+                    
+                    for entry in tripEntries {
+                        let entryResult = await tripStore.addEntry(entry)
+                        if case .failure(let error) = entryResult {
+                            print("❌ Failed to add entry to trip: \(error.localizedDescription)")
+                        }
+                    }
+                    
+                    await MainActor.run {
+                        showingSmartTripImport = false
+                        // Auto-open the new trip
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            tripToReopen = suggestedTrip
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("❌ Failed to create trip from smart import: \(error.localizedDescription)")
+                    await MainActor.run {
+                        showingSmartTripImport = false
+                    }
+                }
+            } else {
+                print("❌ Could not generate trip from parsed itinerary")
+                await MainActor.run {
+                    showingSmartTripImport = false
+                }
+            }
+        }
+    }
+    
     // MARK: - Tab Content Views
     
     @ViewBuilder
     func TripsTabContent() -> some View {
-        TripsListView()
+        TripsListView(onFlightSelected: handleFlightSelectedFromTrip, externalTripSelection: tripToReopen)
             .environmentObject(tripStore)
     }
     
@@ -412,10 +509,31 @@ struct SkyLineBottomBarView: View {
                         // Reset globe and close flight details
                         onGlobeReset?()
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            selectedFlightForDetails = nil
-                            selectedDetent = .fraction(0.2)
+                            // Check navigation context for back navigation
+                            switch flightNavigationContext {
+                            case .flights:
+                                // Normal flights tab navigation - stay on flights tab
+                                selectedFlightForDetails = nil
+                                selectedDetent = .fraction(0.2)
+                            case .trip(let trip):
+                                // Came from a trip - navigate back to specific trip
+                                selectedFlightForDetails = nil
+                                activeTab = .trips
+                                selectedDetent = .fraction(0.2)
+                                
+                                // Set the trip to reopen
+                                tripToReopen = trip
+                                
+                                // Clear the trip selection after a delay to allow the view to update
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    tripToReopen = nil
+                                }
+                                
+                                // Reset context
+                                flightNavigationContext = .flights
+                            }
                             flightDetailsViewKey = UUID()
-                            print("🔍 DEBUG: Reset to selectedDetent 0.2 from close button")
+                            print("🔍 DEBUG: Context-aware navigation completed")
                         }
                     }) {
                         ZStack {
@@ -1175,6 +1293,9 @@ private extension SkyLineBottomBarView {
         impactFeedback.impactOccurred()
         
         withAnimation(.easeInOut(duration: 0.3)) {
+            // Set navigation context to flights (normal flight tab navigation)
+            flightNavigationContext = .flights
+            
             selectedFlightId = flight.id
             selectedFlightForDetails = flight
             flightDetailsViewKey = UUID() // Force view recreation with new key
@@ -1678,6 +1799,111 @@ struct BoardingPassMenuContent: View {
             name: NSNotification.Name("BoardingPassScanned"), 
             object: boardingPassData
         )
+    }
+}
+
+// MARK: - Trip Menu Content
+
+struct TripMenuContent: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.dismiss) var dismiss
+    
+    let onManualEntry: () -> Void
+    let onSmartImport: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Title
+            Text("Create New Trip")
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.text)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 5)
+            
+            VStack(spacing: 15) {
+                // Manual Entry Button
+                Button(action: {
+                    onManualEntry()
+                    dismiss()
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Manual Entry")
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            Text("Create trip step by step")
+                                .font(.system(size: 11, design: .monospaced))
+                                .opacity(0.8)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        LinearGradient(
+                            colors: [themeManager.currentTheme.colors.primary, themeManager.currentTheme.colors.primary.opacity(0.8)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .cornerRadius(10)
+                }
+                
+                // Smart Import Button
+                Button(action: {
+                    onSmartImport()
+                    dismiss()
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Smart Import")
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            Text("Upload images or documents")
+                                .font(.system(size: 11, design: .monospaced))
+                                .opacity(0.8)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    }
+                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(themeManager.currentTheme.colors.primary.opacity(0.1))
+                    .cornerRadius(10)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(themeManager.currentTheme.colors.primary.opacity(0.3), lineWidth: 1)
+                    )
+                }
+            }
+            
+            // Cancel Button
+            Button {
+                dismiss()
+            } label: {
+                Text("Cancel")
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+            }
+            .padding(.top, 5)
+        }
+        .padding(20)
+        .frame(width: 280)
     }
 }
 

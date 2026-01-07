@@ -32,6 +32,12 @@
 		A94165F02EF14E3B0050BE19 /* UnifiedBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */; };
 		A94165F72EF8C2730050BE19 /* AddFlightToTripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165F62EF8C2730050BE19 /* AddFlightToTripView.swift */; };
 		A94165F92EF8C3770050BE19 /* FlightTripService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165F82EF8C3770050BE19 /* FlightTripService.swift */; };
+		A94165FB2EF9CCB80050BE19 /* EditEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */; };
+		A94165FD2EF9CD360050BE19 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165FC2EF9CD360050BE19 /* LocationManager.swift */; };
+		A94166012EFA40D40050BE19 /* ItineraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166002EFA40D40050BE19 /* ItineraryModels.swift */; };
+		A94166032EFA410E0050BE19 /* UploadItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166022EFA410E0050BE19 /* UploadItineraryView.swift */; };
+		A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166042EFA412F0050BE19 /* AIItineraryService.swift */; };
+		A94166072EFA41610050BE19 /* ReviewItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166062EFA41610050BE19 /* ReviewItineraryView.swift */; };
 		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
 		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
 		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
@@ -94,6 +100,12 @@
 		A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedBoardingPassService.swift; sourceTree = "<group>"; };
 		A94165F62EF8C2730050BE19 /* AddFlightToTripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddFlightToTripView.swift; sourceTree = "<group>"; };
 		A94165F82EF8C3770050BE19 /* FlightTripService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightTripService.swift; sourceTree = "<group>"; };
+		A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditEntryView.swift; sourceTree = "<group>"; };
+		A94165FC2EF9CD360050BE19 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		A94166002EFA40D40050BE19 /* ItineraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItineraryModels.swift; sourceTree = "<group>"; };
+		A94166022EFA410E0050BE19 /* UploadItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadItineraryView.swift; sourceTree = "<group>"; };
+		A94166042EFA412F0050BE19 /* AIItineraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIItineraryService.swift; sourceTree = "<group>"; };
+		A94166062EFA41610050BE19 /* ReviewItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewItineraryView.swift; sourceTree = "<group>"; };
 		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
 		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
 		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
@@ -190,6 +202,9 @@
 		A94165C32EA9D8400050BE19 /* Trips */ = {
 			isa = PBXGroup;
 			children = (
+				A94166062EFA41610050BE19 /* ReviewItineraryView.swift */,
+				A94166022EFA410E0050BE19 /* UploadItineraryView.swift */,
+				A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */,
 				A94165F62EF8C2730050BE19 /* AddFlightToTripView.swift */,
 				A94165CD2EA9DCA40050BE19 /* AddEntryView.swift */,
 				A94165C02EA9D8400050BE19 /* AddTripView.swift */,
@@ -254,6 +269,8 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A94166042EFA412F0050BE19 /* AIItineraryService.swift */,
+				A94165FC2EF9CD360050BE19 /* LocationManager.swift */,
 				A94165F82EF8C3770050BE19 /* FlightTripService.swift */,
 				A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */,
 				A94165EC2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift */,
@@ -283,6 +300,7 @@
 		A99F90C12E5BAE8B00BE96FE /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A94166002EFA40D40050BE19 /* ItineraryModels.swift */,
 				A94165D92EC7D46B0050BE19 /* Airline.swift */,
 				A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */,
 				A94165C72EA9D8560050BE19 /* Trip.swift */,
@@ -445,12 +463,18 @@
 				A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */,
 				A94165942E8709EB0050BE19 /* SkyLineBottomBarView.swift in Sources */,
 				A99F90D32E5BAE8B00BE96FE /* Theme.swift in Sources */,
+				A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */,
+				A94166032EFA410E0050BE19 /* UploadItineraryView.swift in Sources */,
 				A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */,
+				A94165FB2EF9CCB80050BE19 /* EditEntryView.swift in Sources */,
 				A99F90EB2E6503C200BE96FE /* CloudKitService.swift in Sources */,
+				A94166012EFA40D40050BE19 /* ItineraryModels.swift in Sources */,
+				A94165FD2EF9CD360050BE19 /* LocationManager.swift in Sources */,
 				A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */,
 				A94165DA2EC7D46B0050BE19 /* Airline.swift in Sources */,
 				A94165C42EA9D8400050BE19 /* AddTripView.swift in Sources */,
 				A94165C52EA9D8400050BE19 /* TripDetailView.swift in Sources */,
+				A94166072EFA41610050BE19 /* ReviewItineraryView.swift in Sources */,
 				A94165C62EA9D8400050BE19 /* TripsListView.swift in Sources */,
 				A94165F92EF8C3770050BE19 /* FlightTripService.swift in Sources */,
 				A99F90E32E5C11A600BE96FE /* WebViewGlobeView.swift in Sources */,

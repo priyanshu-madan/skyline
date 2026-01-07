@@ -22,6 +22,7 @@ struct TripEntry: Codable, Identifiable, Hashable {
     let latitude: Double?
     let longitude: Double?
     let locationName: String?
+    let flightId: String? // Reference to original flight for flight entries
     let createdAt: Date
     let updatedAt: Date
     
@@ -73,6 +74,7 @@ struct TripEntry: Codable, Identifiable, Hashable {
         latitude: Double? = nil,
         longitude: Double? = nil,
         locationName: String? = nil,
+        flightId: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -86,6 +88,7 @@ struct TripEntry: Codable, Identifiable, Hashable {
         self.latitude = latitude
         self.longitude = longitude
         self.locationName = locationName
+        self.flightId = flightId
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -294,6 +297,7 @@ extension TripEntry {
         record["latitude"] = latitude
         record["longitude"] = longitude
         record["locationName"] = locationName
+        record["flightId"] = flightId
         record["createdAt"] = createdAt
         record["updatedAt"] = updatedAt
         
@@ -322,6 +326,7 @@ extension TripEntry {
             latitude: record["latitude"] as? Double,
             longitude: record["longitude"] as? Double,
             locationName: record["locationName"] as? String,
+            flightId: record["flightId"] as? String,
             createdAt: record["createdAt"] as? Date ?? Date(),
             updatedAt: record["updatedAt"] as? Date ?? Date()
         )
@@ -331,7 +336,7 @@ extension TripEntry {
 // MARK: - Sorting
 extension Array where Element == TripEntry {
     func sortedByTimestamp() -> [TripEntry] {
-        return sorted { $0.timestamp > $1.timestamp }
+        return sorted { $0.timestamp < $1.timestamp }
     }
     
     func groupedByDay() -> [(Date, [TripEntry])] {
@@ -340,8 +345,8 @@ extension Array where Element == TripEntry {
             calendar.startOfDay(for: entry.timestamp)
         }
         
-        return grouped.sorted { $0.key > $1.key }.map { (key, value) in
-            (key, value.sorted { $0.timestamp > $1.timestamp })
+        return grouped.sorted { $0.key < $1.key }.map { (key, value) in
+            (key, value.sorted { $0.timestamp < $1.timestamp })
         }
     }
 }

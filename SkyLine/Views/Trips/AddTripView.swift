@@ -26,6 +26,7 @@ struct AddTripView: View {
     
     @State private var isCreating = false
     @State private var error: String?
+    @State private var showingUploadView = false
     
     // Validation
     private var isValidTrip: Bool {
@@ -50,6 +51,9 @@ struct AddTripView: View {
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
                     .padding(.top, 20)
+                    
+                    // Import options
+                    importOptionsSection
                     
                     // Form fields
                     VStack(spacing: 20) {
@@ -195,6 +199,49 @@ struct AddTripView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingUploadView) {
+            UploadItineraryView { parsedItinerary in
+                handleImportedItinerary(parsedItinerary)
+            }
+            .environmentObject(themeManager)
+        }
+    }
+    
+    // MARK: - Import Options Section
+    
+    private var importOptionsSection: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Create Trip")
+                    .font(.system(.headline, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .foregroundColor(themeManager.currentTheme.colors.text)
+                
+                Spacer()
+            }
+            
+            HStack(spacing: 12) {
+                // Manual entry (current form)
+                ImportOptionCard(
+                    icon: "pencil",
+                    title: "Manual Entry",
+                    description: "Fill out trip details manually",
+                    isSelected: !showingUploadView,
+                    onTap: { }
+                )
+                
+                // Smart import
+                ImportOptionCard(
+                    icon: "doc.text.magnifyingglass",
+                    title: "Smart Import",
+                    description: "Upload images or documents",
+                    isSelected: false,
+                    onTap: {
+                        showingUploadView = true
+                    }
+                )
+            }
+        }
     }
     
     private func searchDestinations(_ query: String) {
@@ -244,6 +291,108 @@ struct AddTripView: View {
                     error = tripError.localizedDescription
                 }
             }
+        }
+    }
+    
+    private func handleImportedItinerary(_ parsedItinerary: ParsedItinerary) {
+        // Pre-fill form with imported data
+        if let tripTitle = parsedItinerary.metadata.tripTitle {
+            title = tripTitle
+        }
+        
+        if let destination = parsedItinerary.metadata.destination {
+            self.destination = destination
+        }
+        
+        if let startDate = parsedItinerary.metadata.estimatedStartDate {
+            self.startDate = startDate
+        }
+        
+        if let endDate = parsedItinerary.metadata.estimatedEndDate {
+            self.endDate = endDate
+        }
+        
+        // Set description to indicate import
+        description = "Itinerary imported with \(parsedItinerary.items.count) activities"
+        
+        // Create the trip with imported data
+        createTripFromItinerary(parsedItinerary)
+    }
+    
+    private func createTripFromItinerary(_ parsedItinerary: ParsedItinerary) {
+        guard let suggestedTrip = parsedItinerary.suggestTrip() else {
+            error = "Unable to create trip from imported data"
+            return
+        }
+        
+        isCreating = true
+        error = nil
+        
+        Task {
+            let result = await tripStore.addTrip(suggestedTrip)
+            
+            switch result {
+            case .success:
+                // Add all itinerary items as trip entries
+                let tripEntries = parsedItinerary.toTripEntries(tripId: suggestedTrip.id)
+                
+                for entry in tripEntries {
+                    await tripStore.addEntry(entry)
+                }
+                
+                await MainActor.run {
+                    isCreating = false
+                    dismiss()
+                }
+                
+            case .failure(let tripError):
+                await MainActor.run {
+                    isCreating = false
+                    error = tripError.localizedDescription
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Import Option Card
+
+struct ImportOptionCard: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    
+    let icon: String
+    let title: String
+    let description: String
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(isSelected ? .white : themeManager.currentTheme.colors.primary)
+            
+            Text(title)
+                .font(.system(.subheadline, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundColor(isSelected ? .white : themeManager.currentTheme.colors.text)
+            
+            Text(description)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(isSelected ? .white.opacity(0.8) : themeManager.currentTheme.colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, minHeight: 80)
+        .background(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.surface)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.border, lineWidth: 1)
+        )
+        .onTapGesture {
+            onTap()
         }
     }
 }
