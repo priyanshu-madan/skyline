@@ -52,8 +52,6 @@ struct AddTripView: View {
                     }
                     .padding(.top, 20)
                     
-                    // Import options
-                    importOptionsSection
                     
                     // Form fields
                     VStack(spacing: 20) {
@@ -207,42 +205,6 @@ struct AddTripView: View {
         }
     }
     
-    // MARK: - Import Options Section
-    
-    private var importOptionsSection: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Text("Create Trip")
-                    .font(.system(.headline, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Spacer()
-            }
-            
-            HStack(spacing: 12) {
-                // Manual entry (current form)
-                ImportOptionCard(
-                    icon: "pencil",
-                    title: "Manual Entry",
-                    description: "Fill out trip details manually",
-                    isSelected: !showingUploadView,
-                    onTap: { }
-                )
-                
-                // Smart import
-                ImportOptionCard(
-                    icon: "doc.text.magnifyingglass",
-                    title: "Smart Import",
-                    description: "Upload images or documents",
-                    isSelected: false,
-                    onTap: {
-                        showingUploadView = true
-                    }
-                )
-            }
-        }
-    }
     
     private func searchDestinations(_ query: String) {
         guard !query.isEmpty, query.count > 2 else {
@@ -355,47 +317,6 @@ struct AddTripView: View {
     }
 }
 
-// MARK: - Import Option Card
-
-struct ImportOptionCard: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    
-    let icon: String
-    let title: String
-    let description: String
-    let isSelected: Bool
-    let onTap: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundColor(isSelected ? .white : themeManager.currentTheme.colors.primary)
-            
-            Text(title)
-                .font(.system(.subheadline, design: .monospaced))
-                .fontWeight(.semibold)
-                .foregroundColor(isSelected ? .white : themeManager.currentTheme.colors.text)
-            
-            Text(description)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(isSelected ? .white.opacity(0.8) : themeManager.currentTheme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, minHeight: 80)
-        .background(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.surface)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.border, lineWidth: 1)
-        )
-        .onTapGesture {
-            onTap()
-        }
-    }
-}
 
 // MARK: - Form Field Component
 struct FormField: View {
