@@ -7,26 +7,29 @@
 
 import SwiftUI
 import CoreLocation
+import MapKit
 
 struct AddTripView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
     @Environment(\.dismiss) private var dismiss
     
-    // Note: DestinationSearchService integration pending - using mock data for now
     
     @State private var title = ""
     @State private var destination = ""
     @State private var startDate = Date()
     @State private var endDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     @State private var description = ""
-    @State private var destinationSuggestions: [DestinationSuggestion] = []
     @State private var selectedDestination: DestinationSuggestion?
     @State private var showingSuggestions = false
+    @State private var searchWorkItem: DispatchWorkItem?
+    
+    @StateObject private var destinationSearchManager = DestinationSearchManager()
     
     @State private var isCreating = false
     @State private var error: String?
     @State private var showingUploadView = false
+    @State private var showingLocationPicker = false
     
     // Validation
     private var isValidTrip: Bool {
@@ -76,6 +79,17 @@ struct AddTripView: View {
                                     .foregroundColor(.red)
                                 
                                 Spacer()
+                                
+                                Button {
+                                    showingLocationPicker = true
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "map")
+                                        Text("Map")
+                                    }
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                                }
                             }
                             
                             VStack(spacing: 0) {
@@ -92,14 +106,12 @@ struct AddTripView: View {
                                         searchDestinations(newValue)
                                     }
                                 
-                                if showingSuggestions && !destinationSuggestions.isEmpty {
-                                    DestinationSuggestionsView(
-                                        suggestions: destinationSuggestions,
-                                        isSearching: false,
-                                        onSelect: { suggestion in
-                                            selectedDestination = suggestion
-                                            destination = suggestion.displayName
-                                            showingSuggestions = false
+                                if showingSuggestions && (!destinationSearchManager.searchResults.isEmpty || destinationSearchManager.isSearching) {
+                                    DestinationSearchResultsView(
+                                        searchResults: destinationSearchManager.searchResults,
+                                        isSearching: destinationSearchManager.isSearching,
+                                        onSelect: { completion in
+                                            selectDestination(completion)
                                         }
                                     )
                                 }
@@ -203,24 +215,51 @@ struct AddTripView: View {
             }
             .environmentObject(themeManager)
         }
+        .sheet(isPresented: $showingLocationPicker) {
+            LocationPickerView { selectedDestination in
+                handleLocationSelection(selectedDestination)
+            }
+            .environmentObject(themeManager)
+        }
     }
     
     
     private func searchDestinations(_ query: String) {
+        // Cancel previous search
+        searchWorkItem?.cancel()
+        
         guard !query.isEmpty, query.count > 2 else {
-            destinationSuggestions = []
+            destinationSearchManager.clearSearch()
             showingSuggestions = false
             return
         }
         
-        // Use mock destinations for now until DestinationSearchService is properly integrated
-        let suggestions = mockDestinations.filter { destination in
-            destination.city.localizedCaseInsensitiveContains(query) ||
-            destination.country.localizedCaseInsensitiveContains(query)
+        // Debounce search requests
+        let workItem = DispatchWorkItem {
+            destinationSearchManager.search(for: query)
+            showingSuggestions = true
         }
         
-        destinationSuggestions = Array(suggestions.prefix(5))
-        showingSuggestions = true
+        searchWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+    }
+    
+    private func selectDestination(_ completion: MKLocalSearchCompletion) {
+        Task {
+            if let destinationSuggestion = await destinationSearchManager.getLocationDetails(for: completion) {
+                await MainActor.run {
+                    selectedDestination = destinationSuggestion
+                    destination = destinationSuggestion.displayName
+                    showingSuggestions = false
+                }
+            }
+        }
+    }
+    
+    private func handleLocationSelection(_ destinationSuggestion: DestinationSuggestion) {
+        selectedDestination = destinationSuggestion
+        destination = destinationSuggestion.displayName
+        showingLocationPicker = false
     }
     
     private func createTrip() {
@@ -371,13 +410,13 @@ struct FormField: View {
     }
 }
 
-// MARK: - Destination Suggestions
-struct DestinationSuggestionsView: View {
+// MARK: - Destination Search Results
+struct DestinationSearchResultsView: View {
     @EnvironmentObject var themeManager: ThemeManager
     
-    let suggestions: [DestinationSuggestion]
+    let searchResults: [MKLocalSearchCompletion]
     let isSearching: Bool
-    let onSelect: (DestinationSuggestion) -> Void
+    let onSelect: (MKLocalSearchCompletion) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -394,19 +433,19 @@ struct DestinationSuggestionsView: View {
                 .padding()
                 .background(themeManager.currentTheme.colors.surface)
             } else {
-                ForEach(suggestions) { suggestion in
+                ForEach(Array(searchResults.enumerated()), id: \.element.title) { index, result in
                     Button {
-                        onSelect(suggestion)
+                        onSelect(result)
                     } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(suggestion.displayName)
+                                Text(result.title)
                                     .font(.system(.body, design: .monospaced))
                                     .foregroundColor(themeManager.currentTheme.colors.text)
                                     .lineLimit(1)
                                 
-                                if !suggestion.detailText.isEmpty {
-                                    Text(suggestion.detailText)
+                                if !result.subtitle.isEmpty {
+                                    Text(result.subtitle)
                                         .font(.system(.caption, design: .monospaced))
                                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                                         .lineLimit(1)
@@ -415,16 +454,9 @@ struct DestinationSuggestionsView: View {
                             
                             Spacer()
                             
-                            if let airportCode = suggestion.airportCode {
-                                Text(airportCode)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .fontWeight(.medium)
-                                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(themeManager.currentTheme.colors.primary.opacity(0.1))
-                                    .cornerRadius(4)
-                            }
+                            Image(systemName: "location")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.primary)
                         }
                         .padding()
                         .background(themeManager.currentTheme.colors.surface)
@@ -432,7 +464,7 @@ struct DestinationSuggestionsView: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                     
-                    if suggestion.id != suggestions.last?.id {
+                    if index < searchResults.count - 1 {
                         Divider()
                             .foregroundColor(themeManager.currentTheme.colors.border)
                     }
@@ -449,24 +481,6 @@ struct DestinationSuggestionsView: View {
     }
 }
 
-// MARK: - Mock Data (Temporary until DestinationSearchService is integrated)
-private let mockDestinations: [DestinationSuggestion] = [
-    DestinationSuggestion(city: "Tokyo", country: "Japan", airportCode: "NRT", latitude: 35.6762, longitude: 139.6503),
-    DestinationSuggestion(city: "Paris", country: "France", airportCode: "CDG", latitude: 48.8566, longitude: 2.3522),
-    DestinationSuggestion(city: "London", country: "United Kingdom", airportCode: "LHR", latitude: 51.5074, longitude: -0.1278),
-    DestinationSuggestion(city: "New York", country: "United States", airportCode: "JFK", latitude: 40.7128, longitude: -74.0060),
-    DestinationSuggestion(city: "Los Angeles", country: "United States", airportCode: "LAX", latitude: 34.0522, longitude: -118.2437),
-    DestinationSuggestion(city: "San Francisco", country: "United States", airportCode: "SFO", latitude: 37.7749, longitude: -122.4194),
-    DestinationSuggestion(city: "Sydney", country: "Australia", airportCode: "SYD", latitude: -33.8688, longitude: 151.2093),
-    DestinationSuggestion(city: "Dubai", country: "United Arab Emirates", airportCode: "DXB", latitude: 25.2048, longitude: 55.2708),
-    DestinationSuggestion(city: "Singapore", country: "Singapore", airportCode: "SIN", latitude: 1.3521, longitude: 103.8198),
-    DestinationSuggestion(city: "Rome", country: "Italy", airportCode: "FCO", latitude: 41.9028, longitude: 12.4964),
-    DestinationSuggestion(city: "Barcelona", country: "Spain", airportCode: "BCN", latitude: 41.3851, longitude: 2.1734),
-    DestinationSuggestion(city: "Amsterdam", country: "Netherlands", airportCode: "AMS", latitude: 52.3676, longitude: 4.9041),
-    DestinationSuggestion(city: "Bangkok", country: "Thailand", airportCode: "BKK", latitude: 13.7563, longitude: 100.5018),
-    DestinationSuggestion(city: "Seoul", country: "South Korea", airportCode: "ICN", latitude: 37.5665, longitude: 126.9780),
-    DestinationSuggestion(city: "Hong Kong", country: "Hong Kong", airportCode: "HKG", latitude: 22.3193, longitude: 114.1694)
-]
 
 #Preview {
     AddTripView()
