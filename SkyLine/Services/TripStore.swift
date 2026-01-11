@@ -62,8 +62,76 @@ class TripStore: ObservableObject {
         print("🔄 TripStore: Initialized with \(trips.count) cached trips")
     }
     
+    // MARK: - Image Management
+
+    func saveTripImageLocally(_ image: UIImage, tripId: String, theme: String? = nil) -> String? {
+        do {
+            // Get documents directory
+            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return nil
+            }
+
+            // Create trips images directory if needed
+            let tripsImagesURL = documentsURL.appendingPathComponent("TripImages")
+            try? FileManager.default.createDirectory(at: tripsImagesURL, withIntermediateDirectories: true)
+
+            // Save image with trip ID and optional theme as filename
+            let filename: String
+            if let theme = theme {
+                filename = "\(tripId)_\(theme).jpg"
+            } else {
+                filename = "\(tripId).jpg"
+            }
+            let fileURL = tripsImagesURL.appendingPathComponent(filename)
+
+            // Compress and save the image
+            guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+                return nil
+            }
+
+            try imageData.write(to: fileURL)
+
+            // Return the local file URL as a string
+            return fileURL.absoluteString
+
+        } catch {
+            print("❌ Failed to save trip image locally: \(error)")
+            return nil
+        }
+    }
+
+    /// Generate AI cover images for a trip and save both theme variants
+    func generateAndSaveTripImages(destination: String, tripId: String) async -> String? {
+        do {
+            print("🎨 Generating AI images for: \(destination)")
+
+            // Generate both dark and light mode images concurrently
+            let (darkImage, lightImage) = try await TripImageGenerationService.shared.generateTripCoverImages(destination: destination)
+
+            // Save both images locally
+            let _ = saveTripImageLocally(darkImage, tripId: tripId, theme: "dark")
+            let _ = saveTripImageLocally(lightImage, tripId: tripId, theme: "light")
+
+            // Return the base URL (without theme suffix)
+            // The display logic will append the theme based on current mode
+            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return nil
+            }
+
+            let tripsImagesURL = documentsURL.appendingPathComponent("TripImages")
+            let baseURL = tripsImagesURL.appendingPathComponent("\(tripId).jpg")
+
+            print("✅ Generated and saved both theme variants")
+            return baseURL.absoluteString
+
+        } catch {
+            print("❌ Failed to generate trip images: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
     // MARK: - Trip Management
-    
+
     func addTrip(_ trip: Trip) async -> Result<Void, TripStoreError> {
         isLoading = true
         error = nil

@@ -387,7 +387,7 @@ struct TripCard: View {
 struct TripImageView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
-    
+
     var body: some View {
         ZStack {
             // Background gradient
@@ -402,37 +402,72 @@ struct TripImageView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            
+
             // Destination image if available
             if let coverImageURL = trip.coverImageURL,
                let url = URL(string: coverImageURL) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                        .scaleEffect(0.8)
+                // Check if it's a local file URL or remote URL
+                if url.isFileURL {
+                    // Load theme-appropriate local image
+                    let themeURL = getThemeSpecificURL(baseURL: url, isDarkMode: themeManager.currentTheme == .dark)
+                    if let imageData = try? Data(contentsOf: themeURL),
+                       let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        placeholderView
+                    }
+                } else {
+                    // Load remote image
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                            .scaleEffect(0.8)
+                    }
                 }
             } else {
-                // Fallback icon and destination name
-                VStack(spacing: 8) {
-                    Image(systemName: "building.2")
-                        .font(.system(size: 32, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
-                    Text(trip.destination)
-                        .font(.system(.caption, design: .monospaced))
-                        .fontWeight(.medium)
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 16)
+                placeholderView
             }
         }
         .cornerRadius(16, corners: [.topLeft, .topRight])
+    }
+
+    private var placeholderView: some View {
+        // Fallback icon and destination name
+        VStack(spacing: 8) {
+            Image(systemName: "building.2")
+                .font(.system(size: 32, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+            Text(trip.destination)
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.medium)
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func getThemeSpecificURL(baseURL: URL, isDarkMode: Bool) -> URL {
+        // Convert base URL to theme-specific URL
+        let path = baseURL.deletingPathExtension().path
+        let ext = baseURL.pathExtension
+        let theme = isDarkMode ? "dark" : "light"
+
+        // Check if theme-specific file exists
+        let themeURL = URL(fileURLWithPath: "\(path)_\(theme).\(ext)")
+        if FileManager.default.fileExists(atPath: themeURL.path) {
+            return themeURL
+        }
+
+        // Fallback to base URL if theme-specific doesn't exist
+        return baseURL
     }
 }
 

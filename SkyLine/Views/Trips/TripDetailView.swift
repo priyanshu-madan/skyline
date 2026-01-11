@@ -419,31 +419,66 @@ struct TripHeaderImageView: View {
             // Destination image if available
             if let coverImageURL = trip.coverImageURL,
                let url = URL(string: coverImageURL) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                        .scaleEffect(0.8)
+                // Check if it's a local file URL or remote URL
+                if url.isFileURL {
+                    // Load theme-appropriate local image
+                    let themeURL = getThemeSpecificURL(baseURL: url, isDarkMode: themeManager.currentTheme == .dark)
+                    if let imageData = try? Data(contentsOf: themeURL),
+                       let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } else {
+                        tripDetailPlaceholderView
+                    }
+                } else {
+                    // Load remote image
+                    AsyncImage(url: url) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } placeholder: {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
+                            .scaleEffect(0.8)
+                    }
                 }
             } else {
-                // Fallback with destination name
-                VStack(spacing: 12) {
-                    Image(systemName: "building.2")
-                        .font(.system(size: 48, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
-                    Text(trip.destination)
-                        .font(.system(.title2, design: .monospaced))
-                        .fontWeight(.semibold)
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 40)
+                tripDetailPlaceholderView
             }
         }
+    }
+
+    private var tripDetailPlaceholderView: some View {
+        // Fallback with destination name
+        VStack(spacing: 12) {
+            Image(systemName: "building.2")
+                .font(.system(size: 48, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+            Text(trip.destination)
+                .font(.system(.title2, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 40)
+    }
+
+    private func getThemeSpecificURL(baseURL: URL, isDarkMode: Bool) -> URL {
+        // Convert base URL to theme-specific URL
+        let path = baseURL.deletingPathExtension().path
+        let ext = baseURL.pathExtension
+        let theme = isDarkMode ? "dark" : "light"
+
+        // Check if theme-specific file exists
+        let themeURL = URL(fileURLWithPath: "\(path)_\(theme).\(ext)")
+        if FileManager.default.fileExists(atPath: themeURL.path) {
+            return themeURL
+        }
+
+        // Fallback to base URL if theme-specific doesn't exist
+        return baseURL
     }
 }
 

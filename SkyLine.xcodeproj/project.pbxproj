@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */; };
+		A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */; };
+		A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */; };
 		A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */ = {isa = PBXBuildFile; productRef = A915596A2E6E4E1B00D77E8C /* BottomSheet */; };
 		A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */; };
 		A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59932E5B9C4F00266D7E /* ContentView.swift */; };
@@ -73,6 +76,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSearchManager.swift; sourceTree = "<group>"; };
+		A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
+		A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripImageGenerationService.swift; sourceTree = "<group>"; };
 		A93C598E2E5B9C4F00266D7E /* SkyLine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyLine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineApp.swift; sourceTree = "<group>"; };
 		A93C59932E5B9C4F00266D7E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -230,13 +236,6 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		A94165F22EF495FE0050BE19 /* Previews */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Previews;
-			sourceTree = "<group>";
-		};
 		A99F90992E5BAB9700BE96FE /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
@@ -248,7 +247,6 @@
 		A99F909B2E5BAB9700BE96FE /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				A94165F22EF495FE0050BE19 /* Previews */,
 				A94165C32EA9D8400050BE19 /* Trips */,
 				A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */,
 				A99F90EE2E650FE100BE96FE /* AuthenticationView.swift */,
@@ -261,6 +259,7 @@
 		A99F90A02E5BAB9700BE96FE /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */,
 				A94165DD2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift */,
 			);
 			path = Components;
@@ -269,6 +268,8 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */,
+				A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */,
 				A94166042EFA412F0050BE19 /* AIItineraryService.swift */,
 				A94165FC2EF9CD360050BE19 /* LocationManager.swift */,
 				A94165F82EF8C3770050BE19 /* FlightTripService.swift */,
@@ -458,6 +459,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */,
 				A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */,
 				A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */,
 				A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */,
@@ -482,12 +484,14 @@
 				A99F90F32E662B0700BE96FE /* SharedAirportService.swift in Sources */,
 				A99F90ED2E650FD500BE96FE /* AuthenticationService.swift in Sources */,
 				A99F90E72E636C4500BE96FE /* BoardingPassScanner.swift in Sources */,
+				A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */,
 				A94165CE2EA9DCA40050BE19 /* AddEntryView.swift in Sources */,
 				A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */,
 				A94165E32ED377EB0050BE19 /* BoardingPassConfig.swift in Sources */,
 				A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */,
 				A99F90F12E651D2B00BE96FE /* User.swift in Sources */,
 				A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */,
+				A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */,
 				A94165EE2EF14E3B0050BE19 /* DestinationSearchService.swift in Sources */,
 				A94165EF2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift in Sources */,
 				A94165F02EF14E3B0050BE19 /* UnifiedBoardingPassService.swift in Sources */,

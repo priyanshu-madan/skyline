@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreLocation
 import MapKit
+import PhotosUI
 
 struct AddTripView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -23,13 +24,20 @@ struct AddTripView: View {
     @State private var selectedDestination: DestinationSuggestion?
     @State private var showingSuggestions = false
     @State private var searchWorkItem: DispatchWorkItem?
+    @State private var isSelectingFromDropdown = false
     
     @StateObject private var destinationSearchManager = DestinationSearchManager()
     
     @State private var isCreating = false
+    @State private var isGeneratingImage = false
     @State private var error: String?
     @State private var showingUploadView = false
     @State private var showingLocationPicker = false
+    
+    // Image upload states
+    @State private var selectedImage: UIImage?
+    @State private var showingImagePicker = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
     
     // Validation
     private var isValidTrip: Bool {
@@ -39,72 +47,102 @@ struct AddTripView: View {
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Text("New Trip")
-                            .font(.system(.largeTitle, design: .monospaced))
-                            .fontWeight(.bold)
+        ZStack {
+            // Background
+            themeManager.currentTheme.colors.background
+                .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Custom Header
+                HStack {
+                    // Back button
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(themeManager.currentTheme.colors.text)
-                        
-                        Text("Document your next adventure")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                            .frame(width: 40, height: 40)
+                            .background(
+                                Circle()
+                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.8))
+                                    .overlay(
+                                        Circle()
+                                            .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
                     }
-                    .padding(.top, 20)
                     
+                    Spacer()
                     
-                    // Form fields
+                    // Title
+                    Text("Create Trip")
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+                    
+                    Spacer()
+                    
+                    // Spacer for balance
+                    Color.clear
+                        .frame(width: 40, height: 40)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+                
+                ScrollView {
                     VStack(spacing: 20) {
+                    
+                    
+                        // Image Upload Section
+                        imageUploadSection
+                        
+                        // Form fields
+                        VStack(spacing: 16) {
                         // Trip Title
                         FormField(
                             title: "Trip Title",
                             text: $title,
-                            placeholder: "Summer in Tokyo",
-                            isRequired: true
+                            placeholder: "Trip Name"
                         )
                         
                         // Destination with autocomplete
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Destination")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    .textCase(.uppercase)
-                                
-                                Text("*")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.red)
-                                
-                                Spacer()
-                                
-                                Button {
-                                    showingLocationPicker = true
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "map")
-                                        Text("Map")
-                                    }
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                                }
-                            }
-                            
                             VStack(spacing: 0) {
-                                TextField("Tokyo, Japan", text: $destination)
-                                    .font(.system(.body, design: .monospaced))
-                                    .padding()
-                                    .background(themeManager.currentTheme.colors.surface)
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                                    )
-                                    .onChange(of: destination) { _, newValue in
-                                        searchDestinations(newValue)
+                                HStack(spacing: 0) {
+                                    Image(systemName: "mappin")
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                        .frame(width: 20, height: 20)
+                                        .padding(.leading, 16)
+                                    
+                                    TextField("Destination", text: $destination)
+                                        .font(.system(.body, design: .monospaced, weight: .medium))
+                                        .padding(.vertical, 16)
+                                        .padding(.leading, 12)
+                                        .padding(.trailing, 54)
+                                        .onChange(of: destination) { _, newValue in
+                                            searchDestinations(newValue)
+                                        }
+                                    
+                                    Button {
+                                        showingLocationPicker = true
+                                    } label: {
+                                        Image(systemName: "map")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                                            .frame(width: 20, height: 20)
                                     }
+                                    .padding(.trailing, 16)
+                                }
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                                )
                                 
                                 if showingSuggestions && (!destinationSearchManager.searchResults.isEmpty || destinationSearchManager.isSearching) {
                                     DestinationSearchResultsView(
@@ -118,96 +156,93 @@ struct AddTripView: View {
                             }
                         }
                         
-                        // Date Range
-                        VStack(spacing: 16) {
-                            HStack {
-                                Text("Travel Dates")
-                                    .font(.system(.caption, design: .monospaced))
+                        // Date Range - Grid layout like Builder.io
+                        HStack(spacing: 12) {
+                            // Start Date
+                            HStack(spacing: 0) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    .textCase(.uppercase)
+                                    .frame(width: 20, height: 20)
+                                    .padding(.leading, 16)
                                 
-                                Spacer()
+                                DatePicker("", selection: $startDate, displayedComponents: .date)
+                                    .datePickerStyle(.compact)
+                                    .font(.system(.body, design: .monospaced, weight: .medium))
+                                    .padding(.vertical, 16)
+                                    .padding(.leading, 12)
+                                    .padding(.trailing, 16)
                             }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                            )
                             
-                            HStack(spacing: 16) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Start Date")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    
-                                    DatePicker("", selection: $startDate, displayedComponents: .date)
-                                        .datePickerStyle(.compact)
-                                        .font(.system(.body, design: .monospaced))
-                                }
+                            // End Date
+                            HStack(spacing: 0) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    .frame(width: 20, height: 20)
+                                    .padding(.leading, 16)
                                 
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("End Date")
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    
-                                    DatePicker("", selection: $endDate, displayedComponents: .date)
-                                        .datePickerStyle(.compact)
-                                        .font(.system(.body, design: .monospaced))
-                                }
+                                DatePicker("", selection: $endDate, displayedComponents: .date)
+                                    .datePickerStyle(.compact)
+                                    .font(.system(.body, design: .monospaced, weight: .medium))
+                                    .padding(.vertical, 16)
+                                    .padding(.leading, 12)
+                                    .padding(.trailing, 16)
                             }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                            )
                         }
                         
                         // Description
                         FormField(
                             title: "Description",
                             text: $description,
-                            placeholder: "What makes this trip special?",
-                            isMultiline: true
+                            placeholder: "Add notes about your trip...",
+                            isMultiline: true,
+                            icon: "doc.text"
                         )
                     }
                     
-                    // Create button
-                    Button {
-                        createTrip()
-                    } label: {
-                        HStack {
-                            if isCreating {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(0.8)
-                                Text("Creating...")
-                            } else {
-                                Image(systemName: "plus")
-                                Text("Create Trip")
-                            }
-                        }
-                        .font(.system(.body, design: .monospaced))
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(isValidTrip ? themeManager.currentTheme.colors.primary : Color.gray)
-                        .cornerRadius(8)
-                    }
-                    .disabled(!isValidTrip || isCreating)
-                    
-                    // Error message
-                    if let error = error {
-                        Text(error)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.red)
-                            .padding()
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
+                    // Action buttons
+                    actionButtonsSection
+                        
+                        // Error message
+                        if let error = error {
+                            Text(error)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.red)
+                                .padding()
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(12)
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .font(.system(.body, design: .monospaced))
-                }
-            }
+        }
+        }
+        .photosPicker(
+            isPresented: $showingImagePicker,
+            selection: $selectedPhotoItem,
+            matching: .images,
+            photoLibrary: .shared()
+        )
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            loadSelectedImage(from: newItem)
         }
         .sheet(isPresented: $showingUploadView) {
             UploadItineraryView { parsedItinerary in
@@ -223,23 +258,182 @@ struct AddTripView: View {
         }
     }
     
+    // MARK: - Image Upload Section
+    private var imageUploadSection: some View {
+        VStack {
+            if let image = selectedImage {
+                // Image preview
+                ZStack {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 224)
+                        .clipped()
+                        .cornerRadius(20)
+                    
+                    // Overlay with change button
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button {
+                                selectedImage = nil
+                                selectedPhotoItem = nil
+                            } label: {
+                                Text("Clear")
+                                    .font(.system(.caption, design: .monospaced, weight: .bold))
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(themeManager.currentTheme.colors.surface.opacity(0.9))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 12)
+                                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                                            )
+                                    )
+                            }
+                            .padding(16)
+                        }
+                    }
+                }
+            } else {
+                // Upload placeholder
+                Button {
+                    showingImagePicker = true
+                } label: {
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                                .frame(width: 48, height: 48)
+                            
+                            Image(systemName: "photo")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        }
+                        
+                        VStack(spacing: 4) {
+                            Text("Add trip photo")
+                                .font(.system(.body, design: .monospaced, weight: .semibold))
+                                .foregroundColor(themeManager.currentTheme.colors.text)
+                            
+                            Text("JPG, PNG up to 10MB")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        }
+                    }
+                    .frame(height: 224)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(themeManager.currentTheme.colors.surface.opacity(0.5))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [8]))
+                            )
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Action Buttons Section
+    private var actionButtonsSection: some View {
+        HStack(spacing: 12) {
+            // Cancel button
+            Button {
+                dismiss()
+            } label: {
+                Text("Cancel")
+                    .font(.system(.body, design: .monospaced, weight: .bold))
+                    .foregroundColor(themeManager.currentTheme.colors.text)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+            }
+            
+            // Create button
+            Button {
+                createTrip()
+            } label: {
+                HStack(spacing: 8) {
+                    if isCreating {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(0.8)
+                        if isGeneratingImage {
+                            Text("Generating image...")
+                        } else {
+                            Text("Creating...")
+                        }
+                    } else {
+                        Text("Create Trip")
+                    }
+                }
+                .font(.system(.body, design: .monospaced, weight: .bold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(isValidTrip ? themeManager.currentTheme.colors.primary : Color.gray)
+                )
+            }
+            .disabled(!isValidTrip || isCreating)
+        }
+        .padding(.top, 8)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func loadSelectedImage(from photoItem: PhotosPickerItem?) {
+        guard let photoItem = photoItem else { return }
+        
+        photoItem.loadTransferable(type: Data.self) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let data):
+                    if let data = data, let uiImage = UIImage(data: data) {
+                        selectedImage = uiImage
+                    }
+                case .failure(let error):
+                    print("Error loading image: \(error)")
+                }
+            }
+        }
+    }
     
     private func searchDestinations(_ query: String) {
+        // Don't trigger search if we're programmatically setting from dropdown
+        if isSelectingFromDropdown {
+            isSelectingFromDropdown = false
+            return
+        }
+
         // Cancel previous search
         searchWorkItem?.cancel()
-        
+
         guard !query.isEmpty, query.count > 2 else {
             destinationSearchManager.clearSearch()
             showingSuggestions = false
             return
         }
-        
+
         // Debounce search requests
         let workItem = DispatchWorkItem {
             destinationSearchManager.search(for: query)
             showingSuggestions = true
         }
-        
+
         searchWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
@@ -249,6 +443,7 @@ struct AddTripView: View {
             if let destinationSuggestion = await destinationSearchManager.getLocationDetails(for: completion) {
                 await MainActor.run {
                     selectedDestination = destinationSuggestion
+                    isSelectingFromDropdown = true
                     destination = destinationSuggestion.displayName
                     showingSuggestions = false
                 }
@@ -258,33 +453,62 @@ struct AddTripView: View {
     
     private func handleLocationSelection(_ destinationSuggestion: DestinationSuggestion) {
         selectedDestination = destinationSuggestion
+        isSelectingFromDropdown = true
         destination = destinationSuggestion.displayName
         showingLocationPicker = false
     }
     
     private func createTrip() {
         guard isValidTrip else { return }
-        
+
         isCreating = true
         error = nil
-        
-        let trip = Trip(
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-            destination: destination.trimmingCharacters(in: .whitespacesAndNewlines),
-            destinationCode: selectedDestination?.airportCode,
-            startDate: startDate,
-            endDate: endDate,
-            description: description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
-            latitude: selectedDestination?.latitude,
-            longitude: selectedDestination?.longitude
-        )
-        
+
         Task {
+            // Generate trip ID first so we can save the image with it
+            let tripId = UUID().uuidString
+
+            // Handle trip image - either use uploaded image or generate with AI
+            var coverImageURL: String? = nil
+
+            if let image = selectedImage {
+                // User uploaded an image - save it
+                coverImageURL = tripStore.saveTripImageLocally(image, tripId: tripId)
+            } else {
+                // No image uploaded - generate AI images for both themes
+                await MainActor.run {
+                    isGeneratingImage = true
+                }
+
+                let destinationText = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+                coverImageURL = await tripStore.generateAndSaveTripImages(
+                    destination: destinationText,
+                    tripId: tripId
+                )
+
+                await MainActor.run {
+                    isGeneratingImage = false
+                }
+            }
+
+            let trip = Trip(
+                id: tripId,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                destination: destination.trimmingCharacters(in: .whitespacesAndNewlines),
+                destinationCode: selectedDestination?.airportCode,
+                startDate: startDate,
+                endDate: endDate,
+                description: description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
+                coverImageURL: coverImageURL,
+                latitude: selectedDestination?.latitude,
+                longitude: selectedDestination?.longitude
+            )
+
             let result = await tripStore.addTrip(trip)
-            
+
             await MainActor.run {
                 isCreating = false
-                
+
                 switch result {
                 case .success:
                     dismiss()
@@ -356,7 +580,6 @@ struct AddTripView: View {
     }
 }
 
-
 // MARK: - Form Field Component
 struct FormField: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -366,46 +589,61 @@ struct FormField: View {
     let placeholder: String
     var isRequired: Bool = false
     var isMultiline: Bool = false
+    var icon: String?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .textCase(.uppercase)
-                
-                if isRequired {
-                    Text("*")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.red)
+        if isMultiline {
+            // Multiline text field with icon
+            HStack(alignment: .top, spacing: 0) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .padding(.leading, 16)
+                        .padding(.top, 16)
                 }
                 
-                Spacer()
-            }
-            
-            if isMultiline {
                 TextField(placeholder, text: $text, axis: .vertical)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.system(.body, design: .monospaced, weight: .medium))
                     .lineLimit(3...6)
-                    .padding()
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                    )
-            } else {
-                TextField(placeholder, text: $text)
-                    .font(.system(.body, design: .monospaced))
-                    .padding()
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                    )
+                    .padding(.vertical, 16)
+                    .padding(.leading, icon != nil ? 12 : 16)
+                    .padding(.trailing, 16)
             }
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+            )
+        } else {
+            // Single line text field with icon
+            HStack(spacing: 0) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .padding(.leading, 16)
+                }
+                
+                TextField(placeholder, text: $text)
+                    .font(.system(.body, design: .monospaced, weight: .medium))
+                    .padding(.vertical, 16)
+                    .padding(.leading, icon != nil ? 12 : 16)
+                    .padding(.trailing, 16)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+            )
         }
     }
 }
@@ -472,9 +710,9 @@ struct DestinationSearchResultsView: View {
             }
         }
         .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(8, corners: [.bottomLeft, .bottomRight])
+        .cornerRadius(16, corners: [.bottomLeft, .bottomRight])
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 16)
                 .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
