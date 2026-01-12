@@ -53,6 +53,31 @@ class TripStore: ObservableObject {
             )
         }
     }
+
+    var tripLocations: [TripLocation] {
+        trips.compactMap { trip in
+            guard let lat = trip.latitude, let lng = trip.longitude else { return nil }
+
+            let status: String
+            if trip.isCompleted {
+                status = "completed"
+            } else if trip.isUpcoming {
+                status = "upcoming"
+            } else {
+                status = "active"
+            }
+
+            return TripLocation(
+                tripId: trip.id,
+                name: trip.destination,
+                latitude: lat,
+                longitude: lng,
+                status: status,
+                startDate: trip.startDate,
+                endDate: trip.endDate
+            )
+        }
+    }
     
     private init() {
         // Load cached data immediately for offline access
@@ -574,6 +599,22 @@ class TripStore: ObservableObject {
     }
 }
 
+// MARK: - Trip Location Model (for globe visualization)
+struct TripLocation: Identifiable, Hashable {
+    let id = UUID()
+    let tripId: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let status: String // "completed", "upcoming", "active"
+    let startDate: Date
+    let endDate: Date
+
+    var coordinate: (lat: Double, lng: Double) {
+        (latitude, longitude)
+    }
+}
+
 // MARK: - Visited City Model
 struct VisitedCity: Identifiable, Hashable {
     let id = UUID()
@@ -582,7 +623,7 @@ struct VisitedCity: Identifiable, Hashable {
     let longitude: Double
     let tripCount: Int
     let lastVisited: Date
-    
+
     var coordinate: (lat: Double, lng: Double) {
         (latitude, longitude)
     }

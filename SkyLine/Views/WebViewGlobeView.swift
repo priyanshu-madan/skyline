@@ -20,6 +20,7 @@ struct WebViewGlobeView: View {
     @State private var isAutoRotating = true
     @State private var lastFlightDataHash: String = ""
     @State private var lastVisitedCitiesHash: String = ""
+    @State private var lastTripLocationsHash: String = ""
     @State private var lastTabHash: String = ""
     
     
@@ -58,9 +59,19 @@ struct WebViewGlobeView: View {
                 }
                 .onChange(of: tripStore.visitedCities) { newCities in
                     let newCitiesHash = createVisitedCitiesHash(cities: newCities)
-                    
+
                     if newCitiesHash != lastVisitedCitiesHash {
                         lastVisitedCitiesHash = newCitiesHash
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            updateGlobeData()
+                        }
+                    }
+                }
+                .onChange(of: tripStore.tripLocations) { newLocations in
+                    let newLocationsHash = createTripLocationsHash(locations: newLocations)
+
+                    if newLocationsHash != lastTripLocationsHash {
+                        lastTripLocationsHash = newLocationsHash
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             updateGlobeData()
                         }
@@ -180,8 +191,16 @@ struct WebViewGlobeView: View {
         let cityIds = cities.map { city in
             "\(city.name)-\(city.latitude)-\(city.longitude)-\(city.lastVisited.timeIntervalSince1970)"
         }.sorted().joined(separator: "|")
-        
+
         return cityIds
+    }
+
+    private func createTripLocationsHash(locations: [TripLocation]) -> String {
+        let locationIds = locations.map { location in
+            "\(location.tripId)-\(location.name)-\(location.status)-\(location.latitude)-\(location.longitude)"
+        }.sorted().joined(separator: "|")
+
+        return locationIds
     }
     
     // MARK: - WebView Setup and Communication
@@ -226,6 +245,7 @@ struct WebViewGlobeView: View {
                 self.updateGlobeData()
                 self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
                 self.lastVisitedCitiesHash = self.createVisitedCitiesHash(cities: self.tripStore.visitedCities)
+                self.lastTripLocationsHash = self.createTripLocationsHash(locations: self.tripStore.tripLocations)
             }
         }
     }
@@ -243,6 +263,7 @@ struct WebViewGlobeView: View {
                     self.updateGlobeData()
                     self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
                     self.lastVisitedCitiesHash = self.createVisitedCitiesHash(cities: self.tripStore.visitedCities)
+                    self.lastTripLocationsHash = self.createTripLocationsHash(locations: self.tripStore.tripLocations)
                 }
             }
             return
@@ -423,17 +444,49 @@ struct WebViewGlobeView: View {
                 "lastVisited": city.lastVisited.timeIntervalSince1970
             ]
         } : []
+
+        // Add all trip locations with status (only when showing cities)
+        let tripLocations = shouldShowCities ? tripStore.tripLocations.map { location -> [String: Any] in
+            // Color based on trip status:
+            // Completed: #006bff (blue, same as flight paths)
+            // Upcoming: #FFA500 (orange)
+            // Active: #00C851 (green)
+            let color: String
+            switch location.status {
+            case "completed":
+                color = "#006bff"
+            case "upcoming":
+                color = "#FFA500"
+            case "active":
+                color = "#00C851"
+            default:
+                color = "#006bff"
+            }
+
+            return [
+                "lat": location.latitude,
+                "lng": location.longitude,
+                "name": location.name,
+                "tripId": location.tripId,
+                "status": location.status,
+                "color": color,
+                "startDate": location.startDate.timeIntervalSince1970,
+                "endDate": location.endDate.timeIntervalSince1970
+            ]
+        } : []
         
         guard let flightPathsData = try? JSONSerialization.data(withJSONObject: flightPaths),
               let airportsData = try? JSONSerialization.data(withJSONObject: airports),
               let visitedCitiesData = try? JSONSerialization.data(withJSONObject: visitedCities),
+              let tripLocationsData = try? JSONSerialization.data(withJSONObject: tripLocations),
               let flightPathsJson = String(data: flightPathsData, encoding: .utf8),
               let airportsJson = String(data: airportsData, encoding: .utf8),
-              let visitedCitiesJson = String(data: visitedCitiesData, encoding: .utf8) else {
+              let visitedCitiesJson = String(data: visitedCitiesData, encoding: .utf8),
+              let tripLocationsJson = String(data: tripLocationsData, encoding: .utf8) else {
             return
         }
         
-        // Use the updated function call with visited cities
+        // Use the updated function call with visited cities and trip locations
         let tabMode = tab?.rawValue ?? "all"
         let jsCode = """
             console.log('🎯 Globe update for tab mode: \(tabMode)');
@@ -441,12 +494,13 @@ struct WebViewGlobeView: View {
                 flightPaths: \(flightPathsJson),
                 airports: \(airportsJson),
                 visitedCities: \(visitedCitiesJson),
+                tripLocations: \(tripLocationsJson),
                 tabMode: '\(tabMode)'
             });
-            
+
             if (window.updateGlobeData) {
                 console.log('Calling updateGlobeData function...');
-                window.updateGlobeData(\(flightPathsJson), \(airportsJson), \(visitedCitiesJson), '\(tabMode)');
+                window.updateGlobeData(\(flightPathsJson), \(airportsJson), \(visitedCitiesJson), \(tripLocationsJson), '\(tabMode)');
                 console.log('updateGlobeData called successfully');
             } else if (window.updateFlightData) {
                 console.log('Falling back to updateFlightData function...');
@@ -632,9 +686,9 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             }, 0);
           };
           
-          // Enhanced globe data update function with visited cities support and tab filtering
-          window.updateGlobeData = function(flightPaths, airports, visitedCities, tabMode) {
-            console.log('🎯 updateGlobeData called with:', flightPaths?.length, 'flights,', visitedCities?.length, 'visited cities, tab mode:', tabMode);
+          // Enhanced globe data update function with visited cities, trip locations, and tab filtering
+          window.updateGlobeData = function(flightPaths, airports, visitedCities, tripLocations, tabMode) {
+            console.log('🎯 updateGlobeData called with:', flightPaths?.length, 'flights,', visitedCities?.length, 'visited cities,', tripLocations?.length, 'trip locations, tab mode:', tabMode);
             
             // Clear existing data first
             world.arcsData([]);
@@ -680,52 +734,93 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               allLocations = allLocations.concat(airportLabels);
             }
             
-            // Add visited cities - Swift already filtered the data, just display what we received
-            if (visitedCities && visitedCities.length > 0) {
-              const cityLabels = visitedCities.map(city => ({
-                lat: city.lat,
-                lng: city.lng,
-                code: city.name,
-                type: 'visited',
-                color: '#00C851',
-                tripCount: city.tripCount || 1
-              }));
-              allLocations = allLocations.concat(cityLabels);
-              console.log('✅ Visited cities added:', cityLabels.length);
-              
-              // Update point markers for visited cities
-              const cityPoints = visitedCities.map(city => ({
-                lat: city.lat,
-                lng: city.lng,
-                name: city.name,
-                color: '#00C851',
-                size: Math.min(0.08, 0.04 + (city.tripCount || 1) * 0.01) // Size based on trip count
-              }));
-              
-              world.pointsData(cityPoints)
-                .pointColor(d => d.color)
-                .pointAltitude(0.005)
-                .pointRadius(d => d.size)
-                .pointLabel(d => `${d.name} (${d.tripCount || 1} trip${(d.tripCount || 1) > 1 ? 's' : ''})`);
-              console.log('✅ Visited city points updated:', cityPoints.length, 'for tab:', tabMode);
+            // Store trip locations globally for country coloring
+            window.currentTripLocations = tripLocations || [];
+
+            // Update hexagon colors based on trips
+            if (tripLocations && tripLocations.length > 0) {
+              // Force refresh hexagon colors
+              world.hexPolygonColor(d => {
+                // Check if this country contains any trip location
+                const countryTrips = window.currentTripLocations.filter(trip => {
+                  return isPointInCountry(trip.lat, trip.lng, d);
+                });
+
+                if (countryTrips.length > 0) {
+                  // Prioritize: active > upcoming > completed
+                  const activeTrip = countryTrips.find(t => t.status === 'active');
+                  const upcomingTrip = countryTrips.find(t => t.status === 'upcoming');
+                  const completedTrip = countryTrips.find(t => t.status === 'completed');
+
+                  if (activeTrip) return '#00C851'; // Green
+                  if (upcomingTrip) return '#FFA500'; // Orange
+                  if (completedTrip) return '#006bff'; // Blue
+                }
+
+                // Default color (white or black depending on theme)
+                return '#ffffff';
+              });
             } else {
-              world.pointsData([]);
-              console.log('🚫 No visited cities for tab:', tabMode);
+              // Reset to default colors when no trips
+              world.hexPolygonColor(() => '#ffffff');
             }
-            
-            // Remove duplicates based on location (prioritize visited cities over airports)
+
+            // Clear point markers (we're using hexagons instead)
+            world.pointsData([]);
+
+            // Helper function to check if a point is in a country's boundaries
+            function isPointInCountry(lat, lng, countryFeature) {
+              if (!countryFeature || !countryFeature.geometry) return false;
+
+              const geometry = countryFeature.geometry;
+              const coords = geometry.coordinates;
+
+              // Simple bounding box check for performance
+              function isInBoundingBox(lat, lng, polygonCoords) {
+                let minLat = Infinity, maxLat = -Infinity;
+                let minLng = Infinity, maxLng = -Infinity;
+
+                function processPoly(poly) {
+                  poly.forEach(point => {
+                    const [pLng, pLat] = point;
+                    if (pLat < minLat) minLat = pLat;
+                    if (pLat > maxLat) maxLat = pLat;
+                    if (pLng < minLng) minLng = pLng;
+                    if (pLng > maxLng) maxLng = pLng;
+                  });
+                }
+
+                if (geometry.type === 'Polygon') {
+                  polygonCoords.forEach(processPoly);
+                } else if (geometry.type === 'MultiPolygon') {
+                  polygonCoords.forEach(polygon => {
+                    polygon.forEach(processPoly);
+                  });
+                }
+
+                // Expand bounding box slightly for better matching
+                const margin = 0.5; // Reduced margin for more precise matching
+                return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
+                       lng >= (minLng - margin) && lng <= (maxLng + margin);
+              }
+
+              return isInBoundingBox(lat, lng, coords);
+            }
+
+            // Keep only airport labels (no trip/city labels)
             const uniqueLabels = [];
             allLocations.forEach(location => {
-              const exists = uniqueLabels.find(existing => 
-                Math.abs(existing.lat - location.lat) < 0.5 && 
+              // Skip trip and visited city labels - we're using country colors instead
+              if (location.type === 'trip' || location.type === 'visited') {
+                return;
+              }
+
+              const exists = uniqueLabels.find(existing =>
+                Math.abs(existing.lat - location.lat) < 0.5 &&
                 Math.abs(existing.lng - location.lng) < 0.5
               );
               if (!exists) {
                 uniqueLabels.push(location);
-              } else if (location.type === 'visited' && exists.type === 'airport') {
-                // Replace airport with visited city if they're close
-                const index = uniqueLabels.indexOf(exists);
-                uniqueLabels[index] = location;
               }
             });
             
@@ -738,41 +833,23 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                 .htmlElement(d => {
                   const el = document.createElement('div');
                   el.innerHTML = d.code;
-                  
-                  // Style based on type
-                  if (d.type === 'visited') {
-                    el.style.cssText = `
-                      color: #FFFFFF;
-                      font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                      font-size: 10px;
-                      font-weight: bold;
-                      background: #00C851;
-                      padding: 3px 6px;
-                      border-radius: 12px;
-                      border: 2px solid #FFFFFF;
-                      text-align: center;
-                      pointer-events: none;
-                      white-space: nowrap;
-                      box-shadow: 0 2px 6px rgba(0, 200, 81, 0.4);
-                      transform: translate(-50%, -50%);
-                    `;
-                  } else {
-                    el.style.cssText = `
-                      color: #007AFF;
-                      font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                      font-size: 9px;
-                      font-weight: bold;
-                      background: rgba(255, 255, 255, 0.9);
-                      padding: 2px 4px;
-                      border-radius: 3px;
-                      border: 1px solid #007AFF;
-                      text-align: center;
-                      pointer-events: none;
-                      white-space: nowrap;
-                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                      transform: translate(-50%, -50%);
-                    `;
-                  }
+
+                  // Only show airport labels (simple styling)
+                  el.style.cssText = `
+                    color: #007AFF;
+                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                    font-size: 9px;
+                    font-weight: bold;
+                    background: rgba(255, 255, 255, 0.9);
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                    border: 1px solid #007AFF;
+                    text-align: center;
+                    pointer-events: none;
+                    white-space: nowrap;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+                    transform: translate(-50%, -50%);
+                  `;
                   return el;
                 });
               
@@ -783,7 +860,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           // Backward compatibility function
           window.updateFlightData = function(flightPaths, airports) {
             console.log('🎯 updateFlightData called (fallback mode)');
-            window.updateGlobeData(flightPaths, airports, []);
+            window.updateGlobeData(flightPaths, airports, [], [], 'all');
           };
           
           // Add auto-rotation toggle
@@ -1313,9 +1390,9 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             }
           });
 
-        // Enhanced globe data update function with visited cities support and tab filtering
-        window.updateGlobeData = function(newFlightData, newAirportData, visitedCities, tabMode) {
-          console.log('🎯 updateGlobeData called with:', newFlightData?.length, 'flights,', visitedCities?.length, 'visited cities, tab mode:', tabMode);
+        // Enhanced globe data update function with visited cities, trip locations, and tab filtering
+        window.updateGlobeData = function(newFlightData, newAirportData, visitedCities, tripLocations, tabMode) {
+          console.log('🎯 updateGlobeData called with:', newFlightData?.length, 'flights,', visitedCities?.length, 'visited cities,', tripLocations?.length, 'trip locations, tab mode:', tabMode);
           
           // Clear existing data first
           world.arcsData([]);
@@ -1354,41 +1431,84 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             allLocations = allLocations.concat(airportLabels);
           }
           
-          // Add visited cities - Swift already filtered the data, just display what we received
-          if (visitedCities && visitedCities.length > 0) {
-            const cityLabels = visitedCities.map(city => ({
-              lat: city.lat,
-              lng: city.lng,
-              name: city.name,
-              type: 'visited',
-              tripCount: city.tripCount || 1
-            }));
-            allLocations = allLocations.concat(cityLabels);
-            
-            // Also update point markers for visited cities
-            const cityPoints = visitedCities.map(city => ({
-              lat: city.lat,
-              lng: city.lng,
-              name: city.name,
-              color: '#00C851',
-              size: Math.min(0.08, 0.04 + (city.tripCount || 1) * 0.01)
-            }));
-            
-            // Update the world's point data to include visited cities
-            world.pointsData(cityPoints)
-              .pointColor(d => d.color)
-              .pointAltitude(0.005)
-              .pointRadius(d => d.size)
-              .pointLabel(d => `${d.name} (${d.tripCount || 1} trip${(d.tripCount || 1) > 1 ? 's' : ''})`);
-            
-            console.log('✅ Visited city points updated:', cityPoints.length, 'for tab:', tabMode);
-          } else {
-            world.pointsData([]);
-            console.log('🚫 No visited cities for tab:', tabMode);
+          // Store trip locations globally for country coloring
+          window.currentTripLocations = tripLocations || [];
+
+          // Helper function to check if a point is in a country's boundaries
+          function isPointInCountry(lat, lng, countryFeature) {
+            if (!countryFeature || !countryFeature.geometry) return false;
+
+            const geometry = countryFeature.geometry;
+            const coords = geometry.coordinates;
+
+            // Simple bounding box check for performance
+            function isInBoundingBox(lat, lng, polygonCoords) {
+              let minLat = Infinity, maxLat = -Infinity;
+              let minLng = Infinity, maxLng = -Infinity;
+
+              function processPoly(poly) {
+                poly.forEach(point => {
+                  const [pLng, pLat] = point;
+                  if (pLat < minLat) minLat = pLat;
+                  if (pLat > maxLat) maxLat = pLat;
+                  if (pLng < minLng) minLng = pLng;
+                  if (pLng > maxLng) maxLng = pLng;
+                });
+              }
+
+              if (geometry.type === 'Polygon') {
+                polygonCoords.forEach(processPoly);
+              } else if (geometry.type === 'MultiPolygon') {
+                polygonCoords.forEach(polygon => {
+                  polygon.forEach(processPoly);
+                });
+              }
+
+              // Expand bounding box slightly for better matching
+              const margin = 0.5; // Reduced margin for more precise matching
+              return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
+                     lng >= (minLng - margin) && lng <= (maxLng + margin);
+            }
+
+            return isInBoundingBox(lat, lng, coords);
           }
-          
-          if (allLocations.length > 0) {
-            const processedLocations = processAirportLabels(allLocations);
+
+          // Update hexagon colors based on trips
+          if (tripLocations && tripLocations.length > 0) {
+            // Force refresh hexagon colors
+            world.hexPolygonColor(d => {
+              // Check if this country contains any trip location
+              const countryTrips = window.currentTripLocations.filter(trip => {
+                return isPointInCountry(trip.lat, trip.lng, d);
+              });
+
+              if (countryTrips.length > 0) {
+                // Prioritize: active > upcoming > completed
+                const activeTrip = countryTrips.find(t => t.status === 'active');
+                const upcomingTrip = countryTrips.find(t => t.status === 'upcoming');
+                const completedTrip = countryTrips.find(t => t.status === 'completed');
+
+                if (activeTrip) return '#00C851'; // Green
+                if (upcomingTrip) return '#FFA500'; // Orange
+                if (completedTrip) return '#006bff'; // Blue
+              }
+
+              // Default color
+              return currentTheme.countryColor;
+            });
+          } else {
+            // Reset to default colors when no trips
+            world.hexPolygonColor(() => currentTheme.countryColor);
+          }
+
+          // Clear point markers (we're using hexagons instead)
+          world.pointsData([]);
+
+          // Filter out trip/city labels - keep only airports
+          const airportOnlyLocations = allLocations.filter(loc => loc.type !== 'trip' && loc.type !== 'visited');
+
+          if (airportOnlyLocations.length > 0) {
+            const processedLocations = processAirportLabels(airportOnlyLocations);
             
             world
               .htmlElementsData(processedLocations)
@@ -1398,55 +1518,36 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               .htmlElement(d => {
                 const el = document.createElement('div');
                 el.innerHTML = d.name;
-                
-                // Special styling for visited cities
-                if (d.type === 'visited') {
-                  el.style.cssText = `
-                    color: #FFFFFF;
-                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                    font-size: 10px;
-                    font-weight: bold;
-                    background: #00C851;
-                    padding: 3px 6px;
-                    border-radius: 12px;
-                    border: 2px solid #FFFFFF;
-                    text-align: center;
-                    pointer-events: none;
-                    white-space: nowrap;
-                    box-shadow: 0 2px 6px rgba(0, 200, 81, 0.4);
-                    transform: translate(-50%, -50%);
-                  `;
-                } else {
-                  // Regular airport styling
-                  const isDark = currentTheme.backgroundColor === '#000011';
-                  const labelStyles = isDark ? {
-                    color: 'rgba(255, 255, 255, 0.95)',
-                    background: 'rgba(0, 0, 0, 0.7)',
-                    border: '0.5px solid rgba(255, 255, 255, 0.3)',
-                    shadow: '0 1px 3px rgba(0, 0, 0, 0.4)'
-                  } : {
-                    color: 'rgba(0, 0, 0, 0.9)',
-                    background: 'rgba(255, 255, 255, 0.8)',
-                    border: '0.5px solid rgba(0, 0, 0, 0.2)',
-                    shadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
-                  };
-                  
-                  el.style.cssText = `
-                    color: ${labelStyles.color};
-                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                    font-size: 9px;
-                    font-weight: 500;
-                    background: ${labelStyles.background};
-                    padding: 1px 4px;
-                    border-radius: 2px;
-                    border: ${labelStyles.border};
-                    text-align: center;
-                    pointer-events: none;
-                    white-space: nowrap;
-                    box-shadow: ${labelStyles.shadow};
-                    transform: translate(-50%, -50%);
-                  `;
-                }
+
+                // Only show airport labels (theme-aware styling)
+                const isDark = currentTheme.backgroundColor === '#000011';
+                const labelStyles = isDark ? {
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  background: 'rgba(0, 0, 0, 0.7)',
+                  border: '0.5px solid rgba(255, 255, 255, 0.3)',
+                  shadow: '0 1px 3px rgba(0, 0, 0, 0.4)'
+                } : {
+                  color: 'rgba(0, 0, 0, 0.9)',
+                  background: 'rgba(255, 255, 255, 0.8)',
+                  border: '0.5px solid rgba(0, 0, 0, 0.2)',
+                  shadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
+                };
+
+                el.style.cssText = `
+                  color: ${labelStyles.color};
+                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
+                  font-size: 9px;
+                  font-weight: 500;
+                  background: ${labelStyles.background};
+                  padding: 1px 4px;
+                  border-radius: 2px;
+                  border: ${labelStyles.border};
+                  text-align: center;
+                  pointer-events: none;
+                  white-space: nowrap;
+                  box-shadow: ${labelStyles.shadow};
+                  transform: translate(-50%, -50%);
+                `;
                 return el;
               });
             
@@ -1457,7 +1558,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
         // Backward compatibility function
         window.updateFlightData = function(newFlightData, newAirportData) {
           console.log('🎯 updateFlightData called (fallback mode)');
-          window.updateGlobeData(newFlightData, newAirportData, [], 'all');
+          window.updateGlobeData(newFlightData, newAirportData, [], [], 'all');
         };
 
         // Control functions
