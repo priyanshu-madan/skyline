@@ -8,7 +8,6 @@
 import SwiftUI
 import CoreLocation
 import MapKit
-import PhotosUI
 
 struct AddTripView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -29,15 +28,8 @@ struct AddTripView: View {
     @StateObject private var destinationSearchManager = DestinationSearchManager()
     
     @State private var isCreating = false
-    @State private var isGeneratingImage = false
     @State private var error: String?
     @State private var showingUploadView = false
-    @State private var showingLocationPicker = false
-    
-    // Image upload states
-    @State private var selectedImage: UIImage?
-    @State private var showingImagePicker = false
-    @State private var selectedPhotoItem: PhotosPickerItem?
     
     // Validation
     private var isValidTrip: Bool {
@@ -92,11 +84,6 @@ struct AddTripView: View {
                 
                 ScrollView {
                     VStack(spacing: 20) {
-                    
-                    
-                        // Image Upload Section
-                        imageUploadSection
-                        
                         // Form fields
                         VStack(spacing: 16) {
                         // Trip Title
@@ -106,8 +93,8 @@ struct AddTripView: View {
                             placeholder: "Trip Name"
                         )
                         
-                        // Destination with autocomplete
-                        VStack(alignment: .leading, spacing: 8) {
+                        // Destination with autocomplete and map preview
+                        VStack(alignment: .leading, spacing: 12) {
                             VStack(spacing: 0) {
                                 HStack(spacing: 0) {
                                     Image(systemName: "mappin")
@@ -115,25 +102,15 @@ struct AddTripView: View {
                                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                                         .frame(width: 20, height: 20)
                                         .padding(.leading, 16)
-                                    
+
                                     TextField("Destination", text: $destination)
                                         .font(.system(.body, design: .monospaced, weight: .medium))
                                         .padding(.vertical, 16)
                                         .padding(.leading, 12)
-                                        .padding(.trailing, 54)
+                                        .padding(.trailing, 16)
                                         .onChange(of: destination) { _, newValue in
                                             searchDestinations(newValue)
                                         }
-                                    
-                                    Button {
-                                        showingLocationPicker = true
-                                    } label: {
-                                        Image(systemName: "map")
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                                            .frame(width: 20, height: 20)
-                                    }
-                                    .padding(.trailing, 16)
                                 }
                                 .background(
                                     RoundedRectangle(cornerRadius: 20)
@@ -153,6 +130,11 @@ struct AddTripView: View {
                                         }
                                     )
                                 }
+                            }
+
+                            // Map preview for selected destination
+                            if let selectedDest = selectedDestination {
+                                destinationMapPreview(for: selectedDest)
                             }
                         }
                         
@@ -235,110 +217,40 @@ struct AddTripView: View {
             }
         }
         }
-        .photosPicker(
-            isPresented: $showingImagePicker,
-            selection: $selectedPhotoItem,
-            matching: .images,
-            photoLibrary: .shared()
-        )
-        .onChange(of: selectedPhotoItem) { _, newItem in
-            loadSelectedImage(from: newItem)
-        }
         .sheet(isPresented: $showingUploadView) {
             UploadItineraryView { parsedItinerary in
                 handleImportedItinerary(parsedItinerary)
             }
             .environmentObject(themeManager)
         }
-        .sheet(isPresented: $showingLocationPicker) {
-            LocationPickerView { selectedDestination in
-                handleLocationSelection(selectedDestination)
-            }
-            .environmentObject(themeManager)
-        }
     }
-    
-    // MARK: - Image Upload Section
-    private var imageUploadSection: some View {
-        VStack {
-            if let image = selectedImage {
-                // Image preview
-                ZStack {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 224)
-                        .clipped()
-                        .cornerRadius(20)
-                    
-                    // Overlay with change button
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button {
-                                selectedImage = nil
-                                selectedPhotoItem = nil
-                            } label: {
-                                Text("Clear")
-                                    .font(.system(.caption, design: .monospaced, weight: .bold))
-                                    .foregroundColor(themeManager.currentTheme.colors.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .fill(themeManager.currentTheme.colors.surface.opacity(0.9))
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 12)
-                                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
-                                            )
-                                    )
-                            }
-                            .padding(16)
-                        }
-                    }
-                }
-            } else {
-                // Upload placeholder
-                Button {
-                    showingImagePicker = true
-                } label: {
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
-                                .frame(width: 48, height: 48)
-                            
-                            Image(systemName: "photo")
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        }
-                        
-                        VStack(spacing: 4) {
-                            Text("Add trip photo")
-                                .font(.system(.body, design: .monospaced, weight: .semibold))
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-                            
-                            Text("JPG, PNG up to 10MB")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        }
-                    }
-                    .frame(height: 224)
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(themeManager.currentTheme.colors.surface.opacity(0.5))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [8]))
-                            )
-                    )
-                }
-            }
+
+    // MARK: - Destination Map Preview
+    private func destinationMapPreview(for destination: DestinationSuggestion) -> some View {
+        let coordinate = CLLocationCoordinate2D(
+            latitude: destination.latitude,
+            longitude: destination.longitude
+        )
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        )
+
+        return Map(initialPosition: .region(region)) {
+            Marker(destination.displayName, coordinate: coordinate)
+                .tint(.red)
         }
+        .mapStyle(.standard)
+        .mapControlVisibility(.hidden)
+        .disabled(true)
+        .frame(height: 200)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+        )
     }
-    
+
     // MARK: - Action Buttons Section
     private var actionButtonsSection: some View {
         HStack(spacing: 12) {
@@ -370,11 +282,7 @@ struct AddTripView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(0.8)
-                        if isGeneratingImage {
-                            Text("Generating image...")
-                        } else {
-                            Text("Creating...")
-                        }
+                        Text("Creating...")
                     } else {
                         Text("Create Trip")
                     }
@@ -394,24 +302,7 @@ struct AddTripView: View {
     }
     
     // MARK: - Helper Methods
-    
-    private func loadSelectedImage(from photoItem: PhotosPickerItem?) {
-        guard let photoItem = photoItem else { return }
-        
-        photoItem.loadTransferable(type: Data.self) { result in
-            DispatchQueue.main.async {
-                switch result {
-                case .success(let data):
-                    if let data = data, let uiImage = UIImage(data: data) {
-                        selectedImage = uiImage
-                    }
-                case .failure(let error):
-                    print("Error loading image: \(error)")
-                }
-            }
-        }
-    }
-    
+
     private func searchDestinations(_ query: String) {
         // Don't trigger search if we're programmatically setting from dropdown
         if isSelectingFromDropdown {
@@ -451,13 +342,6 @@ struct AddTripView: View {
         }
     }
     
-    private func handleLocationSelection(_ destinationSuggestion: DestinationSuggestion) {
-        selectedDestination = destinationSuggestion
-        isSelectingFromDropdown = true
-        destination = destinationSuggestion.displayName
-        showingLocationPicker = false
-    }
-    
     private func createTrip() {
         guard isValidTrip else { return }
 
@@ -465,31 +349,7 @@ struct AddTripView: View {
         error = nil
 
         Task {
-            // Generate trip ID first so we can save the image with it
             let tripId = UUID().uuidString
-
-            // Handle trip image - either use uploaded image or generate with AI
-            var coverImageURL: String? = nil
-
-            if let image = selectedImage {
-                // User uploaded an image - save it
-                coverImageURL = tripStore.saveTripImageLocally(image, tripId: tripId)
-            } else {
-                // No image uploaded - generate AI images for both themes
-                await MainActor.run {
-                    isGeneratingImage = true
-                }
-
-                let destinationText = destination.trimmingCharacters(in: .whitespacesAndNewlines)
-                coverImageURL = await tripStore.generateAndSaveTripImages(
-                    destination: destinationText,
-                    tripId: tripId
-                )
-
-                await MainActor.run {
-                    isGeneratingImage = false
-                }
-            }
 
             let trip = Trip(
                 id: tripId,
@@ -499,7 +359,7 @@ struct AddTripView: View {
                 startDate: startDate,
                 endDate: endDate,
                 description: description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),
-                coverImageURL: coverImageURL,
+                coverImageURL: nil,
                 latitude: selectedDestination?.latitude,
                 longitude: selectedDestination?.longitude
             )
