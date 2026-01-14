@@ -72,16 +72,18 @@ class DestinationSearchManager: NSObject, ObservableObject {
             // Extract city, country, and airport code if available
             let city = placemark.locality ?? completion.title
             let country = placemark.country ?? ""
-            
+
             // Try to find nearby airport code (simplified approach)
             let airportCode = await findNearbyAirportCode(coordinate: coordinate)
-            
+
             return DestinationSuggestion(
                 city: city,
                 country: country,
                 airportCode: airportCode,
                 latitude: coordinate.latitude,
-                longitude: coordinate.longitude
+                longitude: coordinate.longitude,
+                fullName: completion.title,  // Use the actual selected name
+                subtitle: completion.subtitle
             )
         } catch {
             await MainActor.run {

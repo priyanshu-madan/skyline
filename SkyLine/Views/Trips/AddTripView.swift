@@ -30,6 +30,9 @@ struct AddTripView: View {
     @State private var isCreating = false
     @State private var error: String?
     @State private var showingUploadView = false
+    @State private var showingMapActions = false
+
+    @FocusState private var isDestinationFieldFocused: Bool
     
     // Validation
     private var isValidTrip: Bool {
@@ -108,6 +111,7 @@ struct AddTripView: View {
                                         .padding(.vertical, 16)
                                         .padding(.leading, 12)
                                         .padding(.trailing, 16)
+                                        .focused($isDestinationFieldFocused)
                                         .onChange(of: destination) { _, newValue in
                                             searchDestinations(newValue)
                                         }
@@ -223,6 +227,24 @@ struct AddTripView: View {
             }
             .environmentObject(themeManager)
         }
+        .confirmationDialog(
+            "View on Maps",
+            isPresented: $showingMapActions,
+            titleVisibility: .visible,
+            presenting: selectedDestination
+        ) { selectedDest in
+            Button("View on Apple Maps") {
+                openInAppleMaps(destination: selectedDest)
+            }
+
+            Button("View on Google Maps") {
+                openInGoogleMaps(destination: selectedDest)
+            }
+
+            Button("Cancel", role: .cancel) {
+                // Explicitly handle cancel
+            }
+        }
     }
 
     // MARK: - Destination Map Preview
@@ -236,19 +258,26 @@ struct AddTripView: View {
             span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
 
-        return Map(initialPosition: .region(region)) {
-            Marker(destination.displayName, coordinate: coordinate)
-                .tint(.red)
+        return ZStack {
+            Map(initialPosition: .region(region)) {
+                Marker(destination.displayName, coordinate: coordinate)
+                    .tint(.red)
+            }
+            .mapStyle(.standard)
+            .mapControlVisibility(.hidden)
+            .allowsHitTesting(false)
+            .id("\(destination.latitude),\(destination.longitude)")  // Force map to recreate when destination changes
         }
-        .mapStyle(.standard)
-        .mapControlVisibility(.hidden)
-        .disabled(true)
         .frame(height: 200)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showingMapActions = true
+        }
     }
 
     // MARK: - Action Buttons Section
@@ -337,8 +366,48 @@ struct AddTripView: View {
                     isSelectingFromDropdown = true
                     destination = destinationSuggestion.displayName
                     showingSuggestions = false
+                    isDestinationFieldFocused = false // Dismiss keyboard
                 }
             }
+        }
+    }
+
+    // MARK: - Map Actions
+
+    private func openDirections(to destination: DestinationSuggestion) {
+        let coordinate = CLLocationCoordinate2D(
+            latitude: destination.latitude,
+            longitude: destination.longitude
+        )
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        mapItem.name = destination.displayName
+        mapItem.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving])
+    }
+
+    private func openInAppleMaps(destination: DestinationSuggestion) {
+        let coordinate = CLLocationCoordinate2D(
+            latitude: destination.latitude,
+            longitude: destination.longitude
+        )
+        let mapItem = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        mapItem.name = destination.displayName
+        mapItem.openInMaps()
+    }
+
+    private func openInGoogleMaps(destination: DestinationSuggestion) {
+        // URL encode the place name for Google Maps
+        let placeName = destination.displayName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+
+        // Use place name with coordinates for more accurate results
+        let googleMapsURL = "comgooglemaps://?q=\(placeName)&center=\(destination.latitude),\(destination.longitude)"
+        let googleMapsWebURL = "https://www.google.com/maps/search/?api=1&query=\(placeName)"
+
+        if let url = URL(string: googleMapsURL), UIApplication.shared.canOpenURL(url) {
+            // Google Maps app is installed
+            UIApplication.shared.open(url)
+        } else if let url = URL(string: googleMapsWebURL) {
+            // Fall back to web version
+            UIApplication.shared.open(url)
         }
     }
     

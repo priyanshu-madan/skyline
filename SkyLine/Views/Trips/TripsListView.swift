@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct TripsListView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -389,85 +390,56 @@ struct TripImageView: View {
     let trip: Trip
 
     var body: some View {
-        ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: themeManager.currentTheme == .dark ? [
-                    Color(red: 0.31, green: 0.31, blue: 0.31),
-                    Color(red: 0.11, green: 0.11, blue: 0.15)
-                ] : [
-                    Color(red: 0.98, green: 0.98, blue: 0.98),
-                    Color.white
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+        if let latitude = trip.latitude, let longitude = trip.longitude {
+            // Show map preview for trips with coordinates
+            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            let region = MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
             )
 
-            // Destination image if available
-            if let coverImageURL = trip.coverImageURL,
-               let url = URL(string: coverImageURL) {
-                // Check if it's a local file URL or remote URL
-                if url.isFileURL {
-                    // Load theme-appropriate local image
-                    let themeURL = getThemeSpecificURL(baseURL: url, isDarkMode: themeManager.currentTheme == .dark)
-                    if let imageData = try? Data(contentsOf: themeURL),
-                       let uiImage = UIImage(data: imageData) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        placeholderView
-                    }
-                } else {
-                    // Load remote image
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                            .scaleEffect(0.8)
-                    }
-                }
-            } else {
-                placeholderView
+            Map(initialPosition: .region(region)) {
+                Marker(trip.destination, coordinate: coordinate)
+                    .tint(.red)
             }
+            .mapStyle(.standard)
+            .mapControlVisibility(.hidden)
+            .allowsHitTesting(false)
+            .cornerRadius(16, corners: [.topLeft, .topRight])
+            .id("\(latitude),\(longitude)")  // Force update when coordinates change
+        } else {
+            // Fallback for trips without coordinates
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    colors: themeManager.currentTheme == .dark ? [
+                        Color(red: 0.31, green: 0.31, blue: 0.31),
+                        Color(red: 0.11, green: 0.11, blue: 0.15)
+                    ] : [
+                        Color(red: 0.98, green: 0.98, blue: 0.98),
+                        Color.white
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                // Fallback icon and destination name
+                VStack(spacing: 8) {
+                    Image(systemName: "building.2")
+                        .font(.system(size: 32, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                    Text(trip.destination)
+                        .font(.system(.caption, design: .monospaced))
+                        .fontWeight(.medium)
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 16)
+            }
+            .cornerRadius(16, corners: [.topLeft, .topRight])
         }
-        .cornerRadius(16, corners: [.topLeft, .topRight])
-    }
-
-    private var placeholderView: some View {
-        // Fallback icon and destination name
-        VStack(spacing: 8) {
-            Image(systemName: "building.2")
-                .font(.system(size: 32, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-            Text(trip.destination)
-                .font(.system(.caption, design: .monospaced))
-                .fontWeight(.medium)
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private func getThemeSpecificURL(baseURL: URL, isDarkMode: Bool) -> URL {
-        // Convert base URL to theme-specific URL
-        let path = baseURL.deletingPathExtension().path
-        let ext = baseURL.pathExtension
-        let theme = isDarkMode ? "dark" : "light"
-
-        // Check if theme-specific file exists
-        let themeURL = URL(fileURLWithPath: "\(path)_\(theme).\(ext)")
-        if FileManager.default.fileExists(atPath: themeURL.path) {
-            return themeURL
-        }
-
-        // Fallback to base URL if theme-specific doesn't exist
-        return baseURL
     }
 }
 
