@@ -425,6 +425,8 @@ struct AddTripView: View {
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 destination: destination.trimmingCharacters(in: .whitespacesAndNewlines),
                 destinationCode: selectedDestination?.airportCode,
+                state: selectedDestination?.state,
+                country: selectedDestination?.country,
                 startDate: startDate,
                 endDate: endDate,
                 description: description.isEmpty ? nil : description.trimmingCharacters(in: .whitespacesAndNewlines),

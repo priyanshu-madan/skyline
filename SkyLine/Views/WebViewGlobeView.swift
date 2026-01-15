@@ -98,13 +98,19 @@ struct WebViewGlobeView: View {
                 .onReceive(AirportService.shared.coordinatesUpdated) { airportCode in
                     // EMERGENCY FIX: Disable updateFlightCoordinates calls to stop infinite loop
                     print("⚠️ Airport coordinates updated for \(airportCode) but enhancement disabled")
-                    
+
                     // Only update the globe view data, don't trigger flight coordinate updates
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         updateGlobeData()
                     }
                 }
-            
+                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UpdateGlobeVisualizationMode"))) { notification in
+                    if let script = notification.userInfo?["script"] as? String {
+                        print("🗺️ Updating globe visualization mode")
+                        coordinator.evaluateJavaScript(script)
+                    }
+                }
+
             // Status bar background overlay
             VStack {
                 Rectangle()
@@ -467,6 +473,8 @@ struct WebViewGlobeView: View {
                 "lat": location.latitude,
                 "lng": location.longitude,
                 "name": location.name,
+                "state": location.state ?? "",
+                "country": location.country ?? "",
                 "tripId": location.tripId,
                 "status": location.status,
                 "color": color,
@@ -657,22 +665,161 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             .arcDashGap(0.05)
             .arcDashAnimateTime(3000);
           
+          // Store current theme globally
+          window.currentTheme = 'dark';
+
+          // Helper function to check if a trip matches a region (state/province or country)
+          window.isTripInRegion = function(trip, regionFeature, useStateLevel) {
+            if (!regionFeature || !regionFeature.properties) return false;
+
+            const regionName = regionFeature.properties.name || regionFeature.properties.admin || '';
+            const regionCountry = regionFeature.properties.admin || regionFeature.properties.sovereignt ||
+                                 regionFeature.properties.sov_a3 || regionFeature.properties.iso_a2 || '';
+
+            // Normalize names for comparison (case insensitive, trim whitespace)
+            const normalizeString = (str) => (str || '').toLowerCase().trim();
+
+            if (useStateLevel) {
+              // STATE LEVEL: Match by state name + country (strict matching)
+              if (trip.state && trip.country) {
+                const tripState = normalizeString(trip.state);
+                const tripCountry = normalizeString(trip.country);
+                const featureName = normalizeString(regionName);
+                const featureCountry = normalizeString(regionCountry);
+
+                // Exact match or very close match only (no substring matching to avoid spillover)
+                const stateMatches = featureName === tripState ||
+                                    Math.abs(featureName.length - tripState.length) <= 2 &&
+                                    (featureName.includes(tripState) || tripState.includes(featureName));
+
+                const countryMatches = featureCountry.includes(tripCountry) || tripCountry.includes(featureCountry);
+
+                if (stateMatches && countryMatches) {
+                  return true;
+                }
+              }
+
+              // Fallback: precise bounding box check
+              if (regionFeature.geometry && trip.lat && trip.lng) {
+                return isInBoundingBox(trip.lat, trip.lng, regionFeature.geometry, 0.3); // Tighter margin
+              }
+            } else {
+              // COUNTRY LEVEL: Match by country only
+              if (trip.country) {
+                const tripCountry = normalizeString(trip.country);
+                const featureName = normalizeString(regionName);
+                const featureCountry = normalizeString(regionCountry);
+
+                // Match against country name or properties
+                const countryMatches = featureName.includes(tripCountry) ||
+                                      tripCountry.includes(featureName) ||
+                                      featureCountry.includes(tripCountry) ||
+                                      tripCountry.includes(featureCountry);
+
+                if (countryMatches) {
+                  return true;
+                }
+              }
+
+              // Fallback: bounding box check
+              if (regionFeature.geometry && trip.lat && trip.lng) {
+                return isInBoundingBox(trip.lat, trip.lng, regionFeature.geometry, 0.5);
+              }
+            }
+
+            return false;
+          };
+
+          // Helper function for bounding box check
+          function isInBoundingBox(lat, lng, geometry, margin) {
+            const coords = geometry.coordinates;
+            let minLat = Infinity, maxLat = -Infinity;
+            let minLng = Infinity, maxLng = -Infinity;
+
+            function processPoly(poly) {
+              poly.forEach(point => {
+                const [pLng, pLat] = point;
+                if (pLat < minLat) minLat = pLat;
+                if (pLat > maxLat) maxLat = pLat;
+                if (pLng < minLng) minLng = pLng;
+                if (pLng > maxLng) maxLng = pLng;
+              });
+            }
+
+            if (geometry.type === 'Polygon') {
+              coords.forEach(processPoly);
+            } else if (geometry.type === 'MultiPolygon') {
+              coords.forEach(polygon => {
+                polygon.forEach(processPoly);
+              });
+            }
+
+            return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
+                   lng >= (minLng - margin) && lng <= (maxLng + margin);
+          }
+
+          // Store visualization mode globally (default: country level)
+          window.useStateLevel = false;
+
+          // Helper function to apply trip-aware hexagon coloring
+          window.applyHexagonColors = function() {
+            const defaultColor = window.currentTheme === 'light' ? '#000000' : '#ffffff';
+            const useStateLevel = window.useStateLevel !== undefined ? window.useStateLevel : true;
+
+            world
+              .hexPolygonColor(d => {
+                // Check if this region contains any trip location
+                const regionTrips = (window.currentTripLocations || []).filter(trip => {
+                  return window.isTripInRegion(trip, d, useStateLevel);
+                });
+
+                if (regionTrips.length > 0) {
+                  // Prioritize: active > upcoming > completed
+                  const activeTrip = regionTrips.find(t => t.status === 'active');
+                  const upcomingTrip = regionTrips.find(t => t.status === 'upcoming');
+                  const completedTrip = regionTrips.find(t => t.status === 'completed');
+
+                  if (activeTrip) return '#00C851'; // Green
+                  if (upcomingTrip) return '#FFA500'; // Orange
+                  if (completedTrip) return '#006bff'; // Blue
+                }
+
+                return defaultColor;
+              })
+              .hexPolygonAltitude(() => 0.01)
+              .hexPolygonUseDots(d => {
+                const regionTrips = (window.currentTripLocations || []).filter(trip => {
+                  return window.isTripInRegion(trip, d, useStateLevel);
+                });
+                return regionTrips.length === 0;
+              });
+          };
+
+          // Function to toggle visualization mode
+          window.setVisualizationMode = function(useState) {
+            console.log('🗺️ Setting visualization mode to:', useState ? 'State/Province' : 'Country');
+            window.useStateLevel = useState;
+            window.applyHexagonColors();
+          };
+
           // Add theme switching function
           window.setTheme = function(theme) {
             console.log('🎨 Setting theme to:', theme);
+            window.currentTheme = theme; // Store theme for later use
             if (theme === 'light') {
               world.globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=');
               world.backgroundColor('#FFFFFF');
               world.atmosphereColor('#CCE7FF');
-              world.hexPolygonColor(() => '#000000'); // Black dots on white globe
               document.body.style.background = 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)';
             } else {
               world.globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=');
               world.backgroundColor('#000011');
               world.atmosphereColor('#4F94CD');
-              world.hexPolygonColor(() => '#ffffff'); // Light polygons on dark background
               document.body.style.background = 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)';
             }
+
+            // Reapply trip-aware hexagon colors after theme change
+            window.applyHexagonColors();
           };
           
           // Add performance monitoring
@@ -737,75 +884,13 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             // Store trip locations globally for country coloring
             window.currentTripLocations = tripLocations || [];
 
-            // Update hexagon colors based on trips
-            if (tripLocations && tripLocations.length > 0) {
-              // Force refresh hexagon colors
-              world.hexPolygonColor(d => {
-                // Check if this country contains any trip location
-                const countryTrips = window.currentTripLocations.filter(trip => {
-                  return isPointInCountry(trip.lat, trip.lng, d);
-                });
-
-                if (countryTrips.length > 0) {
-                  // Prioritize: active > upcoming > completed
-                  const activeTrip = countryTrips.find(t => t.status === 'active');
-                  const upcomingTrip = countryTrips.find(t => t.status === 'upcoming');
-                  const completedTrip = countryTrips.find(t => t.status === 'completed');
-
-                  if (activeTrip) return '#00C851'; // Green
-                  if (upcomingTrip) return '#FFA500'; // Orange
-                  if (completedTrip) return '#006bff'; // Blue
-                }
-
-                // Default color (white or black depending on theme)
-                return '#ffffff';
-              });
-            } else {
-              // Reset to default colors when no trips
-              world.hexPolygonColor(() => '#ffffff');
+            // Apply trip-aware hexagon colors
+            if (window.applyHexagonColors) {
+              window.applyHexagonColors();
             }
 
             // Clear point markers (we're using hexagons instead)
             world.pointsData([]);
-
-            // Helper function to check if a point is in a country's boundaries
-            function isPointInCountry(lat, lng, countryFeature) {
-              if (!countryFeature || !countryFeature.geometry) return false;
-
-              const geometry = countryFeature.geometry;
-              const coords = geometry.coordinates;
-
-              // Simple bounding box check for performance
-              function isInBoundingBox(lat, lng, polygonCoords) {
-                let minLat = Infinity, maxLat = -Infinity;
-                let minLng = Infinity, maxLng = -Infinity;
-
-                function processPoly(poly) {
-                  poly.forEach(point => {
-                    const [pLng, pLat] = point;
-                    if (pLat < minLat) minLat = pLat;
-                    if (pLat > maxLat) maxLat = pLat;
-                    if (pLng < minLng) minLng = pLng;
-                    if (pLng > maxLng) maxLng = pLng;
-                  });
-                }
-
-                if (geometry.type === 'Polygon') {
-                  polygonCoords.forEach(processPoly);
-                } else if (geometry.type === 'MultiPolygon') {
-                  polygonCoords.forEach(polygon => {
-                    polygon.forEach(processPoly);
-                  });
-                }
-
-                // Expand bounding box slightly for better matching
-                const margin = 0.5; // Reduced margin for more precise matching
-                return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
-                       lng >= (minLng - margin) && lng <= (maxLng + margin);
-              }
-
-              return isInBoundingBox(lat, lng, coords);
-            }
 
             // Keep only airport labels (no trip/city labels)
             const uniqueLabels = [];
@@ -1075,28 +1160,29 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               }, 1000);
             }, 10000); // 10 second timeout
             
-            fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
+            // Load state/province level data for more precise visualization
+            fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson')
               .then(res => {
                 clearTimeout(timeoutId);
-                if (!res.ok) throw new Error('Failed to fetch countries data');
+                if (!res.ok) throw new Error('Failed to fetch states/provinces data');
                 return res.json();
               })
-              .then(countries => {
-                console.log('✅ Countries data loaded, adding hexagons...');
-                document.getElementById('status').innerHTML = 'Adding countries...';
-                
+              .then(regions => {
+                console.log('✅ States/provinces data loaded, adding hexagons...');
+                document.getElementById('status').innerHTML = 'Adding regions...';
+
                 // Debug: Check sample coordinates
-                const sampleCountry = countries.features.find(f => f.properties.NAME === 'United States of America' || f.properties.NAME_EN === 'United States');
-                if (sampleCountry) {
-                  console.log('🇺🇸 Found USA coordinates sample:', sampleCountry.geometry.coordinates[0]?.slice(0, 3));
+                const sampleRegion = regions.features.find(f => f.properties.name === 'California' || f.properties.admin === 'California');
+                if (sampleRegion) {
+                  console.log('🌴 Found California sample:', sampleRegion.properties);
                 }
-                
-                // Add hexagonal polygons with all countries for accurate positioning
-                console.log('📊 Total countries loaded:', countries.features.length);
+
+                // Add hexagonal polygons with all states/provinces for accurate positioning
+                console.log('📊 Total regions loaded:', regions.features.length);
                 
                 try {
                   world
-                    .hexPolygonsData(countries.features) // Use ALL countries for accurate positioning
+                    .hexPolygonsData(regions.features) // Use ALL states/provinces for accurate positioning
                     .hexPolygonResolution(3) // Medium resolution for hexagons
                     .hexPolygonMargin(0.5) // Even larger margin for very small hexagons
                     .hexPolygonUseDots(true) // Use dots instead of solid polygons
@@ -1107,7 +1193,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                   console.log('⚠️ Full dataset failed, trying reduced set:', error.message);
                   // Fallback to reduced dataset if full one causes issues
                   world
-                    .hexPolygonsData(countries.features.slice(0, 200))
+                    .hexPolygonsData(regions.features.slice(0, 500))
                     .hexPolygonResolution(3)
                     .hexPolygonMargin(0.5)
                     .hexPolygonUseDots(true)
@@ -1115,8 +1201,8 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                     .hexPolygonAltitude(0.01)
                     .hexPolygonLabel(() => null);
                 }
-                
-                console.log('🗺️ Countries added successfully');
+
+                console.log('🗺️ States/provinces added successfully');
                 document.getElementById('status').innerHTML = 'Globe with countries ready!';
                 
                 // Monitor performance after adding countries
@@ -1198,12 +1284,12 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     console.log('🌍 Globe script started');
     window.INITIAL_ZOOM = 15.0;
     
-    // Load countries data and create hexagonal polygons
-    console.log('📡 Fetching countries data...');
-    fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
+    // Load state/province level data and create hexagonal polygons
+    console.log('📡 Fetching states/provinces data...');
+    fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson')
       .then(res => res.json())
-      .then(countries => {
-        console.log('✅ Countries data loaded');
+      .then(regions => {
+        console.log('✅ States/provinces data loaded');
         const initialTheme = window.initialTheme || 'dark';
         console.log('🎨 Initial theme:', initialTheme);
         
@@ -1237,7 +1323,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           .showAtmosphere(false)
           .atmosphereColor(currentTheme.atmosphereColor)
           .atmosphereAltitude(0.15)
-          .hexPolygonsData(countries.features)
+          .hexPolygonsData(regions.features)
           .hexPolygonResolution(3)
           .hexPolygonMargin(0.5)
           .hexPolygonUseDots(true)

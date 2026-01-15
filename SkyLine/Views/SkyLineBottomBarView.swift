@@ -39,7 +39,7 @@ enum SkyLineTab: String, CaseIterable {
     case trips = "Trips"
     case flights = "Flights"
     case profile = "Profile"
-    
+
     var symbolImage: String {
         switch self {
         case .trips:
@@ -50,6 +50,12 @@ enum SkyLineTab: String, CaseIterable {
             return "location.slash"
         }
     }
+}
+
+/// Globe Visualization Mode
+enum GlobeVisualizationMode: String {
+    case state = "State/Province"
+    case country = "Country"
 }
 
 struct SkyLineBottomBarView: View {
@@ -66,7 +72,8 @@ struct SkyLineBottomBarView: View {
     @State private var flightNavigationContext: FlightNavigationContext = .flights
     @State private var tripToReopen: Trip? = nil
     @State private var showingSmartTripImport = false
-    
+    @State private var globeVisualizationMode: GlobeVisualizationMode = .country
+
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
     let onTabSelected: (() -> Void)?
@@ -459,26 +466,100 @@ struct SkyLineBottomBarView: View {
     
     @ViewBuilder
     func ProfileTabContent() -> some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                Image(systemName: "location.slash")
-                    .font(.system(size: 48, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-                
-                Text(authService.authenticationState.user?.displayName ?? "Profile")
-                    .font(.system(.title2, design: .monospaced))
-                    .fontWeight(.semibold)
-                
-                Text("Settings and account")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+        ScrollView {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 16) {
+                    Image(systemName: "person.circle")
+                        .font(.system(size: 48, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                        .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
+
+                    Text(authService.authenticationState.user?.displayName ?? "Profile")
+                        .font(.system(.title2, design: .monospaced))
+                        .fontWeight(.semibold)
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                    Text("Settings and preferences")
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 20)
+
+                // Settings Section
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("PREFERENCES")
+                        .font(.system(.caption, design: .monospaced))
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 20)
+
+                    // Theme Toggle
+                    HStack {
+                        Image(systemName: themeManager.currentTheme == .dark ? "moon.fill" : "sun.max.fill")
+                            .font(.system(size: 20, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                            .frame(width: 30)
+
+                        Text("Dark Mode")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.text)
+
+                        Spacer()
+
+                        Toggle("", isOn: Binding(
+                            get: { themeManager.currentTheme == .dark },
+                            set: { isDark in
+                                themeManager.currentTheme = isDark ? .dark : .light
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(themeManager.currentTheme.colors.surface.opacity(0.6))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 20)
+
+                    // Visualization Mode Toggle
+                    HStack {
+                        Image(systemName: "map.fill")
+                            .font(.system(size: 20, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                            .frame(width: 30)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Region Visualization")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.text)
+
+                            Text(globeVisualizationMode == .state ? "State/Province Level" : "Country Level")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: Binding(
+                            get: { globeVisualizationMode == .state },
+                            set: { useState in
+                                globeVisualizationMode = useState ? .state : .country
+                                updateGlobeVisualizationMode(useState)
+                            }
+                        ))
+                        .labelsHidden()
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(themeManager.currentTheme.colors.surface.opacity(0.6))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 20)
+                }
+                .padding(.top, 8)
+
+                Spacer()
             }
-            
-            Spacer()
         }
         .frame(maxWidth: .infinity)
     }
@@ -1524,6 +1605,27 @@ private extension SkyLineBottomBarView {
         case .delayed: return themeManager.currentTheme.colors.statusDelayed
         case .cancelled: return themeManager.currentTheme.colors.statusCancelled
         }
+    }
+
+    // MARK: - Globe Visualization Mode Update
+
+    private func updateGlobeVisualizationMode(_ useState: Bool) {
+        // Notify WebView to update visualization mode
+        let script = """
+        (function() {
+            if (window.setVisualizationMode) {
+                window.setVisualizationMode(\(useState ? "true" : "false"));
+            } else {
+                console.warn('⚠️ setVisualizationMode not available yet');
+            }
+        })();
+        """
+
+        NotificationCenter.default.post(
+            name: NSNotification.Name("UpdateGlobeVisualizationMode"),
+            object: nil,
+            userInfo: ["script": script]
+        )
     }
 }
 

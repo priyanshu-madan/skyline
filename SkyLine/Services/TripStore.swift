@@ -70,6 +70,8 @@ class TripStore: ObservableObject {
             return TripLocation(
                 tripId: trip.id,
                 name: trip.destination,
+                state: trip.state,
+                country: trip.country,
                 latitude: lat,
                 longitude: lng,
                 status: status,
@@ -604,6 +606,8 @@ struct TripLocation: Identifiable, Hashable {
     let id = UUID()
     let tripId: String
     let name: String
+    let state: String?
+    let country: String?
     let latitude: Double
     let longitude: Double
     let status: String // "completed", "upcoming", "active"

@@ -10,6 +10,7 @@ import Foundation
 struct DestinationSuggestion: Identifiable, Hashable {
     let id = UUID()
     let city: String
+    let state: String?
     let country: String
     let airportCode: String?
     let latitude: Double
@@ -36,8 +37,9 @@ struct DestinationSuggestion: Identifiable, Hashable {
     }
     
     // Convenience initializer for backwards compatibility with existing mock data
-    init(city: String, country: String, airportCode: String?, latitude: Double?, longitude: Double?, fullName: String? = nil, subtitle: String? = nil) {
+    init(city: String, state: String? = nil, country: String, airportCode: String?, latitude: Double?, longitude: Double?, fullName: String? = nil, subtitle: String? = nil) {
         self.city = city
+        self.state = state
         self.country = country
         self.airportCode = airportCode
         self.latitude = latitude ?? 0.0

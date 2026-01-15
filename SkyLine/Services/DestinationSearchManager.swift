@@ -69,8 +69,9 @@ class DestinationSearchManager: NSObject, ObservableObject {
             let placemark = mapItem.placemark
             let coordinate = placemark.coordinate
             
-            // Extract city, country, and airport code if available
+            // Extract city, state, country, and airport code if available
             let city = placemark.locality ?? completion.title
+            let state = placemark.administrativeArea // State/Province
             let country = placemark.country ?? ""
 
             // Try to find nearby airport code (simplified approach)
@@ -78,6 +79,7 @@ class DestinationSearchManager: NSObject, ObservableObject {
 
             return DestinationSuggestion(
                 city: city,
+                state: state,
                 country: country,
                 airportCode: airportCode,
                 latitude: coordinate.latitude,

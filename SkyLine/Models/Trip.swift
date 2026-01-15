@@ -15,6 +15,8 @@ struct Trip: Codable, Identifiable, Hashable {
     let title: String
     let destination: String
     let destinationCode: String? // Airport code if applicable
+    let state: String? // State/Province
+    let country: String? // Country name
     let startDate: Date
     let endDate: Date
     let description: String?
@@ -100,6 +102,8 @@ struct Trip: Codable, Identifiable, Hashable {
         title: String,
         destination: String,
         destinationCode: String? = nil,
+        state: String? = nil,
+        country: String? = nil,
         startDate: Date,
         endDate: Date,
         description: String? = nil,
@@ -113,6 +117,8 @@ struct Trip: Codable, Identifiable, Hashable {
         self.title = title
         self.destination = destination
         self.destinationCode = destinationCode
+        self.state = state
+        self.country = country
         self.startDate = startDate
         self.endDate = endDate
         self.description = description
