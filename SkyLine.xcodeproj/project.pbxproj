@@ -30,6 +30,7 @@
 		A94165E02ED375700050BE19 /* ConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165DF2ED375700050BE19 /* ConfigurationService.swift */; };
 		A94165E32ED377EB0050BE19 /* BoardingPassConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */; };
 		A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */ = {isa = PBXBuildFile; fileRef = A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */; };
+		468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */ = {isa = PBXBuildFile; fileRef = CCE42A62B909487098B269AA /* countries.geojson */; };
 		A94165EE2EF14E3B0050BE19 /* DestinationSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */; };
 		A94165EF2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165EC2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift */; };
 		A94165F02EF14E3B0050BE19 /* UnifiedBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */; };
@@ -101,6 +102,7 @@
 		A94165DF2ED375700050BE19 /* ConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationService.swift; sourceTree = "<group>"; };
 		A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingPassConfig.swift; sourceTree = "<group>"; };
 		A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BoardingPassConfig.json; sourceTree = "<group>"; };
+		CCE42A62B909487098B269AA /* countries.geojson */ = {isa = PBXFileReference; lastKnownFileType = text; path = countries.geojson; sourceTree = "<group>"; };
 		A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSearchService.swift; sourceTree = "<group>"; };
 		A94165EC2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterBoardingPassService.swift; sourceTree = "<group>"; };
 		A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedBoardingPassService.swift; sourceTree = "<group>"; };
@@ -232,6 +234,7 @@
 			isa = PBXGroup;
 			children = (
 				A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */,
+				CCE42A62B909487098B269AA /* countries.geojson */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -432,6 +435,7 @@
 			files = (
 				A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */,
 				A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */,
+				468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */,
 				A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */,
 				A99F90E52E5C123200BE96FE /* globe.html in Resources */,
 				A99F90C72E5BAE8B00BE96FE /* Assets.xcassets in Resources */,

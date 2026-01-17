@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 enum PresentedSheet: Identifiable {
     case addEntry
@@ -56,9 +57,10 @@ struct TripDetailView: View {
             ZStack {
                 ScrollView {
                     VStack(spacing: 0) {
-                        // Trip header
+                        // Trip header (map extends behind navigation bar)
                         TripHeaderView(trip: trip)
-                        
+                            .ignoresSafeArea(edges: .top)
+
                         // Timeline content
                         if entries.isEmpty {
                             EmptyTimelineView(onAddEntry: { presentedSheet = .addEntryMenu })
@@ -75,13 +77,13 @@ struct TripDetailView: View {
                         }
                     }
                 }
-                
+
                 // Floating add button
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        
+
                         Button {
                             presentedSheet = .addEntryMenu
                         } label: {
@@ -105,6 +107,8 @@ struct TripDetailView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
@@ -115,7 +119,7 @@ struct TripDetailView: View {
                             .fontWeight(.medium)
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
@@ -123,15 +127,15 @@ struct TripDetailView: View {
                         } label: {
                             Label("Edit Trip", systemImage: "pencil")
                         }
-                        
+
                         Button {
                             // Share trip
                         } label: {
                             Label("Share", systemImage: "square.and.arrow.up")
                         }
-                        
+
                         Divider()
-                        
+
                         Button(role: .destructive) {
                             // Delete trip
                         } label: {
@@ -181,6 +185,12 @@ struct TripDetailView: View {
         }
         .id(refreshID)
         .onAppear {
+            // Make navigation bar completely transparent
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithTransparentBackground()
+            UINavigationBar.appearance().standardAppearance = appearance
+            UINavigationBar.appearance().scrollEdgeAppearance = appearance
+
             Task {
                 await tripStore.fetchEntriesForTrip(trip.id)
                 await migrateFlightEntries()
@@ -311,7 +321,7 @@ struct TripHeaderView: View {
             TripHeaderImageView(trip: trip)
                 .frame(height: 200)
                 .clipped()
-            
+
             // Trip info
             VStack(spacing: 12) {
                 VStack(spacing: 4) {
@@ -400,85 +410,55 @@ struct TripHeaderView: View {
 struct TripHeaderImageView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
-    
+
     var body: some View {
-        ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: themeManager.currentTheme == .dark ? [
-                    Color(red: 0.31, green: 0.31, blue: 0.31),
-                    Color(red: 0.11, green: 0.11, blue: 0.15)
-                ] : [
-                    Color(red: 0.98, green: 0.98, blue: 0.98),
-                    Color.white
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+        if let latitude = trip.latitude, let longitude = trip.longitude {
+            // Show map preview for trips with coordinates
+            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            let region = MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
             )
-            
-            // Destination image if available
-            if let coverImageURL = trip.coverImageURL,
-               let url = URL(string: coverImageURL) {
-                // Check if it's a local file URL or remote URL
-                if url.isFileURL {
-                    // Load theme-appropriate local image
-                    let themeURL = getThemeSpecificURL(baseURL: url, isDarkMode: themeManager.currentTheme == .dark)
-                    if let imageData = try? Data(contentsOf: themeURL),
-                       let uiImage = UIImage(data: imageData) {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        tripDetailPlaceholderView
-                    }
-                } else {
-                    // Load remote image
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                            .scaleEffect(0.8)
-                    }
+
+            Map(initialPosition: .region(region)) {
+                Marker(trip.destination, coordinate: coordinate)
+                    .tint(.red)
+            }
+            .mapStyle(.standard)
+            .mapControlVisibility(.hidden)
+            .allowsHitTesting(false)
+            .id("\(latitude),\(longitude)")  // Force update when coordinates change
+        } else {
+            // Fallback for trips without coordinates
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    colors: themeManager.currentTheme == .dark ? [
+                        Color(red: 0.31, green: 0.31, blue: 0.31),
+                        Color(red: 0.11, green: 0.11, blue: 0.15)
+                    ] : [
+                        Color(red: 0.98, green: 0.98, blue: 0.98),
+                        Color.white
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                // Fallback with destination name
+                VStack(spacing: 12) {
+                    Image(systemName: "building.2")
+                        .font(.system(size: 48, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                    Text(trip.destination)
+                        .font(.system(.title2, design: .monospaced))
+                        .fontWeight(.semibold)
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .multilineTextAlignment(.center)
                 }
-            } else {
-                tripDetailPlaceholderView
+                .padding(.horizontal, 40)
             }
         }
-    }
-
-    private var tripDetailPlaceholderView: some View {
-        // Fallback with destination name
-        VStack(spacing: 12) {
-            Image(systemName: "building.2")
-                .font(.system(size: 48, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-            Text(trip.destination)
-                .font(.system(.title2, design: .monospaced))
-                .fontWeight(.semibold)
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 40)
-    }
-
-    private func getThemeSpecificURL(baseURL: URL, isDarkMode: Bool) -> URL {
-        // Convert base URL to theme-specific URL
-        let path = baseURL.deletingPathExtension().path
-        let ext = baseURL.pathExtension
-        let theme = isDarkMode ? "dark" : "light"
-
-        // Check if theme-specific file exists
-        let themeURL = URL(fileURLWithPath: "\(path)_\(theme).\(ext)")
-        if FileManager.default.fileExists(atPath: themeURL.path) {
-            return themeURL
-        }
-
-        // Fallback to base URL if theme-specific doesn't exist
-        return baseURL
     }
 }
 

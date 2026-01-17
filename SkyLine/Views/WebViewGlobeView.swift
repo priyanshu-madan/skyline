@@ -573,12 +573,26 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     }
     
     private func getSimpleTestHTML() -> String {
+        // Load countries GeoJSON from bundle for offline support
+        var countriesJSON = "{}"
+        if let path = Bundle.main.path(forResource: "countries", ofType: "geojson"),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let jsonString = String(data: data, encoding: .utf8) {
+            countriesJSON = jsonString
+        } else {
+            print("⚠️ Failed to load countries.geojson from bundle")
+        }
+
         return """
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script type="text/javascript">
+    // Preload countries data from bundle (offline support)
+    window.COUNTRIES_DATA = \(countriesJSON);
+  </script>
   <style>
     body { 
       margin: 0; 
@@ -1108,14 +1122,10 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               }, 1000);
             }, 10000); // 10 second timeout
             
-            // Load country-level data
-            fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
-              .then(res => {
-                clearTimeout(timeoutId);
-                if (!res.ok) throw new Error('Failed to fetch countries data');
-                return res.json();
-              })
+            // Load country-level data from preloaded bundle data (offline support)
+            Promise.resolve(window.COUNTRIES_DATA)
               .then(countries => {
+                clearTimeout(timeoutId);
                 console.log('✅ Countries data loaded:', countries.features.length);
 
                 document.getElementById('status').innerHTML = 'Adding regions...';
@@ -1196,11 +1206,25 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     }
     
     private func getGlobeHTML() -> String {
+        // Load countries GeoJSON from bundle
+        var countriesJSON = "{}"
+        if let path = Bundle.main.path(forResource: "countries", ofType: "geojson"),
+           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let jsonString = String(data: data, encoding: .utf8) {
+            countriesJSON = jsonString
+        } else {
+            print("⚠️ Failed to load countries.geojson from bundle")
+        }
+
         return """
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <script type="text/javascript">
+    // Preload countries data from bundle (offline support)
+    window.COUNTRIES_DATA = \(countriesJSON);
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body { 
@@ -1224,12 +1248,11 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     console.log('🌍 Globe script started');
     window.INITIAL_ZOOM = 15.0;
 
-    // Load country-level data only
-    console.log('📡 Fetching countries data...');
-    fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
-      .then(res => res.json())
+    // Load country-level data from preloaded bundle data (offline support)
+    console.log('📡 Loading countries data from bundle...');
+    Promise.resolve(window.COUNTRIES_DATA)
       .then(countries => {
-        console.log('✅ Countries data loaded:', countries.features.length);
+        console.log('✅ Countries data loaded from bundle:', countries.features.length);
 
         const initialTheme = window.initialTheme || 'dark';
         console.log('🎨 Initial theme:', initialTheme);
