@@ -8,6 +8,8 @@
 import SwiftUI
 import PhotosUI
 import CoreLocation
+import MapKit
+import UniformTypeIdentifiers
 
 struct AddEntryView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -21,85 +23,172 @@ struct AddEntryView: View {
     @State private var content = ""
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var selectedImages: [UIImage] = []
+    @State private var selectedDocuments: [URL] = []
     @State private var timestamp = Date()
-    @State private var useCurrentLocation = true
-    @State private var currentLocation: CLLocation?
-    @State private var locationName = ""
-    
+
     @State private var isCreating = false
     @State private var error: String?
-    @State private var showingLocationPicker = false
-    
-    @StateObject private var locationManager = SkyLineLocationManager()
+
+    // Destination search
+    @State private var destination = ""
+    @State private var selectedDestination: DestinationSuggestion?
+    @FocusState private var isDestinationFieldFocused: Bool
+
+    @StateObject private var searchManager = DestinationSearchManager()
     
     private var isValidEntry: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Text("New Entry")
-                            .font(.system(.largeTitle, design: .monospaced))
-                            .fontWeight(.bold)
+        ZStack {
+            // Background
+            themeManager.currentTheme.colors.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Custom Header
+                HStack {
+                    // Back button
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(themeManager.currentTheme.colors.text)
-                        
-                        Text("Capture this moment")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                            .frame(width: 40, height: 40)
+                            .background(
+                                Circle()
+                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.8))
+                                    .overlay(
+                                        Circle()
+                                            .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
                     }
-                    .padding(.top, 20)
-                    
-                    // Entry Type Selection
-                    EntryTypeSelector(selectedType: $selectedEntryType)
-                    
-                    // Photos Section
-                    PhotosSection(
-                        selectedPhotos: $selectedPhotos,
-                        selectedImages: $selectedImages
-                    )
-                    
-                    // Entry Details
+
+                    Spacer()
+
+                    // Title
+                    Text("New Entry")
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                    Spacer()
+
+                    // Spacer for balance
+                    Color.clear
+                        .frame(width: 40, height: 40)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+
+                ScrollView {
                     VStack(spacing: 20) {
-                        // Title
-                        FormField(
-                            title: "Title",
-                            text: $title,
-                            placeholder: getPlaceholderTitle(),
-                            isRequired: true
-                        )
-                        
-                        // Content/Description
-                        FormField(
-                            title: "What happened?",
-                            text: $content,
-                            placeholder: getPlaceholderContent(),
-                            isMultiline: true
-                        )
-                        
-                        // Timestamp
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("When")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                .textCase(.uppercase)
-                            
-                            DatePicker("", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
-                                .datePickerStyle(.compact)
-                                .font(.system(.body, design: .monospaced))
+                        // Form fields
+                        VStack(spacing: 16) {
+                            // 1. Title
+                            FormField(
+                                title: "Title",
+                                text: $title,
+                                placeholder: getPlaceholderTitle(),
+                                isRequired: true
+                            )
+
+                            // 2. Where - Destination/Location
+                            DestinationSection(
+                                destination: $destination,
+                                selectedDestination: $selectedDestination,
+                                isDestinationFieldFocused: _isDestinationFieldFocused,
+                                searchManager: searchManager
+                            )
+
+                            // 3. When - Timestamp
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "clock")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    Text("When")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                        .textCase(.uppercase)
+                                }
+
+                                DatePicker("", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
+                                    .datePickerStyle(.compact)
+                                    .font(.system(.body, design: .monospaced))
+                            }
+
+                            // 4. Activity Type
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "tag")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    Text("Activity Type")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                        .textCase(.uppercase)
+                                }
+
+                                Menu {
+                                    ForEach(TripEntryType.allCases, id: \.self) { type in
+                                        Button {
+                                            selectedEntryType = type
+                                        } label: {
+                                            Label {
+                                                Text(type.displayName)
+                                            } icon: {
+                                                Text(type.emoji)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    HStack {
+                                        Text(selectedEntryType.emoji)
+                                            .font(.system(size: 20, design: .monospaced))
+
+                                        Text(selectedEntryType.displayName)
+                                            .font(.system(.body, design: .monospaced))
+                                            .foregroundColor(themeManager.currentTheme.colors.text)
+
+                                        Spacer()
+
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    }
+                                    .padding()
+                                    .background(themeManager.currentTheme.colors.surface)
+                                    .cornerRadius(8)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                                    )
+                                }
+                            }
+
+                            // 5. Notes
+                            FormField(
+                                title: "Notes",
+                                text: $content,
+                                placeholder: getPlaceholderContent(),
+                                isMultiline: true
+                            )
+
+                            // 6. Photos
+                            PhotosSection(
+                                selectedPhotos: $selectedPhotos,
+                                selectedImages: $selectedImages
+                            )
+
+                            // 7. Documents
+                            DocumentsSection(
+                                selectedDocuments: $selectedDocuments
+                            )
                         }
-                        
-                        // Location Section
-                        LocationSection(
-                            useCurrentLocation: $useCurrentLocation,
-                            currentLocation: $currentLocation,
-                            locationName: $locationName,
-                            showingLocationPicker: $showingLocationPicker
-                        )
-                    }
                     
                     // Create Button
                     Button {
@@ -126,31 +215,20 @@ struct AddEntryView: View {
                     }
                     .disabled(!isValidEntry || isCreating)
                     
-                    // Error message
-                    if let error = error {
-                        Text(error)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.red)
-                            .padding()
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
+                        // Error message
+                        if let error = error {
+                            Text(error)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.red)
+                                .padding()
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(8)
+                        }
                     }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .font(.system(.body, design: .monospaced))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
             }
-        }
-        .onAppear {
-            requestLocationIfNeeded()
         }
         .onChange(of: selectedPhotos) { _, newItems in
             loadImages(from: newItems)
@@ -199,14 +277,7 @@ struct AddEntryView: View {
         case .photo: return "Had to capture this amazing moment."
         }
     }
-    
-    private func requestLocationIfNeeded() {
-        if useCurrentLocation {
-            locationManager.requestLocation()
-            currentLocation = locationManager.currentLocation
-        }
-    }
-    
+
     private func loadImages(from items: [PhotosPickerItem]) {
         selectedImages = []
         
@@ -224,14 +295,14 @@ struct AddEntryView: View {
     
     private func createEntry() {
         guard isValidEntry else { return }
-        
+
         isCreating = true
         error = nil
-        
+
         Task {
             // Create image URLs (in a real app, you'd upload to CloudKit first)
             let imageURLs: [String] = [] // Placeholder - implement image upload
-            
+
             let entry = TripEntry(
                 tripId: tripId,
                 timestamp: timestamp,
@@ -239,16 +310,16 @@ struct AddEntryView: View {
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
                 imageURLs: imageURLs,
-                latitude: useCurrentLocation ? currentLocation?.coordinate.latitude : nil,
-                longitude: useCurrentLocation ? currentLocation?.coordinate.longitude : nil,
-                locationName: locationName.isEmpty ? nil : locationName.trimmingCharacters(in: .whitespacesAndNewlines)
+                latitude: selectedDestination?.latitude,
+                longitude: selectedDestination?.longitude,
+                locationName: selectedDestination?.displayName
             )
-            
+
             let result = await tripStore.addEntry(entry)
-            
+
             await MainActor.run {
                 isCreating = false
-                
+
                 switch result {
                 case .success:
                     dismiss()
@@ -260,119 +331,53 @@ struct AddEntryView: View {
     }
 }
 
-// MARK: - Entry Type Selector
-struct EntryTypeSelector: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    @Binding var selectedType: TripEntryType
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("What kind of entry?")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .textCase(.uppercase)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 12) {
-                ForEach(TripEntryType.allCases, id: \.self) { entryType in
-                    EntryTypeButton(
-                        entryType: entryType,
-                        isSelected: selectedType == entryType
-                    ) {
-                        selectedType = entryType
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct EntryTypeButton: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    let entryType: TripEntryType
-    let isSelected: Bool
-    let onTap: () -> Void
-    
-    private var typeColor: Color {
-        switch entryType.color {
-        case "orange": return .orange
-        case "purple": return .purple
-        case "blue": return .blue
-        case "green": return .green
-        case "red": return .red
-        case "pink": return .pink
-        case "yellow": return .yellow
-        default: return .gray
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(isSelected ? typeColor : themeManager.currentTheme.colors.surface)
-                    .frame(width: 48, height: 48)
-                    .overlay(
-                        Circle()
-                            .stroke(isSelected ? typeColor : themeManager.currentTheme.colors.border, lineWidth: 2)
-                    )
-                
-                Text(entryType.emoji)
-                    .font(.system(size: 20, design: .monospaced))
-            }
-            
-            Text(entryType.displayName)
-                .font(.system(.caption2, design: .monospaced))
-                .fontWeight(.medium)
-                .foregroundColor(isSelected ? typeColor : themeManager.currentTheme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-        }
-        .onTapGesture {
-            onTap()
-        }
-    }
-}
-
 // MARK: - Photos Section
 struct PhotosSection: View {
     @EnvironmentObject var themeManager: ThemeManager
     @Binding var selectedPhotos: [PhotosPickerItem]
     @Binding var selectedImages: [UIImage]
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Photos")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .textCase(.uppercase)
-            
+            HStack(spacing: 6) {
+                Image(systemName: "photo")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                Text("Photos (Optional)")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .textCase(.uppercase)
+            }
+
             if selectedImages.isEmpty {
                 PhotosPicker(
                     selection: $selectedPhotos,
                     maxSelectionCount: 5,
                     matching: .images
                 ) {
-                    VStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(themeManager.currentTheme.colors.surface)
-                            .frame(height: 120)
-                            .overlay(
-                                VStack(spacing: 8) {
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 24, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    
-                                    Text("Add Photos")
-                                        .font(.system(.body, design: .monospaced))
-                                        .fontWeight(.medium)
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                }
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                            )
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 20, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.primary)
+
+                        Text("Add Photos")
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.medium)
+                            .foregroundColor(themeManager.currentTheme.colors.text)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
+                    .padding()
+                    .background(themeManager.currentTheme.colors.surface)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                    )
                 }
                 .buttonStyle(PlainButtonStyle())
             } else {
@@ -436,95 +441,318 @@ struct PhotosSection: View {
     }
 }
 
-// MARK: - Location Section
-struct LocationSection: View {
+// MARK: - Destination Section
+struct DestinationSection: View {
     @EnvironmentObject var themeManager: ThemeManager
-    @Binding var useCurrentLocation: Bool
-    @Binding var currentLocation: CLLocation?
-    @Binding var locationName: String
-    @Binding var showingLocationPicker: Bool
-    
+    @Binding var destination: String
+    @Binding var selectedDestination: DestinationSuggestion?
+    @FocusState var isDestinationFieldFocused: Bool
+    @ObservedObject var searchManager: DestinationSearchManager
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Location")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .textCase(.uppercase)
-            
-            VStack(spacing: 12) {
-                // Current location toggle
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                Text("Where")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .textCase(.uppercase)
+            }
+
+            VStack(spacing: 0) {
+                // Search field
                 HStack {
-                    Toggle("Use current location", isOn: $useCurrentLocation)
+                    Image(systemName: "magnifyingglass")
                         .font(.system(.body, design: .monospaced))
-                        .toggleStyle(SwitchToggleStyle(tint: themeManager.currentTheme.colors.primary))
-                    
-                    Spacer()
-                }
-                
-                if let location = currentLocation, useCurrentLocation {
-                    HStack {
-                        Image(systemName: "location.fill")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                        
-                        Text("\(location.coordinate.latitude.formatted(.number.precision(.fractionLength(4)))), \(location.coordinate.longitude.formatted(.number.precision(.fractionLength(4))))")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                    TextField("Search location", text: $destination)
+                        .font(.system(.body, design: .monospaced))
+                        .focused($isDestinationFieldFocused)
+                        .onChange(of: destination) { _, newValue in
+                            searchManager.search(for: newValue)
+                        }
+
+                    if !destination.isEmpty {
+                        Button {
+                            destination = ""
+                            selectedDestination = nil
+                            searchManager.clearSearch()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        }
                     }
                 }
-                
-                // Manual location name
-                if !useCurrentLocation || currentLocation != nil {
-                    TextField("Add location name (optional)", text: $locationName)
-                        .font(.system(.body, design: .monospaced))
-                        .padding()
-                        .background(themeManager.currentTheme.colors.surface)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                        )
+                .padding()
+                .background(themeManager.currentTheme.colors.surface)
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                )
+
+                // Search results
+                if isDestinationFieldFocused && !searchManager.searchResults.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(searchManager.searchResults, id: \.self) { result in
+                            Button {
+                                selectDestination(result)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(result.title)
+                                            .font(.system(.body, design: .monospaced))
+                                            .foregroundColor(themeManager.currentTheme.colors.text)
+
+                                        Text(result.subtitle)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    }
+
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(themeManager.currentTheme.colors.surface)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+
+                            if result != searchManager.searchResults.last {
+                                Divider()
+                                    .background(themeManager.currentTheme.colors.border)
+                            }
+                        }
+                    }
+                    .background(themeManager.currentTheme.colors.surface)
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                    )
+                    .padding(.top, 8)
+                }
+
+                // Map preview for selected destination
+                if let selectedDest = selectedDestination, !isDestinationFieldFocused {
+                    destinationMapPreview(for: selectedDest)
+                        .padding(.top, 12)
                 }
             }
         }
     }
-}
 
-// MARK: - Location Manager
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    @Published var currentLocation: CLLocation?
-    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
-    
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
-    }
-    
-    func requestLocation() {
-        switch authorizationStatus {
-        case .notDetermined:
-            manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
-            manager.requestLocation()
-        default:
-            break
+    private func selectDestination(_ completion: MKLocalSearchCompletion) {
+        Task {
+            if let suggestion = await searchManager.getLocationDetails(for: completion) {
+                await MainActor.run {
+                    selectedDestination = suggestion
+                    destination = suggestion.displayName
+                    isDestinationFieldFocused = false
+                    searchManager.clearSearch()
+                }
+            }
         }
     }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        currentLocation = locations.last
+
+    private func destinationMapPreview(for destination: DestinationSuggestion) -> some View {
+        let coordinate = CLLocationCoordinate2D(latitude: destination.latitude, longitude: destination.longitude)
+        let region = MKCoordinateRegion(
+            center: coordinate,
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        )
+
+        return Map(initialPosition: .region(region)) {
+            Marker(destination.displayName, coordinate: coordinate)
+                .tint(.red)
+        }
+        .mapStyle(.standard)
+        .mapControlVisibility(.hidden)
+        .allowsHitTesting(false)
+        .frame(height: 200)
+        .cornerRadius(12)
+        .id("\(destination.latitude),\(destination.longitude)")
     }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location error: \(error.localizedDescription)")
+}
+
+// MARK: - Documents Section
+struct DocumentsSection: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Binding var selectedDocuments: [URL]
+    @State private var showingDocumentPicker = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                Text("Documents (Optional)")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .textCase(.uppercase)
+            }
+
+            if selectedDocuments.isEmpty {
+                Button {
+                    showingDocumentPicker = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.badge.plus")
+                            .font(.system(size: 20, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.primary)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add Documents")
+                                .font(.system(.body, design: .monospaced))
+                                .fontWeight(.medium)
+                                .foregroundColor(themeManager.currentTheme.colors.text)
+
+                            Text("Booking confirmations, tickets, etc.")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    }
+                    .padding()
+                    .background(themeManager.currentTheme.colors.surface)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                VStack(spacing: 12) {
+                    // Selected documents list
+                    ForEach(Array(selectedDocuments.enumerated()), id: \.offset) { index, documentURL in
+                        HStack(spacing: 12) {
+                            Image(systemName: getDocumentIcon(for: documentURL))
+                                .font(.system(size: 20, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.primary)
+                                .frame(width: 40)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(documentURL.lastPathComponent)
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                                    .lineLimit(1)
+
+                                Text(formatFileSize(url: documentURL))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                removeDocument(at: index)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                            }
+                        }
+                        .padding()
+                        .background(themeManager.currentTheme.colors.surface)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                        )
+                    }
+
+                    // Add more button
+                    Button {
+                        showingDocumentPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus")
+                                .font(.system(.caption, design: .monospaced))
+                            Text("Add More Documents")
+                                .font(.system(.body, design: .monospaced))
+                        }
+                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                        .padding(.vertical, 8)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingDocumentPicker) {
+            EntryDocumentPicker(selectedDocuments: $selectedDocuments)
+        }
     }
-    
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        authorizationStatus = status
-        if status == .authorizedWhenInUse || status == .authorizedAlways {
-            manager.requestLocation()
+
+    private func getDocumentIcon(for url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "pdf":
+            return "doc.text.fill"
+        case "jpg", "jpeg", "png", "heic":
+            return "photo.fill"
+        case "zip":
+            return "doc.zipper"
+        default:
+            return "doc.fill"
+        }
+    }
+
+    private func formatFileSize(url: URL) -> String {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let fileSize = attributes[.size] as? Int64 else {
+            return ""
+        }
+
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: fileSize)
+    }
+
+    private func removeDocument(at index: Int) {
+        selectedDocuments.remove(at: index)
+    }
+}
+
+// MARK: - Entry Document Picker
+struct EntryDocumentPicker: UIViewControllerRepresentable {
+    @Binding var selectedDocuments: [URL]
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.pdf, .image, .text, .zip], asCopy: true)
+        picker.allowsMultipleSelection = true
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: EntryDocumentPicker
+
+        init(_ parent: EntryDocumentPicker) {
+            self.parent = parent
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            parent.selectedDocuments.append(contentsOf: urls)
+            parent.dismiss()
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.dismiss()
         }
     }
 }

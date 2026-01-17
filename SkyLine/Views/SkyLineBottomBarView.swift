@@ -52,12 +52,6 @@ enum SkyLineTab: String, CaseIterable {
     }
 }
 
-/// Globe Visualization Mode
-enum GlobeVisualizationMode: String {
-    case state = "State/Province"
-    case country = "Country"
-}
-
 struct SkyLineBottomBarView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var flightStore: FlightStore
@@ -71,7 +65,6 @@ struct SkyLineBottomBarView: View {
     @State private var flightDetailsViewKey: UUID = UUID()
     @State private var flightNavigationContext: FlightNavigationContext = .flights
     @State private var tripToReopen: Trip? = nil
-    @State private var globeVisualizationMode: GlobeVisualizationMode = .country
 
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
@@ -465,39 +458,6 @@ struct SkyLineBottomBarView: View {
                     .cornerRadius(12)
                     .padding(.horizontal, 20)
 
-                    // Visualization Mode Toggle
-                    HStack {
-                        Image(systemName: "map.fill")
-                            .font(.system(size: 20, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                            .frame(width: 30)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Region Visualization")
-                                .font(.system(.body, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-
-                            Text(globeVisualizationMode == .state ? "State/Province Level" : "Country Level")
-                                .font(.system(.caption, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(
-                            get: { globeVisualizationMode == .state },
-                            set: { useState in
-                                globeVisualizationMode = useState ? .state : .country
-                                updateGlobeVisualizationMode(useState)
-                            }
-                        ))
-                        .labelsHidden()
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(themeManager.currentTheme.colors.surface.opacity(0.6))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 20)
                 }
                 .padding(.top, 8)
 
@@ -1550,26 +1510,6 @@ private extension SkyLineBottomBarView {
         }
     }
 
-    // MARK: - Globe Visualization Mode Update
-
-    private func updateGlobeVisualizationMode(_ useState: Bool) {
-        // Notify WebView to update visualization mode
-        let script = """
-        (function() {
-            if (window.setVisualizationMode) {
-                window.setVisualizationMode(\(useState ? "true" : "false"));
-            } else {
-                console.warn('⚠️ setVisualizationMode not available yet');
-            }
-        })();
-        """
-
-        NotificationCenter.default.post(
-            name: NSNotification.Name("UpdateGlobeVisualizationMode"),
-            object: nil,
-            userInfo: ["script": script]
-        )
-    }
 }
 
 fileprivate struct TabViewHelper: UIViewRepresentable {

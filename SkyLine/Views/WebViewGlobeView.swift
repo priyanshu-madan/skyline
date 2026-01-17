@@ -104,12 +104,6 @@ struct WebViewGlobeView: View {
                         updateGlobeData()
                     }
                 }
-                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("UpdateGlobeVisualizationMode"))) { notification in
-                    if let script = notification.userInfo?["script"] as? String {
-                        print("🗺️ Updating globe visualization mode")
-                        coordinator.evaluateJavaScript(script)
-                    }
-                }
 
             // Status bar background overlay
             VStack {
@@ -668,116 +662,77 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           // Store current theme globally
           window.currentTheme = 'dark';
 
-          // Helper function to check if a trip matches a region (state/province or country)
-          window.isTripInRegion = function(trip, regionFeature, useStateLevel) {
-            if (!regionFeature || !regionFeature.properties) return false;
+          // Helper function to check if a trip is in a country (using point-in-polygon)
+          function isPointInCountry(lat, lng, countryFeature) {
+            if (!countryFeature || !countryFeature.geometry) return false;
 
-            const regionName = regionFeature.properties.name || regionFeature.properties.admin || '';
-            const regionCountry = regionFeature.properties.admin || regionFeature.properties.sovereignt ||
-                                 regionFeature.properties.sov_a3 || regionFeature.properties.iso_a2 || '';
+            const geometry = countryFeature.geometry;
 
-            // Normalize names for comparison (case insensitive, trim whitespace)
-            const normalizeString = (str) => (str || '').toLowerCase().trim();
+            // Point-in-polygon test using ray casting algorithm
+            // Note: GeoJSON coordinates are [longitude, latitude]
+            function pointInPolygon(lat, lng, polygon) {
+              let inside = false;
+              for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const [lngI, latI] = polygon[i];  // GeoJSON is [lng, lat]
+                const [lngJ, latJ] = polygon[j];
 
-            if (useStateLevel) {
-              // STATE LEVEL: Match by state name + country (strict matching)
-              if (trip.state && trip.country) {
-                const tripState = normalizeString(trip.state);
-                const tripCountry = normalizeString(trip.country);
-                const featureName = normalizeString(regionName);
-                const featureCountry = normalizeString(regionCountry);
+                const intersect = ((latI > lat) !== (latJ > lat)) &&
+                  (lng < (lngJ - lngI) * (lat - latI) / (latJ - latI) + lngI);
+                if (intersect) inside = !inside;
+              }
+              return inside;
+            }
 
-                // Exact match or very close match only (no substring matching to avoid spillover)
-                const stateMatches = featureName === tripState ||
-                                    Math.abs(featureName.length - tripState.length) <= 2 &&
-                                    (featureName.includes(tripState) || tripState.includes(featureName));
-
-                const countryMatches = featureCountry.includes(tripCountry) || tripCountry.includes(featureCountry);
-
-                if (stateMatches && countryMatches) {
-                  return true;
+            // Check all polygons in the geometry
+            if (geometry.type === 'Polygon') {
+              // Polygon has rings (first is outer, rest are holes)
+              const outerRing = geometry.coordinates[0];
+              if (pointInPolygon(lat, lng, outerRing)) {
+                // Check if point is in any hole
+                for (let i = 1; i < geometry.coordinates.length; i++) {
+                  if (pointInPolygon(lat, lng, geometry.coordinates[i])) {
+                    return false; // In a hole
+                  }
                 }
+                return true; // In outer ring, not in any hole
               }
-
-              // Fallback: precise bounding box check
-              if (regionFeature.geometry && trip.lat && trip.lng) {
-                return isInBoundingBox(trip.lat, trip.lng, regionFeature.geometry, 0.3); // Tighter margin
-              }
-            } else {
-              // COUNTRY LEVEL: Match by country only
-              if (trip.country) {
-                const tripCountry = normalizeString(trip.country);
-                const featureName = normalizeString(regionName);
-                const featureCountry = normalizeString(regionCountry);
-
-                // Match against country name or properties
-                const countryMatches = featureName.includes(tripCountry) ||
-                                      tripCountry.includes(featureName) ||
-                                      featureCountry.includes(tripCountry) ||
-                                      tripCountry.includes(featureCountry);
-
-                if (countryMatches) {
-                  return true;
+            } else if (geometry.type === 'MultiPolygon') {
+              // MultiPolygon has multiple polygons
+              for (let poly of geometry.coordinates) {
+                const outerRing = poly[0];
+                if (pointInPolygon(lat, lng, outerRing)) {
+                  // Check if point is in any hole
+                  let inHole = false;
+                  for (let i = 1; i < poly.length; i++) {
+                    if (pointInPolygon(lat, lng, poly[i])) {
+                      inHole = true;
+                      break;
+                    }
+                  }
+                  if (!inHole) return true; // In a polygon, not in any hole
                 }
-              }
-
-              // Fallback: bounding box check
-              if (regionFeature.geometry && trip.lat && trip.lng) {
-                return isInBoundingBox(trip.lat, trip.lng, regionFeature.geometry, 0.5);
               }
             }
 
             return false;
-          };
-
-          // Helper function for bounding box check
-          function isInBoundingBox(lat, lng, geometry, margin) {
-            const coords = geometry.coordinates;
-            let minLat = Infinity, maxLat = -Infinity;
-            let minLng = Infinity, maxLng = -Infinity;
-
-            function processPoly(poly) {
-              poly.forEach(point => {
-                const [pLng, pLat] = point;
-                if (pLat < minLat) minLat = pLat;
-                if (pLat > maxLat) maxLat = pLat;
-                if (pLng < minLng) minLng = pLng;
-                if (pLng > maxLng) maxLng = pLng;
-              });
-            }
-
-            if (geometry.type === 'Polygon') {
-              coords.forEach(processPoly);
-            } else if (geometry.type === 'MultiPolygon') {
-              coords.forEach(polygon => {
-                polygon.forEach(processPoly);
-              });
-            }
-
-            return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
-                   lng >= (minLng - margin) && lng <= (maxLng + margin);
           }
-
-          // Store visualization mode globally (default: country level)
-          window.useStateLevel = false;
 
           // Helper function to apply trip-aware hexagon coloring
           window.applyHexagonColors = function() {
             const defaultColor = window.currentTheme === 'light' ? '#000000' : '#ffffff';
-            const useStateLevel = window.useStateLevel !== undefined ? window.useStateLevel : true;
 
             world
               .hexPolygonColor(d => {
-                // Check if this region contains any trip location
-                const regionTrips = (window.currentTripLocations || []).filter(trip => {
-                  return window.isTripInRegion(trip, d, useStateLevel);
+                // Check if this country contains any trip location
+                const countryTrips = (window.currentTripLocations || []).filter(trip => {
+                  return isPointInCountry(trip.lat, trip.lng, d);
                 });
 
-                if (regionTrips.length > 0) {
+                if (countryTrips.length > 0) {
                   // Prioritize: active > upcoming > completed
-                  const activeTrip = regionTrips.find(t => t.status === 'active');
-                  const upcomingTrip = regionTrips.find(t => t.status === 'upcoming');
-                  const completedTrip = regionTrips.find(t => t.status === 'completed');
+                  const activeTrip = countryTrips.find(t => t.status === 'active');
+                  const upcomingTrip = countryTrips.find(t => t.status === 'upcoming');
+                  const completedTrip = countryTrips.find(t => t.status === 'completed');
 
                   if (activeTrip) return '#00C851'; // Green
                   if (upcomingTrip) return '#FFA500'; // Orange
@@ -788,18 +743,11 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               })
               .hexPolygonAltitude(() => 0.01)
               .hexPolygonUseDots(d => {
-                const regionTrips = (window.currentTripLocations || []).filter(trip => {
-                  return window.isTripInRegion(trip, d, useStateLevel);
+                const countryTrips = (window.currentTripLocations || []).filter(trip => {
+                  return isPointInCountry(trip.lat, trip.lng, d);
                 });
-                return regionTrips.length === 0;
+                return countryTrips.length === 0;
               });
-          };
-
-          // Function to toggle visualization mode
-          window.setVisualizationMode = function(useState) {
-            console.log('🗺️ Setting visualization mode to:', useState ? 'State/Province' : 'Country');
-            window.useStateLevel = useState;
-            window.applyHexagonColors();
           };
 
           // Add theme switching function
@@ -1160,29 +1108,21 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               }, 1000);
             }, 10000); // 10 second timeout
             
-            // Load state/province level data for more precise visualization
-            fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson')
+            // Load country-level data
+            fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
               .then(res => {
                 clearTimeout(timeoutId);
-                if (!res.ok) throw new Error('Failed to fetch states/provinces data');
+                if (!res.ok) throw new Error('Failed to fetch countries data');
                 return res.json();
               })
-              .then(regions => {
-                console.log('✅ States/provinces data loaded, adding hexagons...');
+              .then(countries => {
+                console.log('✅ Countries data loaded:', countries.features.length);
+
                 document.getElementById('status').innerHTML = 'Adding regions...';
 
-                // Debug: Check sample coordinates
-                const sampleRegion = regions.features.find(f => f.properties.name === 'California' || f.properties.admin === 'California');
-                if (sampleRegion) {
-                  console.log('🌴 Found California sample:', sampleRegion.properties);
-                }
-
-                // Add hexagonal polygons with all states/provinces for accurate positioning
-                console.log('📊 Total regions loaded:', regions.features.length);
-                
                 try {
                   world
-                    .hexPolygonsData(regions.features) // Use ALL states/provinces for accurate positioning
+                    .hexPolygonsData(countries.features)
                     .hexPolygonResolution(3) // Medium resolution for hexagons
                     .hexPolygonMargin(0.5) // Even larger margin for very small hexagons
                     .hexPolygonUseDots(true) // Use dots instead of solid polygons
@@ -1283,13 +1223,14 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
   <script>
     console.log('🌍 Globe script started');
     window.INITIAL_ZOOM = 15.0;
-    
-    // Load state/province level data and create hexagonal polygons
-    console.log('📡 Fetching states/provinces data...');
-    fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson')
+
+    // Load country-level data only
+    console.log('📡 Fetching countries data...');
+    fetch('https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson')
       .then(res => res.json())
-      .then(regions => {
-        console.log('✅ States/provinces data loaded');
+      .then(countries => {
+        console.log('✅ Countries data loaded:', countries.features.length);
+
         const initialTheme = window.initialTheme || 'dark';
         console.log('🎨 Initial theme:', initialTheme);
         
@@ -1323,7 +1264,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           .showAtmosphere(false)
           .atmosphereColor(currentTheme.atmosphereColor)
           .atmosphereAltitude(0.15)
-          .hexPolygonsData(regions.features)
+          .hexPolygonsData(countries.features)
           .hexPolygonResolution(3)
           .hexPolygonMargin(0.5)
           .hexPolygonUseDots(true)
@@ -1550,8 +1491,8 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                 });
               }
 
-              // Expand bounding box slightly for better matching
-              const margin = 0.5; // Reduced margin for more precise matching
+              // Use very tight margin to avoid overlapping neighboring countries
+              const margin = 0.05; // Very small margin (~5.5km) for precise matching
               return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
                      lng >= (minLng - margin) && lng <= (maxLng + margin);
             }
