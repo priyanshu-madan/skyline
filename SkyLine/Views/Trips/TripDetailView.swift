@@ -58,7 +58,7 @@ struct TripDetailView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         // Trip header (map extends behind navigation bar)
-                        TripHeaderView(trip: trip)
+                        TripHeaderView(trip: trip, entries: entries)
                             .ignoresSafeArea(edges: .top)
 
                         // Timeline content
@@ -314,11 +314,12 @@ struct TripDetailView: View {
 struct TripHeaderView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
-    
+    let entries: [TripEntry]
+
     var body: some View {
         VStack(spacing: 16) {
             // Trip image
-            TripHeaderImageView(trip: trip)
+            TripHeaderImageView(trip: trip, entries: entries)
                 .frame(height: 200)
                 .clipped()
 
@@ -410,24 +411,183 @@ struct TripHeaderView: View {
 struct TripHeaderImageView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
+    let entries: [TripEntry]
+
+    @State private var routes: [RouteSegment] = []
+    @State private var showingExpandedMap = false
+
+    // Track entries for change detection
+    private var entriesSignature: String {
+        entries.map { "\($0.id)-\($0.latitude ?? 0)-\($0.longitude ?? 0)" }.joined(separator: ",")
+    }
+
+    // Get entries with locations, sorted chronologically
+    private var entriesWithLocations: [(Int, TripEntry)] {
+        entries.filter { $0.hasLocation }
+            .enumerated()
+            .map { ($0.offset + 1, $0.element) }
+    }
+
+    // Create path segments between consecutive entries
+    private var pathSegments: [(TripEntry, TripEntry)] {
+        guard entriesWithLocations.count > 1 else { return [] }
+
+        var segments: [(TripEntry, TripEntry)] = []
+        for i in 0..<(entriesWithLocations.count - 1) {
+            let current = entriesWithLocations[i].1
+            let next = entriesWithLocations[i + 1].1
+            segments.append((current, next))
+        }
+        return segments
+    }
+
+    // Route segment with color information
+    struct RouteSegment: Identifiable {
+        let id = UUID()
+        let coordinates: [CLLocationCoordinate2D]
+        let startColor: Color
+        let endColor: Color
+    }
+
+    // Calculate map region to fit all markers
+    private var mapRegion: MKCoordinateRegion {
+        if entriesWithLocations.isEmpty {
+            // No entry locations, center on trip destination
+            if let lat = trip.latitude, let lng = trip.longitude {
+                return MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                )
+            }
+        } else {
+            // Calculate bounds to fit all entry locations
+            let coordinates = entriesWithLocations.compactMap { $0.1.coordinate }
+
+            if coordinates.count == 1, let coord = coordinates.first {
+                return MKCoordinateRegion(
+                    center: coord,
+                    span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                )
+            } else if coordinates.count > 1 {
+                let minLat = coordinates.map { $0.latitude }.min() ?? 0
+                let maxLat = coordinates.map { $0.latitude }.max() ?? 0
+                let minLng = coordinates.map { $0.longitude }.min() ?? 0
+                let maxLng = coordinates.map { $0.longitude }.max() ?? 0
+
+                let centerLat = (minLat + maxLat) / 2
+                let centerLng = (minLng + maxLng) / 2
+                let spanLat = (maxLat - minLat) * 1.5  // Add 50% padding
+                let spanLng = (maxLng - minLng) * 1.5
+
+                return MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng),
+                    span: MKCoordinateSpan(
+                        latitudeDelta: max(spanLat, 0.02),
+                        longitudeDelta: max(spanLng, 0.02)
+                    )
+                )
+            }
+        }
+
+        // Fallback
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        )
+    }
 
     var body: some View {
-        if let latitude = trip.latitude, let longitude = trip.longitude {
-            // Show map preview for trips with coordinates
-            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-            let region = MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            )
+        if trip.latitude != nil && trip.longitude != nil || !entriesWithLocations.isEmpty {
+            // Show map with numbered markers and route paths
+            Map(initialPosition: .region(mapRegion)) {
+                // Draw route paths with gradient colors
+                ForEach(routes) { route in
+                    // OPTIMIZATION: Group coordinates into chunks to reduce polyline count
+                    let chunkSize = max(1, route.coordinates.count / 10)  // ~10 color segments per route
+                    let chunks = stride(from: 0, to: route.coordinates.count - 1, by: chunkSize)
 
-            Map(initialPosition: .region(region)) {
-                Marker(trip.destination, coordinate: coordinate)
-                    .tint(.red)
+                    ForEach(Array(chunks.enumerated()), id: \.offset) { index, startIdx in
+                        let endIdx = min(startIdx + chunkSize + 1, route.coordinates.count)
+                        if startIdx < route.coordinates.count && endIdx <= route.coordinates.count && endIdx > startIdx {
+                            let progress = Double(index) / Double(max(1, route.coordinates.count / chunkSize))
+                            let segmentColor = interpolateColor(
+                                from: route.startColor,
+                                to: route.endColor,
+                                progress: progress
+                            )
+
+                            MapPolyline(coordinates: Array(route.coordinates[startIdx..<endIdx]))
+                                .stroke(
+                                    segmentColor.opacity(0.85),
+                                    style: StrokeStyle(
+                                        lineWidth: 4,
+                                        lineCap: .round,
+                                        lineJoin: .round
+                                    )
+                                )
+                        }
+                    }
+                }
+
+                // Show numbered markers for each entry (on top of paths)
+                ForEach(entriesWithLocations, id: \.1.id) { number, entry in
+                    if let coordinate = entry.coordinate {
+                        Annotation(entry.title, coordinate: coordinate) {
+                            NumberedMarkerView(
+                                number: number,
+                                color: entry.entryType.swiftUIColor
+                            )
+                        }
+                    }
+                }
             }
             .mapStyle(.standard)
             .mapControlVisibility(.hidden)
-            .allowsHitTesting(false)
-            .id("\(latitude),\(longitude)")  // Force update when coordinates change
+            .task {
+                await fetchRoutes()
+            }
+            .onChange(of: entriesSignature) { _, _ in
+                // Entries changed (added, deleted, or locations updated) - refetch routes
+                Task {
+                    routes = []  // Clear existing routes
+                    await fetchRoutes()
+                }
+            }
+            .id(entriesSignature)
+            .onTapGesture {
+                showingExpandedMap = true
+            }
+            .overlay(
+                // Tap indicator overlay
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Tap to expand")
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(Color.black.opacity(0.6))
+                        )
+                        .padding(12)
+                    }
+                }
+            )
+            .sheet(isPresented: $showingExpandedMap) {
+                ExpandedMapView(
+                    trip: trip,
+                    entries: entries,
+                    routes: routes,
+                    entriesWithLocations: entriesWithLocations
+                )
+            }
         } else {
             // Fallback for trips without coordinates
             ZStack {
@@ -459,6 +619,152 @@ struct TripHeaderImageView: View {
                 .padding(.horizontal, 40)
             }
         }
+    }
+
+    // Fetch actual routes between consecutive entries - OPTIMIZED
+    private func fetchRoutes() async {
+        // Skip if no segments
+        guard !pathSegments.isEmpty else {
+            routes = []
+            return
+        }
+
+        // Skip if routes already loaded for current segments
+        // (prevents unnecessary refetch when view appears again)
+        if !routes.isEmpty && routes.count == pathSegments.count {
+            return
+        }
+
+        print("🗺️ Fetching routes for \(pathSegments.count) segments...")
+
+        // Fetch all routes in parallel for better performance
+        await withTaskGroup(of: (Int, RouteSegment).self) { group in
+            for (index, segment) in pathSegments.enumerated() {
+                group.addTask {
+                    return (index, await self.fetchSingleRoute(segment: segment))
+                }
+            }
+
+            var fetchedRoutes: [(Int, RouteSegment)] = []
+            for await result in group {
+                fetchedRoutes.append(result)
+            }
+
+            // Sort by index to maintain order
+            let sortedRoutes = fetchedRoutes.sorted { $0.0 < $1.0 }.map { $0.1 }
+
+            await MainActor.run {
+                self.routes = sortedRoutes
+                print("✅ Loaded \(sortedRoutes.count) routes")
+            }
+        }
+    }
+
+    // Fetch a single route segment with caching
+    private func fetchSingleRoute(segment: (TripEntry, TripEntry)) async -> RouteSegment {
+        let startEntry = segment.0
+        let endEntry = segment.1
+
+        guard let startCoord = startEntry.coordinate,
+              let endCoord = endEntry.coordinate else {
+            return RouteSegment(
+                coordinates: [],
+                startColor: startEntry.entryType.swiftUIColor,
+                endColor: endEntry.entryType.swiftUIColor
+            )
+        }
+
+        // Check cache first
+        if let cached = await RouteCache.shared.getRoute(from: startEntry.id, to: endEntry.id) {
+            print("✅ Using cached route: \(startEntry.title) → \(endEntry.title)")
+            return RouteSegment(
+                coordinates: cached.coordinates.map { $0.coordinate },
+                startColor: startEntry.entryType.swiftUIColor,
+                endColor: endEntry.entryType.swiftUIColor
+            )
+        }
+
+        // Not in cache, fetch from Apple Maps
+        print("🌐 Fetching route: \(startEntry.title) → \(endEntry.title)")
+
+        let request = MKDirections.Request()
+        request.source = MKMapItem(placemark: MKPlacemark(coordinate: startCoord))
+        request.destination = MKMapItem(placemark: MKPlacemark(coordinate: endCoord))
+        request.transportType = .automobile
+
+        let directions = MKDirections(request: request)
+
+        do {
+            let response = try await directions.calculate()
+            if let route = response.routes.first {
+                // Simplify coordinates - only use every Nth point for gradient
+                let pointCount = route.polyline.pointCount
+                var coordinates: [CLLocationCoordinate2D] = []
+
+                if pointCount > 0 {
+                    let points = route.polyline.points()
+                    // OPTIMIZATION: Only take every 5th point to reduce rendering load
+                    let step = max(1, pointCount / 50)  // Limit to ~50 points max
+                    for i in stride(from: 0, to: pointCount, by: step) {
+                        coordinates.append(points[i].coordinate)
+                    }
+                    // Always include the last point
+                    if pointCount > 1 && (pointCount - 1) % step != 0 {
+                        coordinates.append(points[pointCount - 1].coordinate)
+                    }
+                }
+
+                // Save to cache
+                await RouteCache.shared.saveRoute(
+                    from: startEntry.id,
+                    to: endEntry.id,
+                    coordinates: coordinates,
+                    startColor: startEntry.entryType.color,
+                    endColor: endEntry.entryType.color
+                )
+
+                return RouteSegment(
+                    coordinates: coordinates,
+                    startColor: startEntry.entryType.swiftUIColor,
+                    endColor: endEntry.entryType.swiftUIColor
+                )
+            }
+        } catch {
+            // Silently fall back to straight line
+        }
+
+        // Fallback to straight line (don't cache this)
+        return RouteSegment(
+            coordinates: [startCoord, endCoord],
+            startColor: startEntry.entryType.swiftUIColor,
+            endColor: endEntry.entryType.swiftUIColor
+        )
+    }
+
+    // Interpolate between two colors based on progress (0.0 to 1.0)
+    private func interpolateColor(from startColor: Color, to endColor: Color, progress: Double) -> Color {
+        // Extract RGB components
+        let startUIColor = UIColor(startColor)
+        let endUIColor = UIColor(endColor)
+
+        var startRed: CGFloat = 0, startGreen: CGFloat = 0, startBlue: CGFloat = 0, startAlpha: CGFloat = 0
+        var endRed: CGFloat = 0, endGreen: CGFloat = 0, endBlue: CGFloat = 0, endAlpha: CGFloat = 0
+
+        startUIColor.getRed(&startRed, green: &startGreen, blue: &startBlue, alpha: &startAlpha)
+        endUIColor.getRed(&endRed, green: &endGreen, blue: &endBlue, alpha: &endAlpha)
+
+        // Interpolate each component
+        let red = startRed + (endRed - startRed) * progress
+        let green = startGreen + (endGreen - startGreen) * progress
+        let blue = startBlue + (endBlue - startBlue) * progress
+        let alpha = startAlpha + (endAlpha - startAlpha) * progress
+
+        return Color(
+            red: Double(red),
+            green: Double(green),
+            blue: Double(blue),
+            opacity: Double(alpha)
+        )
     }
 }
 
@@ -917,6 +1223,207 @@ struct AddEntryOptionButton: View {
         }
         .buttonStyle(PlainButtonStyle())
         .disabled(!option.isEnabled)
+    }
+}
+
+// MARK: - Numbered Marker View
+struct NumberedMarkerView: View {
+    let number: Int
+    let color: Color
+
+    var body: some View {
+        ZStack {
+            // Shadow circle
+            Circle()
+                .fill(Color.black.opacity(0.3))
+                .frame(width: 34, height: 34)
+                .offset(y: 2)
+
+            // Main marker circle
+            Circle()
+                .fill(color)
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white, lineWidth: 3)
+                )
+
+            // Number text
+            Text("\(number)")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+        }
+    }
+}
+
+// MARK: - TripEntryType Color Extension
+extension TripEntryType {
+    var swiftUIColor: Color {
+        switch self {
+        case .food:
+            return .orange
+        case .activity:
+            return .purple
+        case .sightseeing:
+            return .blue
+        case .accommodation:
+            return .green
+        case .transportation:
+            return .red
+        case .flight:
+            return .cyan
+        case .shopping:
+            return .pink
+        case .note:
+            return .gray
+        case .photo:
+            return .yellow
+        }
+    }
+}
+
+// MARK: - Expanded Map View
+struct ExpandedMapView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let trip: Trip
+    let entries: [TripEntry]
+    let routes: [TripHeaderImageView.RouteSegment]
+    let entriesWithLocations: [(Int, TripEntry)]
+
+    // Calculate map region to fit all markers
+    private var mapRegion: MKCoordinateRegion {
+        if entriesWithLocations.isEmpty {
+            if let lat = trip.latitude, let lng = trip.longitude {
+                return MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+                    span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                )
+            }
+        } else {
+            let coordinates = entriesWithLocations.compactMap { $0.1.coordinate }
+
+            if coordinates.count == 1, let coord = coordinates.first {
+                return MKCoordinateRegion(
+                    center: coord,
+                    span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                )
+            } else if coordinates.count > 1 {
+                let minLat = coordinates.map { $0.latitude }.min() ?? 0
+                let maxLat = coordinates.map { $0.latitude }.max() ?? 0
+                let minLng = coordinates.map { $0.longitude }.min() ?? 0
+                let maxLng = coordinates.map { $0.longitude }.max() ?? 0
+
+                let centerLat = (minLat + maxLat) / 2
+                let centerLng = (minLng + maxLng) / 2
+                let spanLat = (maxLat - minLat) * 1.5
+                let spanLng = (maxLng - minLng) * 1.5
+
+                return MKCoordinateRegion(
+                    center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLng),
+                    span: MKCoordinateSpan(
+                        latitudeDelta: max(spanLat, 0.02),
+                        longitudeDelta: max(spanLng, 0.02)
+                    )
+                )
+            }
+        }
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+        )
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                // Full screen map
+                Map(initialPosition: .region(mapRegion)) {
+                    // Draw route paths with gradient colors - OPTIMIZED
+                    ForEach(routes) { route in
+                        // Group coordinates into chunks to reduce polyline count
+                        let chunkSize = max(1, route.coordinates.count / 10)
+                        let chunks = stride(from: 0, to: route.coordinates.count - 1, by: chunkSize)
+
+                        ForEach(Array(chunks.enumerated()), id: \.offset) { index, startIdx in
+                            let endIdx = min(startIdx + chunkSize + 1, route.coordinates.count)
+                            if startIdx < route.coordinates.count && endIdx <= route.coordinates.count && endIdx > startIdx {
+                                let progress = Double(index) / Double(max(1, route.coordinates.count / chunkSize))
+                                let segmentColor = interpolateColor(
+                                    from: route.startColor,
+                                    to: route.endColor,
+                                    progress: progress
+                                )
+
+                                MapPolyline(coordinates: Array(route.coordinates[startIdx..<endIdx]))
+                                    .stroke(
+                                        segmentColor.opacity(0.85),
+                                        style: StrokeStyle(
+                                            lineWidth: 4,
+                                            lineCap: .round,
+                                            lineJoin: .round
+                                        )
+                                    )
+                            }
+                        }
+                    }
+
+                    // Show numbered markers
+                    ForEach(entriesWithLocations, id: \.1.id) { number, entry in
+                        if let coordinate = entry.coordinate {
+                            Annotation(entry.title, coordinate: coordinate) {
+                                NumberedMarkerView(
+                                    number: number,
+                                    color: entry.entryType.swiftUIColor
+                                )
+                            }
+                        }
+                    }
+                }
+                .mapStyle(.standard)
+                .mapControlVisibility(.visible)
+                .ignoresSafeArea()
+            }
+            .navigationTitle(trip.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(.title3))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    // Interpolate between two colors based on progress (0.0 to 1.0)
+    private func interpolateColor(from startColor: Color, to endColor: Color, progress: Double) -> Color {
+        let startUIColor = UIColor(startColor)
+        let endUIColor = UIColor(endColor)
+
+        var startRed: CGFloat = 0, startGreen: CGFloat = 0, startBlue: CGFloat = 0, startAlpha: CGFloat = 0
+        var endRed: CGFloat = 0, endGreen: CGFloat = 0, endBlue: CGFloat = 0, endAlpha: CGFloat = 0
+
+        startUIColor.getRed(&startRed, green: &startGreen, blue: &startBlue, alpha: &startAlpha)
+        endUIColor.getRed(&endRed, green: &endGreen, blue: &endBlue, alpha: &endAlpha)
+
+        let red = startRed + (endRed - startRed) * progress
+        let green = startGreen + (endGreen - startGreen) * progress
+        let blue = startBlue + (endBlue - startBlue) * progress
+        let alpha = startAlpha + (endAlpha - startAlpha) * progress
+
+        return Color(
+            red: Double(red),
+            green: Double(green),
+            blue: Double(blue),
+            opacity: Double(alpha)
+        )
     }
 }
 

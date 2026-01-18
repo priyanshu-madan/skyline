@@ -15,9 +15,9 @@ struct AddEntryView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
     @Environment(\.dismiss) private var dismiss
-    
+
     let tripId: String
-    
+
     @State private var selectedEntryType: TripEntryType = .food
     @State private var title = ""
     @State private var content = ""
@@ -34,7 +34,20 @@ struct AddEntryView: View {
     @State private var selectedDestination: DestinationSuggestion?
     @FocusState private var isDestinationFieldFocused: Bool
 
-    @StateObject private var searchManager = DestinationSearchManager()
+    @StateObject private var searchManager: DestinationSearchManager
+
+    // Get trip for region biasing
+    private var trip: Trip? {
+        tripStore.trips.first { $0.id == tripId }
+    }
+
+    init(tripId: String) {
+        self.tripId = tripId
+
+        // Initialize search manager without region bias initially
+        // We'll set it in onAppear when we have access to tripStore
+        _searchManager = StateObject(wrappedValue: DestinationSearchManager(regionBias: nil))
+    }
     
     private var isValidEntry: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -92,8 +105,9 @@ struct AddEntryView: View {
                             FormField(
                                 title: "Title",
                                 text: $title,
-                                placeholder: getPlaceholderTitle(),
-                                isRequired: true
+                                placeholder: "Title",
+                                isRequired: true,
+                                icon: "pencil"
                             )
 
                             // 2. Where - Destination/Location
@@ -105,77 +119,79 @@ struct AddEntryView: View {
                             )
 
                             // 3. When - Timestamp
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "clock")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    Text("When")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                        .textCase(.uppercase)
-                                }
+                            HStack(spacing: 0) {
+                                Image(systemName: "clock")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                    .frame(width: 20, height: 20)
+                                    .padding(.leading, 16)
 
                                 DatePicker("", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
                                     .datePickerStyle(.compact)
-                                    .font(.system(.body, design: .monospaced))
+                                    .font(.system(.body, design: .monospaced, weight: .medium))
+                                    .padding(.vertical, 16)
+                                    .padding(.leading, 12)
+                                    .padding(.trailing, 16)
                             }
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                            )
 
                             // 4. Activity Type
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "tag")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    Text("Activity Type")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                        .textCase(.uppercase)
-                                }
-
-                                Menu {
-                                    ForEach(TripEntryType.allCases, id: \.self) { type in
-                                        Button {
-                                            selectedEntryType = type
-                                        } label: {
-                                            Label {
-                                                Text(type.displayName)
-                                            } icon: {
-                                                Text(type.emoji)
-                                            }
+                            Menu {
+                                ForEach(TripEntryType.allCases, id: \.self) { type in
+                                    Button {
+                                        selectedEntryType = type
+                                    } label: {
+                                        Label {
+                                            Text(type.displayName)
+                                        } icon: {
+                                            Text(type.emoji)
                                         }
                                     }
-                                } label: {
-                                    HStack {
-                                        Text(selectedEntryType.emoji)
-                                            .font(.system(size: 20, design: .monospaced))
-
-                                        Text(selectedEntryType.displayName)
-                                            .font(.system(.body, design: .monospaced))
-                                            .foregroundColor(themeManager.currentTheme.colors.text)
-
-                                        Spacer()
-
-                                        Image(systemName: "chevron.up.chevron.down")
-                                            .font(.system(.caption, design: .monospaced))
-                                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    }
-                                    .padding()
-                                    .background(themeManager.currentTheme.colors.surface)
-                                    .cornerRadius(8)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                                    )
                                 }
+                            } label: {
+                                HStack(spacing: 0) {
+                                    Text(selectedEntryType.emoji)
+                                        .font(.system(size: 20))
+                                        .frame(width: 20, height: 20)
+                                        .padding(.leading, 16)
+
+                                    Text(selectedEntryType.displayName)
+                                        .font(.system(.body, design: .monospaced, weight: .medium))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                        .padding(.vertical, 16)
+                                        .padding(.leading, 12)
+
+                                    Spacer()
+
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                        .padding(.trailing, 16)
+                                }
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                                )
                             }
 
                             // 5. Notes
                             FormField(
                                 title: "Notes",
                                 text: $content,
-                                placeholder: getPlaceholderContent(),
-                                isMultiline: true
+                                placeholder: "Notes (optional)",
+                                isMultiline: true,
+                                icon: "note.text"
                             )
 
                             // 6. Photos
@@ -228,6 +244,20 @@ struct AddEntryView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                 }
+            }
+        }
+        .onAppear {
+            // Set region bias for search based on trip destination
+            if let trip = trip, let coordinate = trip.coordinate {
+                // Create a region centered on the trip destination
+                // Span covers roughly 300km radius (good for city + surrounding areas)
+                let region = MKCoordinateRegion(
+                    center: coordinate,
+                    latitudinalMeters: 300_000,  // 300km
+                    longitudinalMeters: 300_000
+                )
+                searchManager.regionBias = region
+                print("🗺️ Entry search biased to \(trip.destination) region")
             }
         }
         .onChange(of: selectedPhotos) { _, newItems in
@@ -339,16 +369,6 @@ struct PhotosSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "photo")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                Text("Photos (Optional)")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .textCase(.uppercase)
-            }
-
             if selectedImages.isEmpty {
                 PhotosPicker(
                     selection: $selectedPhotos,
@@ -360,10 +380,16 @@ struct PhotosSection: View {
                             .font(.system(size: 20, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.primary)
 
-                        Text("Add Photos")
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add Photos")
+                                .font(.system(.body, design: .monospaced))
+                                .fontWeight(.medium)
+                                .foregroundColor(themeManager.currentTheme.colors.text)
+
+                            Text("Optional")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        }
 
                         Spacer()
 
@@ -451,25 +477,19 @@ struct DestinationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "mappin.and.ellipse")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                Text("Where")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .textCase(.uppercase)
-            }
-
             VStack(spacing: 0) {
                 // Search field
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(.body, design: .monospaced))
+                HStack(spacing: 0) {
+                    Image(systemName: "mappin")
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .frame(width: 20, height: 20)
+                        .padding(.leading, 16)
 
-                    TextField("Search location", text: $destination)
-                        .font(.system(.body, design: .monospaced))
+                    TextField("Where (optional)", text: $destination)
+                        .font(.system(.body, design: .monospaced, weight: .medium))
+                        .padding(.vertical, 16)
+                        .padding(.leading, 12)
                         .focused($isDestinationFieldFocused)
                         .onChange(of: destination) { _, newValue in
                             searchManager.search(for: newValue)
@@ -485,14 +505,19 @@ struct DestinationSection: View {
                                 .font(.system(.body, design: .monospaced))
                                 .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         }
+                        .padding(.trailing, 16)
+                    } else {
+                        Spacer()
+                            .frame(width: 16)
                     }
                 }
-                .padding()
-                .background(themeManager.currentTheme.colors.surface)
-                .cornerRadius(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
                 )
 
                 // Search results
@@ -585,16 +610,6 @@ struct DocumentsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "doc")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                Text("Documents (Optional)")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .textCase(.uppercase)
-            }
-
             if selectedDocuments.isEmpty {
                 Button {
                     showingDocumentPicker = true

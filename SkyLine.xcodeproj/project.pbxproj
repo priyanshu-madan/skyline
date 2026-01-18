@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */; };
+		FF03AC0B3E7B48D8BBFCCFFD /* RouteCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46212D90C2D741E181908E6A /* RouteCache.swift */; };
 		A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */; };
 		A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */; };
 		A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */ = {isa = PBXBuildFile; productRef = A915596A2E6E4E1B00D77E8C /* BottomSheet */; };
@@ -78,6 +79,7 @@
 
 /* Begin PBXFileReference section */
 		A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSearchManager.swift; sourceTree = "<group>"; };
+		46212D90C2D741E181908E6A /* RouteCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteCache.swift; sourceTree = "<group>"; };
 		A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
 		A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripImageGenerationService.swift; sourceTree = "<group>"; };
 		A93C598E2E5B9C4F00266D7E /* SkyLine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyLine.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -274,6 +276,7 @@
 				A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */,
 				A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */,
 				A94166042EFA412F0050BE19 /* AIItineraryService.swift */,
+				46212D90C2D741E181908E6A /* RouteCache.swift */,
 				A94165FC2EF9CD360050BE19 /* LocationManager.swift */,
 				A94165F82EF8C3770050BE19 /* FlightTripService.swift */,
 				A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */,
@@ -464,6 +467,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */,
+				FF03AC0B3E7B48D8BBFCCFFD /* RouteCache.swift in Sources */,
 				A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */,
 				A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */,
 				A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */,

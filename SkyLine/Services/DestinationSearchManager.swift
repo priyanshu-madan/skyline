@@ -12,31 +12,39 @@ import Combine
 @MainActor
 class DestinationSearchManager: NSObject, ObservableObject {
     private let searchCompleter = MKLocalSearchCompleter()
-    
+
     @Published var searchResults: [MKLocalSearchCompletion] = []
     @Published var isSearching = false
     @Published var errorMessage: String?
-    
+
+    // Optional region to bias search results towards a specific area
+    // When set, search results will prioritize locations within this region
+    // For example: Trip to Delhi → prioritizes Delhi locations over NYC
+    var regionBias: MKCoordinateRegion? {
+        didSet {
+            searchCompleter.region = regionBias ?? MKCoordinateRegion()
+        }
+    }
+
     override init() {
         super.init()
         searchCompleter.delegate = self
-        
+
         // Include both addresses AND points of interest for comprehensive travel search
         searchCompleter.resultTypes = [.address, .pointOfInterest]
-        
-        // Configure POI filter to include travel-relevant attractions
-        searchCompleter.pointOfInterestFilter = MKPointOfInterestFilter(including: [
-            .amusementPark,     // Theme parks like Disneyland, Universal Studios
-            .nationalPark,      // National parks and preserves
-            .zoo, .aquarium,    // Animal attractions
-            .museum,            // Museums and cultural sites
-            .theater, .movieTheater, // Entertainment venues
-            .hotel,             // Accommodations
-            .restaurant,        // Dining locations
-            .airport,           // Transportation hubs
-            .beach,             // Natural attractions
-            .campground, .marina, .spa, .stadium // Other travel POIs
-        ])
+
+        // Don't use a restrictive POI filter - Apple might categorize landmarks differently
+        // Instead, we'll use our smart sorting algorithm to prioritize results
+        // This ensures famous landmarks like Taj Mahal appear even if they're not in a specific category
+        searchCompleter.pointOfInterestFilter = nil  // Accept ALL POIs, then sort intelligently
+    }
+
+    convenience init(regionBias: MKCoordinateRegion?) {
+        self.init()
+        if let region = regionBias {
+            self.regionBias = region
+            self.searchCompleter.region = region
+        }
     }
     
     func search(for query: String) {
@@ -156,34 +164,97 @@ class DestinationSearchManager: NSObject, ObservableObject {
 extension DestinationSearchManager: MKLocalSearchCompleterDelegate {
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         Task { @MainActor in
-            // Use Apple's results with minimal, lightweight sorting
-            // Just prioritize geographic locations (cities, countries) over specific addresses
+            // Debug: Log what we received from Apple
+            print("🔍 Search received \(completer.results.count) results from Apple Maps")
+
+            // Smart sorting: Prioritize landmarks and attractions over businesses
             let sortedResults = completer.results.sorted { first, second in
-                let firstIsGeographic = isLikelyGeographicLocation(first)
-                let secondIsGeographic = isLikelyGeographicLocation(second)
-                
-                if firstIsGeographic && !secondIsGeographic {
-                    return true
-                } else if !firstIsGeographic && secondIsGeographic {
-                    return false
-                } else {
-                    // Same type - maintain Apple's original order
-                    return false
+                let firstPriority = getResultPriority(first)
+                let secondPriority = getResultPriority(second)
+
+                if firstPriority != secondPriority {
+                    return firstPriority < secondPriority  // Lower number = higher priority
                 }
+
+                // Same priority - maintain Apple's original order (relevance-based)
+                return false
             }
-            
-            searchResults = Array(sortedResults.prefix(8))
+
+            // Debug: Log top results with their priorities
+            for (index, result) in sortedResults.prefix(10).enumerated() {
+                let priority = getResultPriority(result)
+                print("  \(index + 1). [\(priority)] \(result.title) - \(result.subtitle)")
+            }
+
+            searchResults = Array(sortedResults.prefix(10))
             isSearching = false
             errorMessage = nil
         }
     }
-    
-    // Simple check for geographic vs specific locations
+
+    // Assign priority scores to search results
+    // Lower number = higher priority (0 is highest)
+    private func getResultPriority(_ completion: MKLocalSearchCompletion) -> Int {
+        let title = completion.title.lowercased()
+        let subtitle = completion.subtitle.lowercased()
+
+        // FILTER OUT: Results that are just "near" something else
+        // e.g., "Hotel XYZ near Taj Mahal" should be deprioritized
+        if title.contains("near") || subtitle.contains("near") {
+            return 99  // Very low priority
+        }
+
+        // FILTER OUT: Generic businesses using landmark names
+        let businessKeywords = ["hotel", "resort", "inn", "lodge", "restaurant",
+                                "cafe", "coffee", "shop", "store", "mall", "market", "guest house"]
+        let hasBusinessKeyword = businessKeywords.contains(where: { title.contains($0) })
+
+        // If it's a business (hotel/restaurant), give it low priority
+        if hasBusinessKeyword {
+            return 50  // Low priority for businesses
+        }
+
+        // Priority 0: Famous landmarks and tourist attractions
+        // Look for museum, temple, monument, palace, fort, tower, etc.
+        let landmarkKeywords = ["museum", "temple", "palace", "fort", "tower", "monument",
+                                "memorial", "cathedral", "church", "mosque", "shrine",
+                                "castle", "ruins", "gardens", "park", "beach", "lake",
+                                "falls", "canyon", "mountain", "hill", "statue", "zoo", "aquarium",
+                                "mahal", "mandir", "gurdwara", "stupa", "pagoda", "wat",
+                                "basilica", "abbey", "sanctuary", "plaza", "square", "gate",
+                                "arch", "bridge", "dam", "lighthouse", "observatory",
+                                "tomb", "mausoleum", "world heritage"]
+        if landmarkKeywords.contains(where: { title.contains($0) || subtitle.contains($0) }) {
+            return 0
+        }
+
+        // Priority 1: Geographic locations (cities, neighborhoods, areas)
+        if isLikelyGeographicLocation(completion) {
+            return 1
+        }
+
+        // Priority 2: General points of interest (no street address)
+        if !subtitle.contains("street") && !subtitle.contains("avenue") &&
+           !subtitle.contains("road") && !subtitle.contains("boulevard") {
+            return 2
+        }
+
+        // Priority 3: Street addresses (lowest priority for actual destinations)
+        return 3
+    }
+
+    // Check if result is a geographic location (city, neighborhood, region)
     private func isLikelyGeographicLocation(_ completion: MKLocalSearchCompletion) -> Bool {
         let subtitle = completion.subtitle.lowercased()
-        // Just check if it looks like a city/country rather than a specific address
-        return !subtitle.contains("street") && !subtitle.contains("avenue") && 
-               !subtitle.contains("road") && !subtitle.contains("boulevard")
+
+        // Geographic locations don't have street addresses
+        let hasStreetAddress = subtitle.contains("street") || subtitle.contains("avenue") ||
+                               subtitle.contains("road") || subtitle.contains("boulevard")
+
+        // Geographic locations typically have country/state in subtitle
+        let hasGeographicInfo = subtitle.contains(",") && !hasStreetAddress
+
+        return hasGeographicInfo
     }
     
     nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {

@@ -335,9 +335,12 @@ class TripStore: ObservableObject {
             }
             tripEntries[entry.tripId]?.append(entry)
             tripEntries[entry.tripId]?.sort { $0.timestamp > $1.timestamp }
-            
+
             // Cache the updated data
             cacheData()
+
+            // Clear route cache for this trip since entries changed
+            await RouteCache.shared.clearCache(for: entry.tripId)
             
             isLoading = false
             return .success(())
@@ -401,9 +404,12 @@ class TripStore: ObservableObject {
                 entries[index] = updatedEntry
                 tripEntries[entry.tripId] = entries.sorted { $0.timestamp > $1.timestamp }
             }
-            
+
             // Cache the updated data
             cacheData()
+
+            // Clear route cache for this trip since entry changed
+            await RouteCache.shared.clearCache(for: entry.tripId)
             
             isLoading = false
             return .success(())
@@ -426,9 +432,12 @@ class TripStore: ObservableObject {
             
             // Update local store
             tripEntries[tripId]?.removeAll { $0.id == entryId }
-            
+
             // Cache the updated data
             cacheData()
+
+            // Clear route cache for this trip since entry was deleted
+            await RouteCache.shared.clearCache(for: tripId)
             
             isLoading = false
             return .success(())
