@@ -14,41 +14,58 @@ struct SkyLineApp: App {
     @StateObject private var themeManager = ThemeManager()
     @StateObject private var flightStore = FlightStore()
     @StateObject private var authService = AuthenticationService.shared
-    
+    @State private var isGlobeReady = false
+
     var body: some Scene {
         WindowGroup {
-            Group {
-                switch authService.authenticationState {
-                case .authenticated:
-                    ContentView()
-                        .environmentObject(themeManager)
-                        .environmentObject(flightStore)
-                        .environmentObject(authService)
-                        .onAppear {
-                            // Sync trip data when user is authenticated
-                            Task {
-                                await TripStore.shared.syncIfNeeded()
-                                
-                                // Seed initial airline data if needed
-                                await AirlineService.shared.seedInitialAirlines()
+            ZStack {
+                Group {
+                    switch authService.authenticationState {
+                    case .authenticated:
+                        ContentView(isGlobeReady: $isGlobeReady)
+                            .environmentObject(themeManager)
+                            .environmentObject(flightStore)
+                            .environmentObject(authService)
+                            .onAppear {
+                                // Sync trip data when user is authenticated
+                                Task {
+                                    await TripStore.shared.syncIfNeeded()
+
+                                    // Seed initial airline data if needed
+                                    await AirlineService.shared.seedInitialAirlines()
+                                }
                             }
-                        }
-                        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                            // Sync when app comes to foreground
-                            Task {
-                                await TripStore.shared.syncIfNeeded()
+                            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                                // Sync when app comes to foreground
+                                Task {
+                                    await TripStore.shared.syncIfNeeded()
+                                }
                             }
-                        }
-                        
-                case .authenticating:
-                    // Show loading screen while checking existing authentication
+                            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("GlobeReady"))) { _ in
+                                // Hide splash when globe is fully loaded
+                                withAnimation(.easeOut(duration: 0.5)) {
+                                    isGlobeReady = true
+                                }
+                            }
+
+                    case .authenticating:
+                        // Show loading screen while checking existing authentication
+                        AppLoadingView()
+                            .environmentObject(themeManager)
+
+                    case .unauthenticated, .error:
+                        AuthenticationView()
+                            .environmentObject(themeManager)
+                            .environmentObject(authService)
+                    }
+                }
+
+                // Splash overlay - show until globe is ready
+                if authService.authenticationState.isAuthenticated && !isGlobeReady {
                     AppLoadingView()
                         .environmentObject(themeManager)
-                        
-                case .unauthenticated, .error:
-                    AuthenticationView()
-                        .environmentObject(themeManager)
-                        .environmentObject(authService)
+                        .transition(.opacity)
+                        .zIndex(999)
                 }
             }
             .preferredColorScheme(themeManager.currentTheme.colorScheme)
@@ -107,45 +124,37 @@ struct SkyLineApp: App {
         
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
-        
-        // Configure Status Bar Style globally
-        UIApplication.shared.statusBarStyle = theme == .light ? .darkContent : .lightContent
+
+        // Configure Status Bar Style for all windows
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            windowScene.windows.forEach { window in
+                window.overrideUserInterfaceStyle = theme == .light ? .light : .dark
+            }
+        }
     }
 }
 
 // MARK: - App Loading View
 struct AppLoadingView: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+
     var body: some View {
-        ZStack {
-            themeManager.currentTheme.colors.background
-                .ignoresSafeArea()
-            
-            VStack(spacing: 24) {
-                // App Icon
-                ZStack {
-                    Circle()
-                        .fill(themeManager.currentTheme.colors.primary)
-                        .frame(width: 80, height: 80)
-                    
-                    Image(systemName: "airplane")
-                        .font(.system(size: 40, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white)
-                }
-                .shadow(color: themeManager.currentTheme.colors.primary.opacity(0.3), radius: 15, x: 0, y: 8)
-                
-                VStack(spacing: 8) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                        .scaleEffect(1.2)
-                    
-                    Text("SkyLine")
-                        .font(.system(.title2, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                }
-            }
-        }
+        Image("SplashScreen")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .ignoresSafeArea()
     }
+}
+
+// MARK: - Previews
+#Preview("Splash - Light Mode") {
+    AppLoadingView()
+        .environmentObject(ThemeManager())
+        .preferredColorScheme(.light)
+}
+
+#Preview("Splash - Dark Mode") {
+    AppLoadingView()
+        .environmentObject(ThemeManager())
+        .preferredColorScheme(.dark)
 }

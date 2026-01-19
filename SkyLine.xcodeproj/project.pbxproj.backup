@@ -1,0 +1,852 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */; };
+		A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */; };
+		A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */; };
+		A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */ = {isa = PBXBuildFile; productRef = A915596A2E6E4E1B00D77E8C /* BottomSheet */; };
+		A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */; };
+		A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59932E5B9C4F00266D7E /* ContentView.swift */; };
+		A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */; };
+		A94165942E8709EB0050BE19 /* SkyLineBottomBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */; };
+		A94165C42EA9D8400050BE19 /* AddTripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C02EA9D8400050BE19 /* AddTripView.swift */; };
+		A94165C52EA9D8400050BE19 /* TripDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C12EA9D8400050BE19 /* TripDetailView.swift */; };
+		A94165C62EA9D8400050BE19 /* TripsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C22EA9D8400050BE19 /* TripsListView.swift */; };
+		A94165C92EA9D8560050BE19 /* TripEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C82EA9D8560050BE19 /* TripEntry.swift */; };
+		A94165CA2EA9D8560050BE19 /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C72EA9D8560050BE19 /* Trip.swift */; };
+		A94165CC2EA9D8670050BE19 /* TripStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165CB2EA9D8670050BE19 /* TripStore.swift */; };
+		A94165CE2EA9DCA40050BE19 /* AddEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165CD2EA9DCA40050BE19 /* AddEntryView.swift */; };
+		A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */; };
+		A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */; };
+		A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D72EC7D4310050BE19 /* AirlineService.swift */; };
+		A94165DA2EC7D46B0050BE19 /* Airline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165D92EC7D46B0050BE19 /* Airline.swift */; };
+		A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165DD2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift */; };
+		A94165E02ED375700050BE19 /* ConfigurationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165DF2ED375700050BE19 /* ConfigurationService.swift */; };
+		A94165E32ED377EB0050BE19 /* BoardingPassConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */; };
+		A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */ = {isa = PBXBuildFile; fileRef = A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */; };
+		468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */ = {isa = PBXBuildFile; fileRef = CCE42A62B909487098B269AA /* countries.geojson */; };
+		A94165EE2EF14E3B0050BE19 /* DestinationSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */; };
+		A94165EF2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165EC2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift */; };
+		A94165F02EF14E3B0050BE19 /* UnifiedBoardingPassService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */; };
+		A94165F72EF8C2730050BE19 /* AddFlightToTripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165F62EF8C2730050BE19 /* AddFlightToTripView.swift */; };
+		A94165F92EF8C3770050BE19 /* FlightTripService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165F82EF8C3770050BE19 /* FlightTripService.swift */; };
+		A94165FB2EF9CCB80050BE19 /* EditEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */; };
+		A94165FD2EF9CD360050BE19 /* LocationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165FC2EF9CD360050BE19 /* LocationManager.swift */; };
+		A94166012EFA40D40050BE19 /* ItineraryModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166002EFA40D40050BE19 /* ItineraryModels.swift */; };
+		A94166032EFA410E0050BE19 /* UploadItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166022EFA410E0050BE19 /* UploadItineraryView.swift */; };
+		A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166042EFA412F0050BE19 /* AIItineraryService.swift */; };
+		A94166072EFA41610050BE19 /* ReviewItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166062EFA41610050BE19 /* ReviewItineraryView.swift */; };
+		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
+		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
+		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
+		A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A99F90B22E5BAE8B00BE96FE /* Preview Assets.xcassets */; };
+		A99F90C72E5BAE8B00BE96FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A99F90B32E5BAE8B00BE96FE /* Assets.xcassets */; };
+		A99F90D22E5BAE8B00BE96FE /* Flight.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90C22E5BAE8B00BE96FE /* Flight.swift */; };
+		A99F90D32E5BAE8B00BE96FE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90C32E5BAE8B00BE96FE /* Theme.swift */; };
+		A99F90E32E5C11A600BE96FE /* WebViewGlobeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90E22E5C11A600BE96FE /* WebViewGlobeView.swift */; };
+		A99F90E52E5C123200BE96FE /* globe.html in Resources */ = {isa = PBXBuildFile; fileRef = A99F90E42E5C123200BE96FE /* globe.html */; };
+		A99F90E72E636C4500BE96FE /* BoardingPassScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90E62E636C4500BE96FE /* BoardingPassScanner.swift */; };
+		A99F90EB2E6503C200BE96FE /* CloudKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90EA2E6503C200BE96FE /* CloudKitService.swift */; };
+		A99F90ED2E650FD500BE96FE /* AuthenticationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */; };
+		A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90EE2E650FE100BE96FE /* AuthenticationView.swift */; };
+		A99F90F12E651D2B00BE96FE /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90F02E651D2B00BE96FE /* User.swift */; };
+		A99F90F32E662B0700BE96FE /* SharedAirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90F22E662B0700BE96FE /* SharedAirportService.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A93C599F2E5B9C5200266D7E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A93C59862E5B9C4F00266D7E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A93C598D2E5B9C4F00266D7E;
+			remoteInfo = SkyLine;
+		};
+		A93C59A92E5B9C5200266D7E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A93C59862E5B9C4F00266D7E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A93C598D2E5B9C4F00266D7E;
+			remoteInfo = SkyLine;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSearchManager.swift; sourceTree = "<group>"; };
+		A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
+		A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripImageGenerationService.swift; sourceTree = "<group>"; };
+		A93C598E2E5B9C4F00266D7E /* SkyLine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyLine.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineApp.swift; sourceTree = "<group>"; };
+		A93C59932E5B9C4F00266D7E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		A93C599E2E5B9C5200266D7E /* SkyLineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkyLineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A93C59A82E5B9C5200266D7E /* SkyLineUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkyLineUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineBottomBarView.swift; sourceTree = "<group>"; };
+		A94165C02EA9D8400050BE19 /* AddTripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTripView.swift; sourceTree = "<group>"; };
+		A94165C12EA9D8400050BE19 /* TripDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripDetailView.swift; sourceTree = "<group>"; };
+		A94165C22EA9D8400050BE19 /* TripsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripsListView.swift; sourceTree = "<group>"; };
+		A94165C72EA9D8560050BE19 /* Trip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Trip.swift; sourceTree = "<group>"; };
+		A94165C82EA9D8560050BE19 /* TripEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripEntry.swift; sourceTree = "<group>"; };
+		A94165CB2EA9D8670050BE19 /* TripStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripStore.swift; sourceTree = "<group>"; };
+		A94165CD2EA9DCA40050BE19 /* AddEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEntryView.swift; sourceTree = "<group>"; };
+		A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSuggestion.swift; sourceTree = "<group>"; };
+		A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleIntelligenceBoardingPassService.swift; sourceTree = "<group>"; };
+		A94165D72EC7D4310050BE19 /* AirlineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirlineService.swift; sourceTree = "<group>"; };
+		A94165D92EC7D46B0050BE19 /* Airline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Airline.swift; sourceTree = "<group>"; };
+		A94165DD2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingPassConfirmationView.swift; sourceTree = "<group>"; };
+		A94165DF2ED375700050BE19 /* ConfigurationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationService.swift; sourceTree = "<group>"; };
+		A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardingPassConfig.swift; sourceTree = "<group>"; };
+		A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BoardingPassConfig.json; sourceTree = "<group>"; };
+		CCE42A62B909487098B269AA /* countries.geojson */ = {isa = PBXFileReference; lastKnownFileType = text; path = countries.geojson; sourceTree = "<group>"; };
+		A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSearchService.swift; sourceTree = "<group>"; };
+		A94165EC2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterBoardingPassService.swift; sourceTree = "<group>"; };
+		A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedBoardingPassService.swift; sourceTree = "<group>"; };
+		A94165F62EF8C2730050BE19 /* AddFlightToTripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddFlightToTripView.swift; sourceTree = "<group>"; };
+		A94165F82EF8C3770050BE19 /* FlightTripService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightTripService.swift; sourceTree = "<group>"; };
+		A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditEntryView.swift; sourceTree = "<group>"; };
+		A94165FC2EF9CD360050BE19 /* LocationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationManager.swift; sourceTree = "<group>"; };
+		A94166002EFA40D40050BE19 /* ItineraryModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItineraryModels.swift; sourceTree = "<group>"; };
+		A94166022EFA410E0050BE19 /* UploadItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadItineraryView.swift; sourceTree = "<group>"; };
+		A94166042EFA412F0050BE19 /* AIItineraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIItineraryService.swift; sourceTree = "<group>"; };
+		A94166062EFA41610050BE19 /* ReviewItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewItineraryView.swift; sourceTree = "<group>"; };
+		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
+		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
+		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
+		A99F90B22E5BAE8B00BE96FE /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		A99F90B32E5BAE8B00BE96FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A99F90C22E5BAE8B00BE96FE /* Flight.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Flight.swift; sourceTree = "<group>"; };
+		A99F90C32E5BAE8B00BE96FE /* Theme.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		A99F90E22E5C11A600BE96FE /* WebViewGlobeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewGlobeView.swift; sourceTree = "<group>"; };
+		A99F90E42E5C123200BE96FE /* globe.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = globe.html; sourceTree = "<group>"; };
+		A99F90E62E636C4500BE96FE /* BoardingPassScanner.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BoardingPassScanner.swift; sourceTree = "<group>"; };
+		A99F90E82E64F8F600BE96FE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A99F90E92E65027900BE96FE /* SkyLine.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SkyLine.entitlements; sourceTree = "<group>"; };
+		A99F90EA2E6503C200BE96FE /* CloudKitService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CloudKitService.swift; sourceTree = "<group>"; };
+		A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AuthenticationService.swift; sourceTree = "<group>"; };
+		A99F90EE2E650FE100BE96FE /* AuthenticationView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AuthenticationView.swift; sourceTree = "<group>"; };
+		A99F90F02E651D2B00BE96FE /* User.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		A99F90F22E662B0700BE96FE /* SharedAirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SharedAirportService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A93C598B2E5B9C4F00266D7E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A93C599B2E5B9C5200266D7E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A93C59A52E5B9C5200266D7E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A93C59852E5B9C4F00266D7E = {
+			isa = PBXGroup;
+			children = (
+				A93C59902E5B9C4F00266D7E /* SkyLine */,
+				A93C598F2E5B9C4F00266D7E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A93C598F2E5B9C4F00266D7E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A93C598E2E5B9C4F00266D7E /* SkyLine.app */,
+				A93C599E2E5B9C5200266D7E /* SkyLineTests.xctest */,
+				A93C59A82E5B9C5200266D7E /* SkyLineUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A93C59902E5B9C4F00266D7E /* SkyLine */ = {
+			isa = PBXGroup;
+			children = (
+				A94165E52ED3782D0050BE19 /* Resources */,
+				A94165E22ED377EB0050BE19 /* Configuration */,
+				A99F90F42E66699A00BE96FE /* Fonts */,
+				A99F90E92E65027900BE96FE /* SkyLine.entitlements */,
+				A99F90E82E64F8F600BE96FE /* Info.plist */,
+				A99F90E42E5C123200BE96FE /* globe.html */,
+				A99F90B32E5BAE8B00BE96FE /* Assets.xcassets */,
+				A99F90C12E5BAE8B00BE96FE /* Models */,
+				A99F90B12E5BAE8B00BE96FE /* Preview Content */,
+				A99F90992E5BAB9700BE96FE /* ViewModels */,
+				A99F909B2E5BAB9700BE96FE /* Views */,
+				A99F90AE2E5BAE8B00BE96FE /* Services */,
+				A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */,
+				A93C59932E5B9C4F00266D7E /* ContentView.swift */,
+				A93C59972E5B9C5200266D7E /* Preview Content */,
+			);
+			path = SkyLine;
+			sourceTree = "<group>";
+		};
+		A93C59972E5B9C5200266D7E /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		A94165C32EA9D8400050BE19 /* Trips */ = {
+			isa = PBXGroup;
+			children = (
+				A94166062EFA41610050BE19 /* ReviewItineraryView.swift */,
+				A94166022EFA410E0050BE19 /* UploadItineraryView.swift */,
+				A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */,
+				A94165F62EF8C2730050BE19 /* AddFlightToTripView.swift */,
+				A94165CD2EA9DCA40050BE19 /* AddEntryView.swift */,
+				A94165C02EA9D8400050BE19 /* AddTripView.swift */,
+				A94165C12EA9D8400050BE19 /* TripDetailView.swift */,
+				A94165C22EA9D8400050BE19 /* TripsListView.swift */,
+			);
+			path = Trips;
+			sourceTree = "<group>";
+		};
+		A94165E22ED377EB0050BE19 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				A94165E12ED377EB0050BE19 /* BoardingPassConfig.swift */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		A94165E52ED3782D0050BE19 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */,
+				CCE42A62B909487098B269AA /* countries.geojson */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A99F90992E5BAB9700BE96FE /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				A99F909A2E5BAB9700BE96FE /* FlightStore.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		A99F909B2E5BAB9700BE96FE /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A94165C32EA9D8400050BE19 /* Trips */,
+				A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */,
+				A99F90EE2E650FE100BE96FE /* AuthenticationView.swift */,
+				A99F90E22E5C11A600BE96FE /* WebViewGlobeView.swift */,
+				A99F90A02E5BAB9700BE96FE /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A99F90A02E5BAB9700BE96FE /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */,
+				A94165DD2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */,
+				A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */,
+				A94166042EFA412F0050BE19 /* AIItineraryService.swift */,
+				A94165FC2EF9CD360050BE19 /* LocationManager.swift */,
+				A94165F82EF8C3770050BE19 /* FlightTripService.swift */,
+				A94165EB2EF14E3B0050BE19 /* DestinationSearchService.swift */,
+				A94165EC2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift */,
+				A94165ED2EF14E3B0050BE19 /* UnifiedBoardingPassService.swift */,
+				A94165DF2ED375700050BE19 /* ConfigurationService.swift */,
+				A94165D72EC7D4310050BE19 /* AirlineService.swift */,
+				A94165D52EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift */,
+				A94165CB2EA9D8670050BE19 /* TripStore.swift */,
+				A99F90F22E662B0700BE96FE /* SharedAirportService.swift */,
+				A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */,
+				A99F90EA2E6503C200BE96FE /* CloudKitService.swift */,
+				A99F90E62E636C4500BE96FE /* BoardingPassScanner.swift */,
+				A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */,
+				A99F90B02E5BAE8B00BE96FE /* AirportService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		A99F90B12E5BAE8B00BE96FE /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				A99F90B22E5BAE8B00BE96FE /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		A99F90C12E5BAE8B00BE96FE /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A94166002EFA40D40050BE19 /* ItineraryModels.swift */,
+				A94165D92EC7D46B0050BE19 /* Airline.swift */,
+				A94165D32EC1B87D0050BE19 /* DestinationSuggestion.swift */,
+				A94165C72EA9D8560050BE19 /* Trip.swift */,
+				A94165C82EA9D8560050BE19 /* TripEntry.swift */,
+				A99F90F02E651D2B00BE96FE /* User.swift */,
+				A99F90C22E5BAE8B00BE96FE /* Flight.swift */,
+				A99F90C32E5BAE8B00BE96FE /* Theme.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A99F90F42E66699A00BE96FE /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A93C598D2E5B9C4F00266D7E /* SkyLine */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A93C59B22E5B9C5200266D7E /* Build configuration list for PBXNativeTarget "SkyLine" */;
+			buildPhases = (
+				A93C598A2E5B9C4F00266D7E /* Sources */,
+				A93C598B2E5B9C4F00266D7E /* Frameworks */,
+				A93C598C2E5B9C4F00266D7E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SkyLine;
+			packageProductDependencies = (
+				A915596A2E6E4E1B00D77E8C /* BottomSheet */,
+			);
+			productName = SkyLine;
+			productReference = A93C598E2E5B9C4F00266D7E /* SkyLine.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A93C599D2E5B9C5200266D7E /* SkyLineTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A93C59B52E5B9C5200266D7E /* Build configuration list for PBXNativeTarget "SkyLineTests" */;
+			buildPhases = (
+				A93C599A2E5B9C5200266D7E /* Sources */,
+				A93C599B2E5B9C5200266D7E /* Frameworks */,
+				A93C599C2E5B9C5200266D7E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A93C59A02E5B9C5200266D7E /* PBXTargetDependency */,
+			);
+			name = SkyLineTests;
+			productName = SkyLineTests;
+			productReference = A93C599E2E5B9C5200266D7E /* SkyLineTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A93C59A72E5B9C5200266D7E /* SkyLineUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A93C59B82E5B9C5200266D7E /* Build configuration list for PBXNativeTarget "SkyLineUITests" */;
+			buildPhases = (
+				A93C59A42E5B9C5200266D7E /* Sources */,
+				A93C59A52E5B9C5200266D7E /* Frameworks */,
+				A93C59A62E5B9C5200266D7E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A93C59AA2E5B9C5200266D7E /* PBXTargetDependency */,
+			);
+			name = SkyLineUITests;
+			productName = SkyLineUITests;
+			productReference = A93C59A82E5B9C5200266D7E /* SkyLineUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A93C59862E5B9C4F00266D7E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					A93C598D2E5B9C4F00266D7E = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					A93C599D2E5B9C5200266D7E = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A93C598D2E5B9C4F00266D7E;
+					};
+					A93C59A72E5B9C5200266D7E = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = A93C598D2E5B9C4F00266D7E;
+					};
+				};
+			};
+			buildConfigurationList = A93C59892E5B9C4F00266D7E /* Build configuration list for PBXProject "SkyLine" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A93C59852E5B9C4F00266D7E;
+			packageReferences = (
+				A91559692E6E4E1B00D77E8C /* XCRemoteSwiftPackageReference "BottomSheet" */,
+			);
+			productRefGroup = A93C598F2E5B9C4F00266D7E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A93C598D2E5B9C4F00266D7E /* SkyLine */,
+				A93C599D2E5B9C5200266D7E /* SkyLineTests */,
+				A93C59A72E5B9C5200266D7E /* SkyLineUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A93C598C2E5B9C4F00266D7E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */,
+				A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */,
+				468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */,
+				A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */,
+				A99F90E52E5C123200BE96FE /* globe.html in Resources */,
+				A99F90C72E5BAE8B00BE96FE /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A93C599C2E5B9C5200266D7E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A93C59A62E5B9C5200266D7E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A93C598A2E5B9C4F00266D7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */,
+				A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */,
+				A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */,
+				A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */,
+				A94165942E8709EB0050BE19 /* SkyLineBottomBarView.swift in Sources */,
+				A99F90D32E5BAE8B00BE96FE /* Theme.swift in Sources */,
+				A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */,
+				A94166032EFA410E0050BE19 /* UploadItineraryView.swift in Sources */,
+				A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */,
+				A94165FB2EF9CCB80050BE19 /* EditEntryView.swift in Sources */,
+				A99F90EB2E6503C200BE96FE /* CloudKitService.swift in Sources */,
+				A94166012EFA40D40050BE19 /* ItineraryModels.swift in Sources */,
+				A94165FD2EF9CD360050BE19 /* LocationManager.swift in Sources */,
+				A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */,
+				A94165DA2EC7D46B0050BE19 /* Airline.swift in Sources */,
+				A94165C42EA9D8400050BE19 /* AddTripView.swift in Sources */,
+				A94165C52EA9D8400050BE19 /* TripDetailView.swift in Sources */,
+				A94166072EFA41610050BE19 /* ReviewItineraryView.swift in Sources */,
+				A94165C62EA9D8400050BE19 /* TripsListView.swift in Sources */,
+				A94165F92EF8C3770050BE19 /* FlightTripService.swift in Sources */,
+				A99F90E32E5C11A600BE96FE /* WebViewGlobeView.swift in Sources */,
+				A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */,
+				A99F90F32E662B0700BE96FE /* SharedAirportService.swift in Sources */,
+				A99F90ED2E650FD500BE96FE /* AuthenticationService.swift in Sources */,
+				A99F90E72E636C4500BE96FE /* BoardingPassScanner.swift in Sources */,
+				A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */,
+				A94165CE2EA9DCA40050BE19 /* AddEntryView.swift in Sources */,
+				A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */,
+				A94165E32ED377EB0050BE19 /* BoardingPassConfig.swift in Sources */,
+				A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */,
+				A99F90F12E651D2B00BE96FE /* User.swift in Sources */,
+				A94165D82EC7D4310050BE19 /* AirlineService.swift in Sources */,
+				A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */,
+				A94165EE2EF14E3B0050BE19 /* DestinationSearchService.swift in Sources */,
+				A94165EF2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift in Sources */,
+				A94165F02EF14E3B0050BE19 /* UnifiedBoardingPassService.swift in Sources */,
+				A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */,
+				A94165CC2EA9D8670050BE19 /* TripStore.swift in Sources */,
+				A94165C92EA9D8560050BE19 /* TripEntry.swift in Sources */,
+				A94165CA2EA9D8560050BE19 /* Trip.swift in Sources */,
+				A94165E02ED375700050BE19 /* ConfigurationService.swift in Sources */,
+				A94165F72EF8C2730050BE19 /* AddFlightToTripView.swift in Sources */,
+				A99F90D22E5BAE8B00BE96FE /* Flight.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A93C599A2E5B9C5200266D7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A93C59A42E5B9C5200266D7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A93C59A02E5B9C5200266D7E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A93C598D2E5B9C4F00266D7E /* SkyLine */;
+			targetProxy = A93C599F2E5B9C5200266D7E /* PBXContainerItemProxy */;
+		};
+		A93C59AA2E5B9C5200266D7E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A93C598D2E5B9C4F00266D7E /* SkyLine */;
+			targetProxy = A93C59A92E5B9C5200266D7E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A93C59B02E5B9C5200266D7E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A93C59B12E5B9C5200266D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A93C59B32E5B9C5200266D7E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SkyLine/SkyLine.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"SkyLine/Preview Content\"";
+				DEVELOPMENT_TEAM = 7JVJX5GN54;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SkyLine/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = madan.SkyLine;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A93C59B42E5B9C5200266D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SkyLine/SkyLine.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"SkyLine/Preview Content\"";
+				DEVELOPMENT_TEAM = 7JVJX5GN54;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SkyLine/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = madan.SkyLine;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A93C59B62E5B9C5200266D7E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = madan.SkyLineTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkyLine.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SkyLine";
+			};
+			name = Debug;
+		};
+		A93C59B72E5B9C5200266D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = madan.SkyLineTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkyLine.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SkyLine";
+			};
+			name = Release;
+		};
+		A93C59B92E5B9C5200266D7E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = madan.SkyLineUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SkyLine;
+			};
+			name = Debug;
+		};
+		A93C59BA2E5B9C5200266D7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = madan.SkyLineUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SkyLine;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A93C59892E5B9C4F00266D7E /* Build configuration list for PBXProject "SkyLine" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A93C59B02E5B9C5200266D7E /* Debug */,
+				A93C59B12E5B9C5200266D7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A93C59B22E5B9C5200266D7E /* Build configuration list for PBXNativeTarget "SkyLine" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A93C59B32E5B9C5200266D7E /* Debug */,
+				A93C59B42E5B9C5200266D7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A93C59B52E5B9C5200266D7E /* Build configuration list for PBXNativeTarget "SkyLineTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A93C59B62E5B9C5200266D7E /* Debug */,
+				A93C59B72E5B9C5200266D7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A93C59B82E5B9C5200266D7E /* Build configuration list for PBXNativeTarget "SkyLineUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A93C59B92E5B9C5200266D7E /* Debug */,
+				A93C59BA2E5B9C5200266D7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A91559692E6E4E1B00D77E8C /* XCRemoteSwiftPackageReference "BottomSheet" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lucaszischka/BottomSheet";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.1.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A915596A2E6E4E1B00D77E8C /* BottomSheet */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A91559692E6E4E1B00D77E8C /* XCRemoteSwiftPackageReference "BottomSheet" */;
+			productName = BottomSheet;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A93C59862E5B9C4F00266D7E /* Project object */;
+}

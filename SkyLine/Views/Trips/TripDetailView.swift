@@ -415,10 +415,16 @@ struct TripHeaderImageView: View {
 
     @State private var routes: [RouteSegment] = []
     @State private var showingExpandedMap = false
+    @State private var isLoadingRoutes = false
 
     // Track entries for change detection
     private var entriesSignature: String {
         entries.map { "\($0.id)-\($0.latitude ?? 0)-\($0.longitude ?? 0)" }.joined(separator: ",")
+    }
+
+    // Simplified entries signature for less frequent updates
+    private var entriesCountSignature: String {
+        "\(entries.count)-\(entries.filter { $0.hasLocation }.count)"
     }
 
     // Get entries with locations, sorted chronologically
@@ -503,7 +509,7 @@ struct TripHeaderImageView: View {
                 // Draw route paths with gradient colors
                 ForEach(routes) { route in
                     // OPTIMIZATION: Group coordinates into chunks to reduce polyline count
-                    let chunkSize = max(1, route.coordinates.count / 10)  // ~10 color segments per route
+                    let chunkSize = max(1, route.coordinates.count / 5)  // ~5 color segments per route (was 10)
                     let chunks = stride(from: 0, to: route.coordinates.count - 1, by: chunkSize)
 
                     ForEach(Array(chunks.enumerated()), id: \.offset) { index, startIdx in
@@ -544,39 +550,71 @@ struct TripHeaderImageView: View {
             .mapStyle(.standard)
             .mapControlVisibility(.hidden)
             .task {
+                // Lazy load routes after a short delay to show map first
+                try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 second delay
                 await fetchRoutes()
             }
-            .onChange(of: entriesSignature) { _, _ in
-                // Entries changed (added, deleted, or locations updated) - refetch routes
+            .onChange(of: entriesCountSignature) { _, _ in
+                // Only refetch when entry count changes (not on every coordinate update)
                 Task {
                     routes = []  // Clear existing routes
+                    try? await Task.sleep(nanoseconds: 300_000_000)  // 0.3 second debounce
                     await fetchRoutes()
                 }
             }
-            .id(entriesSignature)
+            .id(entriesCountSignature)
             .onTapGesture {
                 showingExpandedMap = true
             }
             .overlay(
-                // Tap indicator overlay
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 12, weight: .medium))
-                            Text("Tap to expand")
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                // Overlays
+                ZStack {
+                    // Loading indicator
+                    if isLoadingRoutes && routes.isEmpty {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .scaleEffect(0.8)
+                                    Text("Loading routes...")
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.black.opacity(0.7))
+                                )
+                                Spacer()
+                            }
+                            .padding(.bottom, 60)
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(Color.black.opacity(0.6))
-                        )
-                        .padding(12)
+                    }
+
+                    // Tap indicator overlay
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text("Tap to expand")
+                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Color.black.opacity(0.6))
+                            )
+                            .padding(12)
+                        }
                     }
                 }
             )
@@ -623,6 +661,9 @@ struct TripHeaderImageView: View {
 
     // Fetch actual routes between consecutive entries - OPTIMIZED
     private func fetchRoutes() async {
+        // Skip if already loading
+        guard !isLoadingRoutes else { return }
+
         // Skip if no segments
         guard !pathSegments.isEmpty else {
             routes = []
@@ -633,6 +674,10 @@ struct TripHeaderImageView: View {
         // (prevents unnecessary refetch when view appears again)
         if !routes.isEmpty && routes.count == pathSegments.count {
             return
+        }
+
+        await MainActor.run {
+            isLoadingRoutes = true
         }
 
         print("🗺️ Fetching routes for \(pathSegments.count) segments...")
@@ -655,6 +700,7 @@ struct TripHeaderImageView: View {
 
             await MainActor.run {
                 self.routes = sortedRoutes
+                self.isLoadingRoutes = false
                 print("✅ Loaded \(sortedRoutes.count) routes")
             }
         }
@@ -703,8 +749,8 @@ struct TripHeaderImageView: View {
 
                 if pointCount > 0 {
                     let points = route.polyline.points()
-                    // OPTIMIZATION: Only take every 5th point to reduce rendering load
-                    let step = max(1, pointCount / 50)  // Limit to ~50 points max
+                    // OPTIMIZATION: Aggressively sample points to reduce rendering load
+                    let step = max(1, pointCount / 30)  // Limit to ~30 points max (was 50)
                     for i in stride(from: 0, to: pointCount, by: step) {
                         coordinates.append(points[i].coordinate)
                     }
@@ -1338,53 +1384,95 @@ struct ExpandedMapView: View {
 
     var body: some View {
         NavigationView {
-            ZStack {
-                // Full screen map
-                Map(initialPosition: .region(mapRegion)) {
-                    // Draw route paths with gradient colors - OPTIMIZED
-                    ForEach(routes) { route in
-                        // Group coordinates into chunks to reduce polyline count
-                        let chunkSize = max(1, route.coordinates.count / 10)
-                        let chunks = stride(from: 0, to: route.coordinates.count - 1, by: chunkSize)
+            // Full screen map
+            Map(initialPosition: .region(mapRegion)) {
+                // Draw route paths with gradient colors - OPTIMIZED
+                ForEach(routes) { route in
+                    // Group coordinates into chunks to reduce polyline count
+                    let chunkSize = max(1, route.coordinates.count / 5)  // ~5 color segments (was 10)
+                    let chunks = stride(from: 0, to: route.coordinates.count - 1, by: chunkSize)
 
-                        ForEach(Array(chunks.enumerated()), id: \.offset) { index, startIdx in
-                            let endIdx = min(startIdx + chunkSize + 1, route.coordinates.count)
-                            if startIdx < route.coordinates.count && endIdx <= route.coordinates.count && endIdx > startIdx {
-                                let progress = Double(index) / Double(max(1, route.coordinates.count / chunkSize))
-                                let segmentColor = interpolateColor(
-                                    from: route.startColor,
-                                    to: route.endColor,
-                                    progress: progress
-                                )
+                    ForEach(Array(chunks.enumerated()), id: \.offset) { index, startIdx in
+                        let endIdx = min(startIdx + chunkSize + 1, route.coordinates.count)
+                        if startIdx < route.coordinates.count && endIdx <= route.coordinates.count && endIdx > startIdx {
+                            let progress = Double(index) / Double(max(1, route.coordinates.count / chunkSize))
+                            let segmentColor = interpolateColor(
+                                from: route.startColor,
+                                to: route.endColor,
+                                progress: progress
+                            )
 
-                                MapPolyline(coordinates: Array(route.coordinates[startIdx..<endIdx]))
-                                    .stroke(
-                                        segmentColor.opacity(0.85),
-                                        style: StrokeStyle(
-                                            lineWidth: 4,
-                                            lineCap: .round,
-                                            lineJoin: .round
-                                        )
+                            MapPolyline(coordinates: Array(route.coordinates[startIdx..<endIdx]))
+                                .stroke(
+                                    segmentColor.opacity(0.85),
+                                    style: StrokeStyle(
+                                        lineWidth: 4,
+                                        lineCap: .round,
+                                        lineJoin: .round
                                     )
-                            }
-                        }
-                    }
-
-                    // Show numbered markers
-                    ForEach(entriesWithLocations, id: \.1.id) { number, entry in
-                        if let coordinate = entry.coordinate {
-                            Annotation(entry.title, coordinate: coordinate) {
-                                NumberedMarkerView(
-                                    number: number,
-                                    color: entry.entryType.swiftUIColor
                                 )
-                            }
                         }
                     }
                 }
-                .mapStyle(.standard)
-                .mapControlVisibility(.visible)
-                .ignoresSafeArea()
+
+                // Show numbered markers
+                ForEach(entriesWithLocations, id: \.1.id) { number, entry in
+                    if let coordinate = entry.coordinate {
+                        Annotation(entry.title, coordinate: coordinate) {
+                            NumberedMarkerView(
+                                number: number,
+                                color: entry.entryType.swiftUIColor
+                            )
+                        }
+                    }
+                }
+            }
+            .mapStyle(.standard)
+            .mapControlVisibility(.visible)
+            .ignoresSafeArea()
+            .safeAreaInset(edge: .bottom) {
+                // Navigate button at bottom center
+                HStack {
+                    Spacer()
+
+                    Menu {
+                        Button {
+                            openInAppleMaps()
+                        } label: {
+                            Label("Navigate in Apple Maps", systemImage: "map.fill")
+                        }
+
+                        Button {
+                            openInGoogleMaps()
+                        } label: {
+                            Label("Navigate in Google Maps", systemImage: "globe.americas.fill")
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "location.circle.fill")
+                                .font(.system(size: 20, weight: .semibold))
+
+                            Text("Navigate")
+                                .font(.system(.body, design: .monospaced, weight: .semibold))
+                        }
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 25)
+                                .fill(.ultraThinMaterial)
+                                .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 25)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                    }
+
+                    Spacer()
+                }
+                .padding(.bottom, 20)
+                .background(Color.clear)
             }
             .navigationTitle(trip.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -1398,6 +1486,91 @@ struct ExpandedMapView: View {
                             .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                     }
                 }
+            }
+        }
+    }
+
+    // Open trip itinerary in Apple Maps with all waypoints
+    private func openInAppleMaps() {
+        guard !entriesWithLocations.isEmpty else { return }
+
+        let locations = entriesWithLocations.map { $0.1 }
+
+        // Create map items for all locations
+        let mapItems = locations.compactMap { entry -> MKMapItem? in
+            guard let coordinate = entry.coordinate else { return nil }
+            let placemark = MKPlacemark(coordinate: coordinate)
+            let mapItem = MKMapItem(placemark: placemark)
+            mapItem.name = entry.title
+            return mapItem
+        }
+
+        guard !mapItems.isEmpty else { return }
+
+        // Open with directions for sequential navigation
+        if mapItems.count == 1 {
+            // Single location - just open it
+            mapItems[0].openInMaps(launchOptions: [
+                MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
+            ])
+        } else {
+            // Multiple locations - open with first as destination
+            // Note: Apple Maps doesn't support multiple waypoints in URL scheme well
+            // So we'll open directions to the first location with a note
+            MKMapItem.openMaps(
+                with: mapItems,
+                launchOptions: [
+                    MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving,
+                    MKLaunchOptionsShowsTrafficKey: true
+                ]
+            )
+        }
+
+        print("🗺️ Opened \(mapItems.count) locations in Apple Maps")
+    }
+
+    // Open trip itinerary in Google Maps with all waypoints
+    private func openInGoogleMaps() {
+        guard !entriesWithLocations.isEmpty else { return }
+
+        let locations = entriesWithLocations.map { $0.1 }.compactMap { $0.coordinate }
+        guard !locations.isEmpty else { return }
+
+        // Google Maps URL scheme on iOS doesn't support waypoints reliably
+        // Always use web URL which works in both app and browser
+        openGoogleMapsWeb(locations: locations)
+    }
+
+    // Open Google Maps with waypoints (works for both app and web)
+    private func openGoogleMapsWeb(locations: [CLLocationCoordinate2D]) {
+        guard !locations.isEmpty else { return }
+
+        if locations.count == 1 {
+            // Single location - direct navigation
+            let coord = locations[0]
+            let urlString = "https://www.google.com/maps/dir/?api=1&destination=\(coord.latitude),\(coord.longitude)&travelmode=driving"
+
+            if let url = URL(string: urlString) {
+                UIApplication.shared.open(url)
+                print("🌐 Opened 1 location in Google Maps")
+            }
+        } else {
+            // Multiple locations - use dir with all coordinates in path
+            // Format: /dir/origin/waypoint1/waypoint2/destination
+            var pathComponents: [String] = []
+
+            for location in locations {
+                pathComponents.append("\(location.latitude),\(location.longitude)")
+            }
+
+            let path = pathComponents.joined(separator: "/")
+            let urlString = "https://www.google.com/maps/dir/\(path)"
+
+            // URL encode the string properly
+            if let encodedString = urlString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+               let url = URL(string: encodedString) {
+                UIApplication.shared.open(url)
+                print("🌐 Opened \(locations.count) locations in Google Maps: \(pathComponents.joined(separator: " → "))")
             }
         }
     }

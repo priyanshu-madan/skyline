@@ -11,7 +11,7 @@ struct ContentView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var flightStore: FlightStore
     @EnvironmentObject var authService: AuthenticationService
-    @State private var showBottomBar: Bool = true
+    @Binding var isGlobeReady: Bool
     @State private var selectedDetent: PresentationDetent = .height(80)
     @StateObject private var webViewCoordinator = WebViewCoordinator()
     @State private var retryFlightSelection: (() -> Void)? = nil
@@ -30,7 +30,7 @@ struct ContentView: View {
                     .foregroundStyle(.clear)
                     .frame(height: 60)
             }
-            .sheet(isPresented: $showBottomBar) {
+            .sheet(isPresented: $isGlobeReady) {
                 SkyLineBottomBarView(
                     onFlightSelected: handleFlightSelection,
                     onTabSelected: handleTabSelection,
@@ -184,7 +184,7 @@ struct ContentView: View {
 
 
 #Preview {
-    ContentView()
+    ContentView(isGlobeReady: .constant(true))
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
         .environmentObject(AuthenticationService.shared)

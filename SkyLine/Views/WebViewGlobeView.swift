@@ -246,6 +246,9 @@ struct WebViewGlobeView: View {
                 self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
                 self.lastVisitedCitiesHash = self.createVisitedCitiesHash(cities: self.tripStore.visitedCities)
                 self.lastTripLocationsHash = self.createTripLocationsHash(locations: self.tripStore.tripLocations)
+
+                // Notify app that globe is fully ready
+                NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
             }
         }
     }
@@ -264,17 +267,23 @@ struct WebViewGlobeView: View {
                     self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
                     self.lastVisitedCitiesHash = self.createVisitedCitiesHash(cities: self.tripStore.visitedCities)
                     self.lastTripLocationsHash = self.createTripLocationsHash(locations: self.tripStore.tripLocations)
+
+                    // Notify app that globe is fully ready
+                    NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
                 }
             }
             return
         }
-        
+
         if message == "Globe functions ready" {
             DispatchQueue.main.async {
                 if !self.isGlobeReady {
                     self.isGlobeReady = true
                     self.updateGlobeTheme()
                     self.updateGlobeData()
+
+                    // Notify app that globe is fully ready
+                    NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
                 }
             }
             return
