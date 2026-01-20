@@ -30,54 +30,89 @@ struct UploadItineraryView: View {
     let onItineraryProcessed: (ParsedItinerary) -> Void
     
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    headerSection
-                    
-                    // Upload Type Selector
-                    uploadTypeSelector
-                    
-                    // Upload Interface
-                    if !aiService.isProcessing {
-                        uploadInterface
-                    }
-                    
-                    // Processing Status
-                    if aiService.isProcessing {
-                        processingStatusView
-                    }
-                    
-                    // Error Display
-                    if let error = error {
-                        errorView(error)
-                    }
-                    
-                    // Process Button
-                    if canProcess {
-                        processButton
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
-            }
-            .navigationTitle("Upload Itinerary")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+        ZStack {
+            // Background
+            themeManager.currentTheme.colors.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Custom Header
+                HStack {
+                    // Back button
+                    Button {
                         if !aiService.isProcessing {
                             dismiss()
                         }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(themeManager.currentTheme.colors.text)
+                            .frame(width: 40, height: 40)
+                            .background(
+                                Circle()
+                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.8))
+                                    .overlay(
+                                        Circle()
+                                            .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
                     }
                     .disabled(aiService.isProcessing)
+
+                    Spacer()
+
+                    // Title
+                    Text("Upload Itinerary")
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                    Spacer()
+
+                    // Spacer for balance
+                    Color.clear
+                        .frame(width: 40, height: 40)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Header
+                        headerSection
+
+                        // Upload Type Selector
+                        uploadTypeSelector
+
+                        // Upload Interface
+                        if !aiService.isProcessing {
+                            uploadInterface
+                        }
+
+                        // Processing Status
+                        if aiService.isProcessing {
+                            processingStatusView
+                        }
+
+                        // Error Display
+                        if let error = error {
+                            errorView(error)
+                        }
+
+                        // Process Button
+                        if canProcess {
+                            processButton
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 40)
                 }
             }
-            .overlay(
-                // Processing overlay
-                aiService.isProcessing ? processingOverlay : nil
-            )
+
+            // Processing overlay
+            if aiService.isProcessing {
+                processingOverlay
+            }
         }
         .sheet(isPresented: $showingDocumentPicker) {
             DocumentPicker(documentURL: $documentURL)
@@ -114,13 +149,13 @@ struct UploadItineraryView: View {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 48))
                 .foregroundColor(themeManager.currentTheme.colors.primary)
-            
+
             Text("Smart Itinerary Import")
-                .font(.system(.title2, design: .rounded, weight: .bold))
+                .font(.system(.title2, design: .monospaced, weight: .bold))
                 .foregroundColor(themeManager.currentTheme.colors.text)
-            
+
             Text("Upload images, documents, or text to automatically create your trip timeline")
-                .font(.system(.body, design: .rounded))
+                .font(.system(.body, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -130,19 +165,13 @@ struct UploadItineraryView: View {
     // MARK: - Upload Type Selector
     
     private var uploadTypeSelector: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Choose Import Method")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                ForEach(UploadType.allCases, id: \.self) { type in
-                    UploadTypeCard(
-                        type: type,
-                        isSelected: selectedUploadType == type,
-                        onTap: { selectedUploadType = type }
-                    )
-                }
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
+            ForEach(UploadType.allCases, id: \.self) { type in
+                UploadTypeCard(
+                    type: type,
+                    isSelected: selectedUploadType == type,
+                    onTap: { selectedUploadType = type }
+                )
             }
         }
     }
@@ -182,7 +211,7 @@ struct UploadItineraryView: View {
             } else {
                 VStack(spacing: 12) {
                     Text("Selected Images")
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .font(.system(.subheadline, design: .monospaced, weight: .medium))
                         .foregroundColor(themeManager.currentTheme.colors.text)
                     
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
@@ -253,59 +282,80 @@ struct UploadItineraryView: View {
                         Image(systemName: "doc.text")
                             .foregroundColor(themeManager.currentTheme.colors.primary)
                         Text(documentURL?.lastPathComponent ?? "Document")
-                            .font(.system(.body, design: .rounded))
+                            .font(.system(.body, design: .monospaced))
                             .foregroundColor(themeManager.currentTheme.colors.text)
                         Spacer()
                         Button("Change") {
                             showingDocumentPicker = true
                         }
+                        .font(.system(.body, design: .monospaced, weight: .medium))
                         .foregroundColor(themeManager.currentTheme.colors.primary)
                     }
                     .padding()
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(8)
+                    .background(themeManager.currentTheme.colors.surface.opacity(0.6))
+                    .cornerRadius(20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                    )
                 }
             }
         }
     }
     
     private var textInputSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Paste your itinerary text")
-                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
+        VStack(alignment: .leading, spacing: 0) {
             TextEditor(text: $manualText)
-                .font(.system(.body, design: .rounded))
+                .font(.system(.body, design: .monospaced, weight: .medium))
                 .frame(minHeight: 120)
-                .padding(12)
-                .background(themeManager.currentTheme.colors.surface)
-                .cornerRadius(8)
+                .padding(16)
+                .scrollContentBackground(.hidden)
+                .background(themeManager.currentTheme.colors.surface.opacity(0.6))
+                .cornerRadius(20)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+                )
+                .overlay(
+                    Group {
+                        if manualText.isEmpty {
+                            Text("Paste your itinerary text here...")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(themeManager.currentTheme.colors.textSecondary.opacity(0.6))
+                                .padding(.leading, 20)
+                                .padding(.top, 24)
+                                .allowsHitTesting(false)
+                        }
+                    },
+                    alignment: .topLeading
                 )
         }
     }
     
     private var urlInputSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Enter itinerary URL")
-                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
+        HStack(spacing: 0) {
+            Image(systemName: "link")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                .frame(width: 20, height: 20)
+                .padding(.leading, 16)
+
             TextField("https://example.com/my-itinerary", text: $urlText)
-                .font(.system(.body, design: .rounded))
-                .padding(12)
-                .background(themeManager.currentTheme.colors.surface)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                )
+                .font(.system(.body, design: .monospaced, weight: .medium))
+                .padding(.vertical, 16)
+                .padding(.leading, 12)
+                .padding(.trailing, 16)
                 .keyboardType(.URL)
                 .textContentType(.URL)
         }
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
+        )
     }
     
     // MARK: - Processing Status
@@ -317,44 +367,44 @@ struct UploadItineraryView: View {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
                     .scaleEffect(0.8)
-                
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Processing with AI")
-                        .font(.system(.headline, design: .rounded, weight: .semibold))
+                        .font(.system(.headline, design: .monospaced, weight: .semibold))
                         .foregroundColor(themeManager.currentTheme.colors.text)
-                    
+
                     Text(aiService.currentStatus)
-                        .font(.system(.body, design: .rounded))
+                        .font(.system(.body, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 }
-                
+
                 Spacer()
             }
-            
+
             // Progress bar
             VStack(spacing: 8) {
                 ProgressView(value: aiService.processingProgress)
                     .progressViewStyle(LinearProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
                     .frame(height: 6)
-                
+
                 HStack {
                     Text("\(Int(aiService.processingProgress * 100))%")
-                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .font(.system(.caption, design: .monospaced, weight: .medium))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
+
                     Spacer()
-                    
+
                     Text("Please wait...")
-                        .font(.system(.caption, design: .rounded))
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 }
             }
         }
         .padding()
         .background(themeManager.currentTheme.colors.primary.opacity(0.1))
-        .cornerRadius(12)
+        .cornerRadius(20)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 20)
                 .stroke(themeManager.currentTheme.colors.primary.opacity(0.3), lineWidth: 1)
         )
     }
@@ -369,12 +419,12 @@ struct UploadItineraryView: View {
                 Image(systemName: "wand.and.rays")
                 Text("Process Itinerary")
             }
-            .font(.system(.body, design: .rounded, weight: .semibold))
+            .font(.system(.body, design: .monospaced, weight: .semibold))
             .foregroundColor(.white)
             .padding()
             .frame(maxWidth: .infinity)
             .background(themeManager.currentTheme.colors.primary)
-            .cornerRadius(12)
+            .cornerRadius(20)
         }
         .disabled(aiService.isProcessing)
     }
@@ -386,23 +436,23 @@ struct UploadItineraryView: View {
             Image(systemName: icon)
                 .font(.system(size: 32))
                 .foregroundColor(themeManager.currentTheme.colors.primary)
-            
+
             Text(title)
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .font(.system(.headline, design: .monospaced, weight: .semibold))
                 .foregroundColor(themeManager.currentTheme.colors.text)
-            
+
             Text(description)
-                .font(.system(.body, design: .rounded))
+                .font(.system(.body, design: .monospaced))
                 .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(12)
+        .background(themeManager.currentTheme.colors.surface.opacity(0.6))
+        .cornerRadius(20)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(themeManager.currentTheme.colors.border, style: StrokeStyle(lineWidth: 2, dash: [8]))
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(themeManager.currentTheme.colors.border.opacity(0.3), style: StrokeStyle(lineWidth: 2, dash: [8]))
         )
     }
     
@@ -411,12 +461,12 @@ struct UploadItineraryView: View {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundColor(.red)
             Text(message)
-                .font(.system(.body, design: .rounded))
+                .font(.system(.body, design: .monospaced))
                 .foregroundColor(.red)
         }
         .padding()
         .background(Color.red.opacity(0.1))
-        .cornerRadius(8)
+        .cornerRadius(20)
     }
     
     // MARK: - Computed Properties
@@ -586,40 +636,40 @@ struct UploadItineraryView: View {
     private var processingOverlay: some View {
         VStack(spacing: 20) {
             Spacer()
-            
+
             VStack(spacing: 16) {
                 // Large spinner
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(1.5)
-                
+
                 VStack(spacing: 8) {
                     Text("AI Processing")
-                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                        .font(.system(.title3, design: .monospaced, weight: .semibold))
                         .foregroundColor(.white)
-                    
+
                     Text(aiService.currentStatus)
-                        .font(.system(.body, design: .rounded))
+                        .font(.system(.body, design: .monospaced))
                         .foregroundColor(.white.opacity(0.8))
                         .multilineTextAlignment(.center)
                 }
-                
+
                 // Progress indicator
                 VStack(spacing: 8) {
                     ProgressView(value: aiService.processingProgress)
                         .progressViewStyle(LinearProgressViewStyle(tint: .white))
                         .frame(width: 200, height: 4)
-                    
+
                     Text("\(Int(aiService.processingProgress * 100))% Complete")
-                        .font(.system(.caption, design: .rounded))
+                        .font(.system(.caption, design: .monospaced))
                         .foregroundColor(.white.opacity(0.7))
                 }
             }
             .padding(24)
             .background(Color.black.opacity(0.8))
-            .cornerRadius(16)
+            .cornerRadius(20)
             .shadow(radius: 20)
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -677,24 +727,24 @@ struct UploadTypeCard: View {
             Image(systemName: type.icon)
                 .font(.system(size: 24))
                 .foregroundColor(isSelected ? .white : themeManager.currentTheme.colors.primary)
-            
+
             Text(type.displayName)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .font(.system(.subheadline, design: .monospaced, weight: .semibold))
                 .foregroundColor(isSelected ? .white : themeManager.currentTheme.colors.text)
-            
+
             Text(type.description)
-                .font(.system(.caption, design: .rounded))
+                .font(.system(.caption, design: .monospaced))
                 .foregroundColor(isSelected ? .white.opacity(0.8) : themeManager.currentTheme.colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
         }
         .padding()
         .frame(maxWidth: .infinity, minHeight: 100)
-        .background(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.surface)
-        .cornerRadius(12)
+        .background(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.surface.opacity(0.6))
+        .cornerRadius(20)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.border, lineWidth: 2)
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: isSelected ? 2 : 1)
         )
         .onTapGesture {
             onTap()

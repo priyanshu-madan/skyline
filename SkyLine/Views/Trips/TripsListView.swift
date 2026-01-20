@@ -8,35 +8,53 @@
 import SwiftUI
 import MapKit
 
+enum TripFilter: String, CaseIterable {
+    case active = "Active"
+    case upcoming = "Upcoming"
+    case past = "Past"
+}
+
 struct TripsListView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @StateObject private var tripStore = TripStore.shared
     @State private var showingAddTrip = false
     @State private var selectedTrip: Trip?
-    
+    @State private var selectedFilter: TripFilter = .active
+
     let onFlightSelected: ((Flight, Trip) -> Void)?
     let externalTripSelection: Trip?
-    
+
     init(onFlightSelected: ((Flight, Trip) -> Void)? = nil, externalTripSelection: Trip? = nil) {
         self.onFlightSelected = onFlightSelected
         self.externalTripSelection = externalTripSelection
     }
-    
+
     var body: some View {
-        ScrollView {
-            if tripStore.isLoading && tripStore.trips.isEmpty {
-                // Show loading state when initially loading and no trips cached
-                LoadingTripsView()
-            } else if tripStore.trips.isEmpty && !tripStore.isLoading {
-                // Only show empty state when not loading and truly empty
-                EmptyTripsView(onAddTrip: { showingAddTrip = true })
-            } else {
-                TripsContentView(
-                    tripStore: tripStore,
-                    onTripSelected: { trip in
-                        selectedTrip = trip
-                    }
-                )
+        VStack(spacing: 0) {
+            // Segmented Control
+            if !tripStore.trips.isEmpty {
+                TripFilterSegmentedControl(selectedFilter: $selectedFilter)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+            }
+
+            ScrollView {
+                if tripStore.isLoading && tripStore.trips.isEmpty {
+                    // Show loading state when initially loading and no trips cached
+                    LoadingTripsView()
+                } else if tripStore.trips.isEmpty && !tripStore.isLoading {
+                    // Only show empty state when not loading and truly empty
+                    EmptyTripsView(onAddTrip: { showingAddTrip = true })
+                } else {
+                    TripsContentView(
+                        tripStore: tripStore,
+                        selectedFilter: selectedFilter,
+                        onTripSelected: { trip in
+                            selectedTrip = trip
+                        }
+                    )
+                }
             }
         }
         .refreshable {
@@ -116,12 +134,54 @@ struct EmptyTripsView: View {
     }
 }
 
+// MARK: - Segmented Control
+struct TripFilterSegmentedControl: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Binding var selectedFilter: TripFilter
+    @Namespace private var animation
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(TripFilter.allCases, id: \.self) { filter in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedFilter = filter
+                    }
+                } label: {
+                    Text(filter.rawValue)
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                        .foregroundColor(selectedFilter == filter
+                            ? themeManager.currentTheme.colors.primary
+                            : themeManager.currentTheme.colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            Group {
+                                if selectedFilter == filter {
+                                    RoundedRectangle(cornerRadius: 25)
+                                        .fill(themeManager.currentTheme.colors.surface)
+                                        .matchedGeometryEffect(id: "filter", in: animation)
+                                }
+                            }
+                        )
+                }
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 25)
+                .fill(themeManager.currentTheme.colors.surface.opacity(0.3))
+        )
+    }
+}
+
 // MARK: - Trips Content
 struct TripsContentView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @ObservedObject var tripStore: TripStore
+    let selectedFilter: TripFilter
     let onTripSelected: (Trip) -> Void
-    
+
     @State private var deletingTripId: String?
     
     private func deleteTrip(_ trip: Trip) {
@@ -150,48 +210,56 @@ struct TripsContentView: View {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
                         .scaleEffect(0.8)
-                    
+
                     Text("Syncing...")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                 }
                 .padding(.top, 8)
             }
-            
-            // Active/Upcoming Trips
-            if !tripStore.activeTrips.isEmpty || !tripStore.upcomingTrips.isEmpty {
-                VStack(spacing: 16) {
-                    if !tripStore.activeTrips.isEmpty {
-                        TripSectionView(
-                            title: "Active Trips",
-                            trips: tripStore.activeTrips,
-                            onTripSelected: onTripSelected,
-                            onTripDeleted: deleteTrip,
-                            deletingTripId: deletingTripId
-                        )
-                    }
-                    
-                    if !tripStore.upcomingTrips.isEmpty {
-                        TripSectionView(
-                            title: "Upcoming Trips",
-                            trips: tripStore.upcomingTrips,
-                            onTripSelected: onTripSelected,
-                            onTripDeleted: deleteTrip,
-                            deletingTripId: deletingTripId
-                        )
-                    }
+
+            switch selectedFilter {
+            case .active:
+                // Active Trips
+                if !tripStore.activeTrips.isEmpty {
+                    TripSectionView(
+                        title: "Active Trips",
+                        trips: tripStore.activeTrips,
+                        onTripSelected: onTripSelected,
+                        onTripDeleted: deleteTrip,
+                        deletingTripId: deletingTripId
+                    )
+                } else {
+                    EmptyFilterStateView(filterType: "active")
                 }
-            }
-            
-            // Completed Trips
-            if !tripStore.completedTrips.isEmpty {
-                TripSectionView(
-                    title: "Past Adventures",
-                    trips: tripStore.completedTrips,
-                    onTripSelected: onTripSelected,
-                    onTripDeleted: deleteTrip,
-                    deletingTripId: deletingTripId
-                )
+
+            case .upcoming:
+                // Upcoming Trips
+                if !tripStore.upcomingTrips.isEmpty {
+                    TripSectionView(
+                        title: "Upcoming Trips",
+                        trips: tripStore.upcomingTrips,
+                        onTripSelected: onTripSelected,
+                        onTripDeleted: deleteTrip,
+                        deletingTripId: deletingTripId
+                    )
+                } else {
+                    EmptyFilterStateView(filterType: "upcoming")
+                }
+
+            case .past:
+                // Past Trips
+                if !tripStore.completedTrips.isEmpty {
+                    TripSectionView(
+                        title: "Past Adventures",
+                        trips: tripStore.completedTrips,
+                        onTripSelected: onTripSelected,
+                        onTripDeleted: deleteTrip,
+                        deletingTripId: deletingTripId
+                    )
+                } else {
+                    EmptyFilterStateView(filterType: "past")
+                }
             }
         }
         .padding(.horizontal, 20)
@@ -464,29 +532,79 @@ struct RoundedCorner: Shape {
     }
 }
 
+// MARK: - Empty Filter State
+struct EmptyFilterStateView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    let filterType: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: iconName)
+                .font(.system(size: 48, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary.opacity(0.5))
+
+            Text(emptyTitle)
+                .font(.system(.title3, design: .monospaced, weight: .semibold))
+                .foregroundColor(themeManager.currentTheme.colors.text)
+
+            Text(emptyMessage)
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+
+    private var iconName: String {
+        switch filterType {
+        case "active": return "airplane.departure"
+        case "upcoming": return "calendar"
+        default: return "clock.arrow.circlepath"
+        }
+    }
+
+    private var emptyTitle: String {
+        switch filterType {
+        case "active": return "No Active Trips"
+        case "upcoming": return "No Upcoming Trips"
+        default: return "No Past Trips"
+        }
+    }
+
+    private var emptyMessage: String {
+        switch filterType {
+        case "active": return "Your ongoing adventures will appear here"
+        case "upcoming": return "Your upcoming adventures will appear here"
+        default: return "Your completed trips will appear here"
+        }
+    }
+}
+
 // MARK: - Loading State
 struct LoadingTripsView: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            
+
             VStack(spacing: 16) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
                     .scaleEffect(1.2)
-                
+
                 Text("Loading Your Trips...")
                     .font(.system(.title3, design: .monospaced))
                     .fontWeight(.medium)
                     .foregroundColor(themeManager.currentTheme.colors.text)
-                
+
                 Text("Syncing from iCloud")
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
             }
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity)

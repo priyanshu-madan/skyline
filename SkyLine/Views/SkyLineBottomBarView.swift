@@ -13,6 +13,11 @@ enum FlightNavigationContext {
     case trip(Trip)     // Navigated from a specific trip
 }
 
+enum FlightFilter: String, CaseIterable {
+    case upcoming = "Upcoming"
+    case past = "Past"
+}
+
 // MARK: - DateFormatter Extensions
 extension DateFormatter {
     static let flightCardDate: DateFormatter = {
@@ -65,6 +70,7 @@ struct SkyLineBottomBarView: View {
     @State private var flightDetailsViewKey: UUID = UUID()
     @State private var flightNavigationContext: FlightNavigationContext = .flights
     @State private var tripToReopen: Trip? = nil
+    @State private var selectedFlightFilter: FlightFilter = .upcoming
 
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
@@ -353,49 +359,75 @@ struct SkyLineBottomBarView: View {
     
     @ViewBuilder
     func FlightsTabContent() -> some View {
-        if flightStore.flights.isEmpty {
-            VStack(spacing: 24) {
-                Spacer()
-                
-                VStack(spacing: 16) {
-                    Image(systemName: "airplane")
-                        .font(.system(size: 48, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.primary)
-                        .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-                    
-                    Text("No Flights")
-                        .font(.system(.title2, design: .monospaced))
-                        .fontWeight(.semibold)
-                    
-                    Text("Add flights to track their status")
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                
-                Spacer()
+        VStack(spacing: 0) {
+            // Segmented Control
+            if !flightStore.flights.isEmpty {
+                FlightFilterSegmentedControl(selectedFilter: $selectedFlightFilter)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
             }
-            .frame(maxWidth: .infinity)
-        } else {
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(flightStore.sortedFlights) { flight in
-                        FlightRowView(
-                            flight: flight,
-                            isSelected: selectedFlightId == flight.id,
-                            onTap: {
-                                handleFlightTap(flight)
-                            },
-                            onDelete: {
-                                handleFlightDelete(flight)
-                            }
-                        )
-                        .id("\(flight.id)-\(refreshID)")
+
+            if flightStore.flights.isEmpty {
+                VStack(spacing: 24) {
+                    Spacer()
+
+                    VStack(spacing: 16) {
+                        Image(systemName: "airplane")
+                            .font(.system(size: 48, design: .monospaced))
+                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                            .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
+
+                        Text("No Flights")
+                            .font(.system(.title2, design: .monospaced))
+                            .fontWeight(.semibold)
+
+                        Text("Add flights to track their status")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
                     }
+
+                    Spacer()
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
+                .frame(maxWidth: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        let filteredFlights = filteredFlightsList
+                        if filteredFlights.isEmpty {
+                            EmptyFlightFilterStateView(filterType: selectedFlightFilter.rawValue.lowercased())
+                                .padding(.top, 40)
+                        } else {
+                            ForEach(filteredFlights) { flight in
+                                FlightRowView(
+                                    flight: flight,
+                                    isSelected: selectedFlightId == flight.id,
+                                    onTap: {
+                                        handleFlightTap(flight)
+                                    },
+                                    onDelete: {
+                                        handleFlightDelete(flight)
+                                    }
+                                )
+                                .id("\(flight.id)-\(refreshID)")
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                }
             }
+        }
+    }
+
+    private var filteredFlightsList: [Flight] {
+        let now = Date()
+        switch selectedFlightFilter {
+        case .upcoming:
+            return flightStore.sortedFlights.filter { ($0.departureDate ?? $0.date) >= now }
+        case .past:
+            return flightStore.sortedFlights.filter { ($0.departureDate ?? $0.date) < now }
         }
     }
     
@@ -1787,9 +1819,78 @@ struct BoardingPassMenuContent: View {
     }
 }
 
+// MARK: - Flight Filter Segmented Control
+struct FlightFilterSegmentedControl: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Binding var selectedFilter: FlightFilter
+    @Namespace private var animation
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(FlightFilter.allCases, id: \.self) { filter in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedFilter = filter
+                    }
+                } label: {
+                    Text(filter.rawValue)
+                        .font(.system(.body, design: .monospaced, weight: .semibold))
+                        .foregroundColor(selectedFilter == filter
+                            ? themeManager.currentTheme.colors.primary
+                            : themeManager.currentTheme.colors.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            Group {
+                                if selectedFilter == filter {
+                                    RoundedRectangle(cornerRadius: 25)
+                                        .fill(themeManager.currentTheme.colors.surface)
+                                        .matchedGeometryEffect(id: "flightFilter", in: animation)
+                                }
+                            }
+                        )
+                }
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 25)
+                .fill(themeManager.currentTheme.colors.surface.opacity(0.3))
+        )
+    }
+}
+
+// MARK: - Empty Flight Filter State
+struct EmptyFlightFilterStateView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    let filterType: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: filterType == "upcoming" ? "calendar" : "clock.arrow.circlepath")
+                .font(.system(size: 48, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary.opacity(0.5))
+
+            Text(filterType == "upcoming" ? "No Upcoming Flights" : "No Past Flights")
+                .font(.system(.title3, design: .monospaced, weight: .semibold))
+                .foregroundColor(themeManager.currentTheme.colors.text)
+
+            Text(filterType == "upcoming"
+                ? "Your upcoming flights will appear here"
+                : "Your past flights will appear here")
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+}
+
 #Preview {
     SkyLineBottomBarView(
-        onFlightSelected: nil, 
+        onFlightSelected: nil,
         onTabSelected: nil,
         onGlobeReset: nil,
         selectedDetent: .constant(.fraction(0.2))
