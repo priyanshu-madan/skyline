@@ -66,12 +66,15 @@ class CloudKitService: ObservableObject {
         
         // Initialize destination images schema
         await initializeDestinationImagesSchema()
-        
+
         // Initialize trips schema
         await initializeTripsSchema()
-        
+
         // Initialize configuration schema
         await initializeConfigurationSchema()
+
+        // Initialize user profile schema
+        await initializeUserProfileSchema()
     }
     
     // MARK: - Destination Images Schema
@@ -171,14 +174,14 @@ class CloudKitService: ObservableObject {
     }
     
     // MARK: - Configuration Schema
-    
+
     private func initializeConfigurationSchema() async {
         // Initialize Configuration record type for BoardingPassConfig
         let sampleConfigRecord = CKRecord(recordType: "Configuration")
         sampleConfigRecord["configType"] = "BoardingPassConfig"
         sampleConfigRecord["configData"] = "{\"validationRules\":{\"flightNumberPattern\":\"^[A-Z]{2,3}[0-9]{1,4}$\"}}"
         sampleConfigRecord["lastModified"] = Date()
-        
+
         do {
             let _ = try await database.save(sampleConfigRecord)
             try await database.deleteRecord(withID: sampleConfigRecord.recordID)
@@ -187,7 +190,46 @@ class CloudKitService: ObservableObject {
             print("⚠️ Configuration schema initialization: \(error)")
         }
     }
-    
+
+    // MARK: - User Profile Schema
+
+    private func initializeUserProfileSchema() async {
+        // Create a temporary image for schema initialization
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("schema_init_profile.jpg")
+
+        // Create a minimal 1x1 pixel image
+        let size = CGSize(width: 1, height: 1)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let tempImage = renderer.image { context in
+            context.cgContext.setFillColor(UIColor.clear.cgColor)
+            context.cgContext.fill(CGRect(origin: .zero, size: size))
+        }
+
+        do {
+            if let imageData = tempImage.jpegData(compressionQuality: 0.1) {
+                try imageData.write(to: tempURL)
+            }
+
+            // Initialize UserProfile record type
+            let sampleProfileRecord = CKRecord(recordType: "UserProfile")
+            sampleProfileRecord["userId"] = "SCHEMA_INIT"
+            sampleProfileRecord["profileImage"] = CKAsset(fileURL: tempURL)
+            sampleProfileRecord["lastModified"] = Date()
+
+            let _ = try await database.save(sampleProfileRecord)
+            try await database.deleteRecord(withID: sampleProfileRecord.recordID)
+            print("✅ User profile schema initialized")
+
+            // Clean up temporary file
+            try? FileManager.default.removeItem(at: tempURL)
+        } catch {
+            print("⚠️ User profile schema initialization: \(error)")
+            // Clean up temporary file on error
+            try? FileManager.default.removeItem(at: tempURL)
+        }
+    }
+
     // MARK: - Account Status
     
     func checkAccountStatus() async -> Bool {
@@ -684,9 +726,119 @@ class CloudKitService: ObservableObject {
         guard case .success = saveResult else {
             return .failure(.saveFailed)
         }
-        
+
         // Then fetch merged history
         return await fetchSearchHistory()
+    }
+
+    // MARK: - Profile Image Management
+
+    /// Saves user profile image to CloudKit
+    /// - Parameters:
+    ///   - image: The UIImage to save
+    ///   - userId: The user's unique identifier
+    /// - Returns: CloudKit record name for the saved image
+    func saveUserProfileImage(_ image: UIImage, userId: String) async throws -> String {
+        // Compress image to JPEG data
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw CloudKitError.saveFailed
+        }
+
+        // Create temporary file
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("jpg")
+
+        do {
+            try imageData.write(to: tempURL)
+        } catch {
+            print("❌ Failed to write temp file: \(error)")
+            throw CloudKitError.saveFailed
+        }
+
+        // Create CKAsset from temp file
+        let asset = CKAsset(fileURL: tempURL)
+
+        let recordID = CKRecord.ID(recordName: "UserProfile_\(userId)")
+
+        do {
+            // Try to fetch existing record first
+            let record: CKRecord
+            do {
+                record = try await database.record(for: recordID)
+                print("ℹ️ Updating existing UserProfile record")
+            } catch let error as CKError where error.code == .unknownItem {
+                // Record doesn't exist, create new one
+                print("ℹ️ Creating new UserProfile record")
+                record = CKRecord(recordType: "UserProfile", recordID: recordID)
+                record["userId"] = userId as CKRecordValue
+            }
+
+            // Update record fields
+            record["profileImage"] = asset
+            record["lastModified"] = Date() as CKRecordValue
+
+            let savedRecord = try await database.save(record)
+
+            // Clean up temp file
+            try? FileManager.default.removeItem(at: tempURL)
+
+            print("✅ Profile image saved to CloudKit: \(savedRecord.recordID.recordName)")
+            return savedRecord.recordID.recordName
+        } catch {
+            // Clean up temp file on error
+            try? FileManager.default.removeItem(at: tempURL)
+
+            print("❌ Failed to save profile image to CloudKit: \(error)")
+            throw CloudKitError.saveFailed
+        }
+    }
+
+    /// Fetches user profile image from CloudKit
+    /// - Parameter userId: The user's unique identifier
+    /// - Returns: UIImage if found, nil otherwise
+    func fetchUserProfileImage(userId: String) async throws -> UIImage? {
+        let recordID = CKRecord.ID(recordName: "UserProfile_\(userId)")
+
+        do {
+            let record = try await database.record(for: recordID)
+
+            // Extract image asset
+            guard let asset = record["profileImage"] as? CKAsset,
+                  let fileURL = asset.fileURL,
+                  let imageData = try? Data(contentsOf: fileURL),
+                  let image = UIImage(data: imageData) else {
+                print("⚠️ No profile image found for user: \(userId)")
+                return nil
+            }
+
+            print("✅ Profile image fetched from CloudKit")
+            return image
+        } catch let error as CKError where error.code == .unknownItem {
+            // Record doesn't exist yet - not an error
+            print("ℹ️ No profile image record exists for user: \(userId)")
+            return nil
+        } catch {
+            print("❌ Failed to fetch profile image: \(error)")
+            throw CloudKitError.fetchFailed
+        }
+    }
+
+    /// Deletes user profile image from CloudKit
+    /// - Parameter userId: The user's unique identifier
+    func deleteUserProfileImage(userId: String) async throws {
+        let recordID = CKRecord.ID(recordName: "UserProfile_\(userId)")
+
+        do {
+            try await database.deleteRecord(withID: recordID)
+            print("✅ Profile image deleted from CloudKit")
+        } catch let error as CKError where error.code == .unknownItem {
+            // Record doesn't exist - not an error
+            print("ℹ️ No profile image to delete for user: \(userId)")
+        } catch {
+            print("❌ Failed to delete profile image: \(error)")
+            throw CloudKitError.deleteFailed
+        }
     }
 }
 

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PhotosUI
+import CoreLocation
 
 enum FlightNavigationContext {
     case flights        // Navigated from flights tab
@@ -71,6 +72,9 @@ struct SkyLineBottomBarView: View {
     @State private var flightNavigationContext: FlightNavigationContext = .flights
     @State private var tripToReopen: Trip? = nil
     @State private var selectedFlightFilter: FlightFilter = .upcoming
+    @State private var showingSettings = false
+    @State private var showingEditProfile = false
+    @State private var profileImage: UIImage? = nil
 
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
@@ -221,11 +225,11 @@ struct SkyLineBottomBarView: View {
                             }
                             .buttonStyle(.glass)
                             .buttonBorderShape(.circle)
-                        } else {
+                        } else if tab == .profile {
                             Button {
-                                // Handle other tabs if needed
+                                showingSettings = true
                             } label: {
-                                Image(systemName: "plus")
+                                Image(systemName: "gearshape.fill")
                                     .font(.system(.title3, design: .monospaced))
                                     .fontWeight(.semibold)
                                     .frame(width: 30, height: 30)
@@ -435,70 +439,183 @@ struct SkyLineBottomBarView: View {
     @ViewBuilder
     func ProfileTabContent() -> some View {
         ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 16) {
-                    Image(systemName: "person.circle")
-                        .font(.system(size: 48, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.primary)
-                        .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-
-                    Text(authService.authenticationState.user?.displayName ?? "Profile")
-                        .font(.system(.title2, design: .monospaced))
-                        .fontWeight(.semibold)
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-
-                    Text("Settings and preferences")
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 20)
-
-                // Settings Section
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("PREFERENCES")
-                        .font(.system(.caption, design: .monospaced))
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 20)
-
-                    // Theme Toggle
-                    HStack {
-                        Image(systemName: themeManager.currentTheme == .dark ? "moon.fill" : "sun.max.fill")
-                            .font(.system(size: 20, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                            .frame(width: 30)
-
-                        Text("Dark Mode")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(
-                            get: { themeManager.currentTheme == .dark },
-                            set: { isDark in
-                                themeManager.currentTheme = isDark ? .dark : .light
+            VStack(spacing: 20) {
+                // Profile Header
+                Button {
+                    showingEditProfile = true
+                } label: {
+                    VStack(spacing: 12) {
+                        // Profile Picture with Edit Badge
+                        ZStack(alignment: .topTrailing) {
+                            // Profile Picture with Ring
+                            Group {
+                                if let profileImage = profileImage {
+                                    Image(uiImage: profileImage)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(Circle())
+                                } else {
+                                    Circle()
+                                        .fill(themeManager.currentTheme.colors.primary)
+                                        .frame(width: 80, height: 80)
+                                        .overlay(
+                                            Text(authService.authenticationState.user?.initials ?? "SU")
+                                                .font(.system(size: 32, weight: .medium, design: .monospaced))
+                                                .foregroundColor(.white)
+                                        )
+                                }
                             }
-                        ))
-                        .labelsHidden()
+                            .overlay(
+                                Circle()
+                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.2), lineWidth: 2)
+                            )
+
+                            // Edit Pencil Icon
+                            ZStack {
+                                Circle()
+                                    .fill(themeManager.currentTheme.colors.surface)
+                                    .frame(width: 28, height: 28)
+                                    .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
+
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                            }
+                            .offset(x: 2, y: -2)
+                        }
+
+                        // Name and Email
+                        VStack(spacing: 4) {
+                            Text(authService.authenticationState.user?.displayName ?? "SkyLine User")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(themeManager.currentTheme.colors.text)
+
+                            if let email = authService.authenticationState.user?.email {
+                                Text(email)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                            }
+                        }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(themeManager.currentTheme.colors.surface.opacity(0.6))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 20)
-
                 }
-                .padding(.top, 8)
 
-                Spacer()
+                // Statistics Card
+                HStack(spacing: 0) {
+                    StatCard(
+                        icon: "suitcase.fill",
+                        label: "Total Trips",
+                        value: "\(tripStore.trips.count)"
+                    )
+
+                    Divider()
+                        .frame(height: 60)
+
+                    StatCard(
+                        icon: "globe",
+                        label: "Countries",
+                        value: "\(calculateCountriesVisited())"
+                    )
+
+                    Divider()
+                        .frame(height: 60)
+
+                    StatCard(
+                        icon: "airplane",
+                        label: "Flights",
+                        value: "\(flightStore.flights.count)"
+                    )
+                }
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(themeManager.currentTheme.colors.surface)
+                        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+                )
+
+                Spacer(minLength: 40)
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+        }
+        .frame(maxWidth: .infinity)
+        .task {
+            // Fetch profile image from CloudKit
+            await loadProfileImage()
+        }
+        .onChange(of: showingEditProfile) { _, isShowing in
+            if !isShowing {
+                // Refresh profile image when edit sheet is dismissed
+                Task {
+                    await loadProfileImage()
+                }
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
+                .environmentObject(themeManager)
+                .environmentObject(authService)
+        }
+        .sheet(isPresented: $showingEditProfile) {
+            EditProfileView()
+                .environmentObject(themeManager)
+                .environmentObject(authService)
+        }
+    }
+
+    // MARK: - Profile Tab Helper Functions
+
+    @ViewBuilder
+    private func StatCard(
+        icon: String,
+        label: String,
+        value: String
+    ) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 28))
+                .foregroundColor(themeManager.currentTheme.colors.primary)
+
+            Text(value)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundColor(themeManager.currentTheme.colors.text)
+
+            Text(label)
+                .font(.system(size: 14))
+                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
     }
-    
+
+    // MARK: - Statistics Calculations
+
+    private func calculateCountriesVisited() -> Int {
+        let countries = Set(tripStore.trips.compactMap { $0.country })
+        return countries.count
+    }
+
+    private func loadProfileImage() async {
+        guard let user = authService.authenticationState.user else { return }
+
+        do {
+            if let image = try await CloudKitService.shared.fetchUserProfileImage(userId: user.id) {
+                await MainActor.run {
+                    profileImage = image
+                }
+            } else {
+                await MainActor.run {
+                    profileImage = nil
+                }
+            }
+        } catch {
+            print("❌ Failed to load profile image: \(error)")
+            await MainActor.run {
+                profileImage = nil
+            }
+        }
+    }
+
     // MARK: - Modern Flight Detail Content Component
     
     func ModernFlightDetailContent(flight: Flight, theme: ThemeManager) -> some View {

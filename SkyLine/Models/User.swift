@@ -18,6 +18,7 @@ struct User: Codable, Identifiable, Equatable {
     let isEmailVerified: Bool
     let createdAt: Date
     let lastLoginAt: Date
+    let profileImagePath: String?
     
     var displayName: String {
         if let fullName = fullName, !fullName.isEmpty {
@@ -62,7 +63,8 @@ extension ASAuthorizationAppleIDCredential {
             lastName: fullName?.familyName,
             isEmailVerified: true, // Apple Sign In emails are always verified
             createdAt: Date(),
-            lastLoginAt: Date()
+            lastLoginAt: Date(),
+            profileImagePath: nil
         )
     }
 }
