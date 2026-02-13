@@ -1,0 +1,22 @@
+
+ ⛅️ wrangler 4.63.0
+───────────────────
+Total Upload: 4.65 KiB / gzip: 1.52 KiB
+Your Worker has access to the following bindings:
+Binding                                                   Resource                  
+env.RATE_LIMIT_KV (c53a461125d946f69d6a49c043cf8a3b)      KV Namespace              
+env.APP_URL ("https://skyline.app")                       Environment Variable      
+
+Uploaded skyline-openrouter-proxy (8.71 sec)
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mYou need to register a workers.dev subdomain before publishing to workers.dev[0m
+
+
+? Would you like to register a workers.dev subdomain now?
+🤖 Using fallback value in non-interactive context: no
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mYou can either deploy your worker to one or more routes by specifying them in your wrangler.toml file, or register a workers.dev subdomain here:[0m
+
+  [4mhttps://dash.cloudflare.com/50132145d011a8796384f5ecb5aad9da/workers/onboarding[0m
+
+
+🪵  Logs were written to "/Users/priyanshumadan/Library/Preferences/.wrangler/logs/wrangler-2026-02-10_00-36-21_479.log"

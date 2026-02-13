@@ -1,0 +1,6 @@
+{
+  "prompt": "Say hello in 3 words",
+  "userId": "test-user",
+  "model": "openai/gpt-4o-mini",
+  "maxTokens": 50
+}

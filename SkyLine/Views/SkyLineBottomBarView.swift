@@ -285,7 +285,7 @@ struct SkyLineBottomBarView: View {
                     Image(systemName: tab.symbolImage)
                         .font(.system(.title3, design: .monospaced))
                         .symbolVariant(.fill)
-                    
+
                     Text(tab.rawValue)
                         .font(.system(.caption2, design: .monospaced))
                         .fontWeight(.semibold)
@@ -298,11 +298,11 @@ struct SkyLineBottomBarView: View {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         activeTab = tab
                     }
-                    
+
                     // Immediately notify the globe of tab change
                     print("🔄 Immediately calling onTabChanged with: \(tab.rawValue)")
                     onTabChanged?(tab)
-                    
+
                     // Trigger sheet expansion when tab is tapped
                     onTabSelected?()
                 }

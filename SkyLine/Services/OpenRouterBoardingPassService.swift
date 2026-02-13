@@ -190,38 +190,36 @@ class OpenRouterBoardingPassService: ObservableObject {
     private let session = URLSession.shared
     
     private init() {
-        self.config = OpenRouterConfig.default
-        loadApiKeyFromInfoPlist()
-        print("🔧 OpenRouterBoardingPassService initialized")
+        // API key not needed - using Cloudflare Worker proxy
+        self.config = OpenRouterConfig(
+            apiKey: "not-needed-using-worker",
+            preferredModel: .gpt4o,
+            fallbackModels: [.claude35Sonnet, .gpt4oMini],
+            maxTokens: 2000,
+            temperature: 0.1
+        )
+        print("🔧 OpenRouterBoardingPassService initialized with Cloudflare Worker proxy")
     }
     
     // MARK: - Public Interface
     
     func parseImage(_ image: UIImage) async -> BoardingPassData? {
-        print("🚀 OpenRouter: Starting boarding pass analysis")
-        
-        guard !config.apiKey.isEmpty else {
-            print("❌ OpenRouter: API key not configured")
-            await MainActor.run {
-                lastError = "OpenRouter API key not configured"
-            }
-            return nil
-        }
-        
+        print("🚀 OpenRouter: Starting boarding pass analysis via Cloudflare Worker")
+
         await MainActor.run {
             isProcessing = true
             lastError = nil
         }
-        
+
         defer {
             Task { @MainActor in
                 isProcessing = false
             }
         }
-        
+
         // Try preferred model first, then fallbacks
         let modelsToTry = [config.preferredModel] + config.fallbackModels
-        
+
         for model in modelsToTry {
             if let result = await tryParsingWithModel(model, image: image) {
                 await MainActor.run {
@@ -230,7 +228,7 @@ class OpenRouterBoardingPassService: ObservableObject {
                 return result
             }
         }
-        
+
         print("❌ OpenRouter: All models failed to parse boarding pass")
         await MainActor.run {
             lastError = "All parsing attempts failed"
@@ -490,24 +488,50 @@ class OpenRouterBoardingPassService: ObservableObject {
     }
     
     private func sendRequest(_ request: OpenRouterRequest) async throws -> OpenRouterResponse {
-        guard let url = URL(string: "\(config.baseURL)/chat/completions") else {
+        // Use Cloudflare Worker proxy instead of calling OpenRouter directly
+        guard let url = URL(string: "https://skyline-openrouter-proxy.pmadan-illinois.workers.dev") else {
             throw URLError(.badURL)
         }
-        
+
+        // Get user ID for rate limiting
+        let userId = AuthenticationService.shared.authenticationState.user?.id ?? "anonymous"
+
+        // Convert our request to worker format
+        let base64Image = extractBase64ImageFromRequest(request)
+        let systemPrompt = extractSystemPromptFromRequest(request)
+        let userPrompt = extractUserPromptFromRequest(request)
+
+        let fullPrompt = """
+        \(systemPrompt)
+
+        USER REQUEST:
+        \(userPrompt)
+        """
+
+        var workerRequest: [String: Any] = [
+            "prompt": fullPrompt,
+            "model": request.model,
+            "userId": userId,
+            "maxTokens": request.maxTokens
+        ]
+
+        // Add image if present
+        if let imageData = base64Image {
+            workerRequest["imageBase64"] = imageData
+        }
+
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
-        urlRequest.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue("SkyLine-iOS", forHTTPHeaderField: "HTTP-Referer")
-        
-        urlRequest.httpBody = try JSONEncoder().encode(request)
-        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: workerRequest)
+        urlRequest.timeoutInterval = 120 // 2 minutes for vision models
+
         let (data, response) = try await session.data(for: urlRequest)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
-        
+
         guard httpResponse.statusCode == 200 else {
             print("❌ OpenRouter: HTTP \(httpResponse.statusCode)")
             if let errorData = String(data: data, encoding: .utf8) {
@@ -515,15 +539,24 @@ class OpenRouterBoardingPassService: ObservableObject {
             }
             throw URLError(.badServerResponse)
         }
-        
+
         do {
-            let openRouterResponse = try JSONDecoder().decode(OpenRouterResponse.self, from: data)
-            
+            // Parse worker response
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let success = json?["success"] as? Bool, success,
+                  let responseData = json?["data"] as? [String: Any] else {
+                throw NSError(domain: "OpenRouterError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Worker returned error"])
+            }
+
+            // Convert worker response back to OpenRouterResponse format
+            let openRouterResponseData = try JSONSerialization.data(withJSONObject: responseData)
+            let openRouterResponse = try JSONDecoder().decode(OpenRouterResponse.self, from: openRouterResponseData)
+
             if let error = openRouterResponse.error {
                 print("❌ OpenRouter: API error: \(error.message)")
                 throw NSError(domain: "OpenRouterError", code: 0, userInfo: [NSLocalizedDescriptionKey: error.message])
             }
-            
+
             return openRouterResponse
         } catch {
             print("❌ OpenRouter: Failed to decode response: \(error)")
@@ -533,24 +566,83 @@ class OpenRouterBoardingPassService: ObservableObject {
             throw error
         }
     }
+
+    // Helper functions to extract data from request
+    private func extractBase64ImageFromRequest(_ request: OpenRouterRequest) -> String? {
+        for message in request.messages {
+            for content in message.content {
+                if content.type == "image_url", let imageUrl = content.imageUrl?.url {
+                    // Extract base64 from data URL
+                    if imageUrl.hasPrefix("data:image/") {
+                        if let base64Range = imageUrl.range(of: "base64,") {
+                            return String(imageUrl[base64Range.upperBound...])
+                        }
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func extractSystemPromptFromRequest(_ request: OpenRouterRequest) -> String {
+        for message in request.messages {
+            if message.role == "system" {
+                for content in message.content {
+                    if let text = content.text {
+                        return text
+                    }
+                }
+            }
+        }
+        return ""
+    }
+
+    private func extractUserPromptFromRequest(_ request: OpenRouterRequest) -> String {
+        for message in request.messages {
+            if message.role == "user" {
+                for content in message.content {
+                    if content.type == "text", let text = content.text {
+                        return text
+                    }
+                }
+            }
+        }
+        return ""
+    }
     
     private func processResponse(_ response: OpenRouterResponse, model: OpenRouterModel) async -> BoardingPassData? {
         guard let choice = response.choices.first else {
             print("❌ OpenRouter: No choices in response")
             return nil
         }
-        
+
         await MainActor.run {
             lastTokenUsage = response.usage
         }
-        
+
         if let usage = response.usage {
             let estimatedCost = Double(usage.totalTokens) * model.estimatedCostPer1KTokens / 1000.0
             print("💰 OpenRouter: Used \(usage.totalTokens) tokens, estimated cost: $\(String(format: "%.4f", estimatedCost))")
         }
-        
+
+        // Clean up response content - remove markdown code blocks if present
+        var cleanedContent = choice.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Remove ```json and ``` markers
+        if cleanedContent.hasPrefix("```json") {
+            cleanedContent = cleanedContent.replacingOccurrences(of: "```json", with: "")
+        }
+        if cleanedContent.hasPrefix("```") {
+            cleanedContent = cleanedContent.replacingOccurrences(of: "```", with: "", options: [], range: cleanedContent.startIndex..<cleanedContent.index(cleanedContent.startIndex, offsetBy: 3))
+        }
+        if cleanedContent.hasSuffix("```") {
+            let endIndex = cleanedContent.index(cleanedContent.endIndex, offsetBy: -3)
+            cleanedContent = String(cleanedContent[..<endIndex])
+        }
+        cleanedContent = cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines)
+
         do {
-            let boardingPassData = try JSONDecoder().decode(OpenRouterBoardingPassData.self, from: choice.message.content.data(using: .utf8) ?? Data())
+            let boardingPassData = try JSONDecoder().decode(OpenRouterBoardingPassData.self, from: cleanedContent.data(using: .utf8) ?? Data())
             
             guard boardingPassData.success else {
                 print("⚠️ OpenRouter: Model indicated parsing failure")
