@@ -13,7 +13,8 @@ enum PresentedSheet: Identifiable {
     case editEntry(TripEntry)
     case uploadItinerary
     case addEntryMenu
-    
+    case askAI
+
     var id: String {
         switch self {
         case .addEntry:
@@ -24,6 +25,8 @@ enum PresentedSheet: Identifiable {
             return "uploadItinerary"
         case .addEntryMenu:
             return "addEntryMenu"
+        case .askAI:
+            return "askAI"
         }
     }
 }
@@ -167,7 +170,7 @@ struct TripDetailView: View {
             case .addEntryMenu:
                 AddEntryMenuView(trip: trip) { option in
                     presentedSheet = nil
-                    
+
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         switch option {
                         case .manual:
@@ -175,12 +178,18 @@ struct TripDetailView: View {
                         case .importFiles:
                             presentedSheet = .uploadItinerary
                         case .askAI:
-                            // Future implementation
-                            break
+                            presentedSheet = .askAI
                         }
                     }
                 }
                 .environmentObject(themeManager)
+            case .askAI:
+                AskAIPlannerView(trip: trip) { parsedItinerary in
+                    handleProcessedItinerary(parsedItinerary)
+                    presentedSheet = nil
+                }
+                .environmentObject(themeManager)
+                .environmentObject(tripStore)
             }
         }
         .id(refreshID)
@@ -1151,8 +1160,7 @@ enum AddEntryOption {
     
     var isEnabled: Bool {
         switch self {
-        case .manual, .importFiles: return true
-        case .askAI: return false // Future implementation
+        case .manual, .importFiles, .askAI: return true
         }
     }
 }

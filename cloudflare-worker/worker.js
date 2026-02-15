@@ -77,7 +77,7 @@ export default {
       const requestBody = {
         model: model || 'openai/gpt-4o-mini', // Default to cost-effective model
         messages: messages,
-        max_tokens: Math.min(maxTokens || 1000, 4000), // Cap at 4000 tokens for vision
+        max_tokens: Math.min(maxTokens || 1000, 8000), // Cap at 8000 tokens for itinerary generation
         temperature: 0.1 // Lower temperature for boarding pass extraction
       };
 

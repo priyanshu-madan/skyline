@@ -9,23 +9,24 @@ import Foundation
 
 // MARK: - Response Models
 
-struct OpenRouterResponse: Codable {
+// Worker-specific response wrapper (from Cloudflare Worker)
+struct WorkerResponse: Codable {
     let success: Bool
-    let data: OpenRouterData?
-    let usage: UsageInfo?
+    let data: WorkerOpenRouterData?
+    let usage: WorkerUsageInfo?
     let error: String?
     let message: String?
 }
 
-struct OpenRouterData: Codable {
+struct WorkerOpenRouterData: Codable {
     let id: String
     let model: String
-    let choices: [Choice]
-    let usage: TokenUsage
+    let choices: [WorkerChoice]
+    let usage: WorkerTokenUsage
 }
 
-struct Choice: Codable {
-    let message: Message
+struct WorkerChoice: Codable {
+    let message: WorkerMessage
     let finishReason: String
 
     enum CodingKeys: String, CodingKey {
@@ -34,12 +35,12 @@ struct Choice: Codable {
     }
 }
 
-struct Message: Codable {
+struct WorkerMessage: Codable {
     let role: String
     let content: String
 }
 
-struct TokenUsage: Codable {
+struct WorkerTokenUsage: Codable {
     let promptTokens: Int
     let completionTokens: Int
     let totalTokens: Int
@@ -51,7 +52,7 @@ struct TokenUsage: Codable {
     }
 }
 
-struct UsageInfo: Codable {
+struct WorkerUsageInfo: Codable {
     let requestsRemaining: Int
     let resetAt: String
 
@@ -82,7 +83,7 @@ class OpenRouterService {
         maxTokens: Int = 1000
     ) async throws -> String {
         guard let url = URL(string: workerURL) else {
-            throw OpenRouterError.invalidURL
+            throw WorkerError.invalidURL
         }
 
         // Get user ID for rate limiting
@@ -110,35 +111,114 @@ class OpenRouterService {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenRouterError.invalidResponse
+            throw WorkerError.invalidResponse
         }
 
         print("📥 OpenRouter: Received response - Status: \(httpResponse.statusCode)")
 
         // Parse response
         let decoder = JSONDecoder()
-        let openRouterResponse = try decoder.decode(OpenRouterResponse.self, from: data)
+        let workerResponse = try decoder.decode(WorkerResponse.self, from: data)
 
         // Check for errors
-        if !openRouterResponse.success {
-            if let error = openRouterResponse.error {
+        if !workerResponse.success {
+            if let error = workerResponse.error {
                 if error.contains("Rate limit exceeded") {
-                    let resetAt = openRouterResponse.usage?.resetAt ?? "unknown"
-                    throw OpenRouterError.rateLimitExceeded(resetAt: resetAt)
+                    let resetAt = workerResponse.usage?.resetAt ?? "unknown"
+                    throw WorkerError.rateLimitExceeded(resetAt: resetAt)
                 }
-                throw OpenRouterError.apiError(error)
+                throw WorkerError.apiError(error)
             }
-            throw OpenRouterError.unknownError
+            throw WorkerError.unknownError
         }
 
         // Extract response text
-        guard let data = openRouterResponse.data,
+        guard let data = workerResponse.data,
               let firstChoice = data.choices.first else {
-            throw OpenRouterError.noResponse
+            throw WorkerError.noResponse
         }
 
         // Log usage info
-        if let usage = openRouterResponse.usage {
+        if let usage = workerResponse.usage {
+            print("✅ OpenRouter: Success - \(usage.requestsRemaining) requests remaining")
+            print("💰 OpenRouter: Tokens used - \(data.usage.totalTokens)")
+        }
+
+        return firstChoice.message.content
+    }
+
+    /// Send a prompt with an image to OpenRouter API via secure Cloudflare Worker
+    /// - Parameters:
+    ///   - prompt: The prompt to send to the AI
+    ///   - imageBase64: Base64-encoded image data
+    ///   - model: The model to use (defaults to gpt-4o for vision)
+    ///   - maxTokens: Maximum tokens in response (defaults to 2000)
+    /// - Returns: The AI's response text
+    func sendPromptWithImage(
+        _ prompt: String,
+        imageBase64: String,
+        model: String = "openai/gpt-4o",
+        maxTokens: Int = 2000
+    ) async throws -> String {
+        guard let url = URL(string: workerURL) else {
+            throw WorkerError.invalidURL
+        }
+
+        // Get user ID for rate limiting
+        let userId = AuthenticationService.shared.authenticationState.user?.id ?? "anonymous"
+
+        // Prepare request body with image
+        let requestBody: [String: Any] = [
+            "prompt": prompt,
+            "model": model,
+            "userId": userId,
+            "maxTokens": maxTokens,
+            "imageBase64": imageBase64
+        ]
+
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        request.timeoutInterval = 120 // 2 minutes for vision models
+
+        print("📤 OpenRouter: Sending image request to worker...")
+        print("📤 OpenRouter: Model: \(model), Tokens: \(maxTokens)")
+
+        // Send request
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw WorkerError.invalidResponse
+        }
+
+        print("📥 OpenRouter: Received response - Status: \(httpResponse.statusCode)")
+
+        // Parse response
+        let decoder = JSONDecoder()
+        let workerResponse = try decoder.decode(WorkerResponse.self, from: data)
+
+        // Check for errors
+        if !workerResponse.success {
+            if let error = workerResponse.error {
+                if error.contains("Rate limit exceeded") {
+                    let resetAt = workerResponse.usage?.resetAt ?? "unknown"
+                    throw WorkerError.rateLimitExceeded(resetAt: resetAt)
+                }
+                throw WorkerError.apiError(error)
+            }
+            throw WorkerError.unknownError
+        }
+
+        // Extract response text
+        guard let data = workerResponse.data,
+              let firstChoice = data.choices.first else {
+            throw WorkerError.noResponse
+        }
+
+        // Log usage info
+        if let usage = workerResponse.usage {
             print("✅ OpenRouter: Success - \(usage.requestsRemaining) requests remaining")
             print("💰 OpenRouter: Tokens used - \(data.usage.totalTokens)")
         }
@@ -180,7 +260,8 @@ class OpenRouterService {
 
 // MARK: - Error Types
 
-enum OpenRouterError: LocalizedError {
+// Worker-specific errors
+enum WorkerError: LocalizedError {
     case invalidURL
     case invalidResponse
     case noResponse

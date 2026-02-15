@@ -14,6 +14,8 @@
 		A90A23622F1F11A8008AC9AE /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23602F1F11A8008AC9AE /* SettingsView.swift */; };
 		A90A23642F395ADF008AC9AE /* EditProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23632F395ADF008AC9AE /* EditProfileView.swift */; };
 		A90A23662F3962D4008AC9AE /* CircularImageCropperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23652F3962D4008AC9AE /* CircularImageCropperView.swift */; };
+		A90A23682F4134B3008AC9AE /* AskAIPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23672F4134B3008AC9AE /* AskAIPlannerView.swift */; };
+		A90A236A2F414972008AC9AE /* OpenRouterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23692F414972008AC9AE /* OpenRouterService.swift */; };
 		A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */ = {isa = PBXBuildFile; productRef = A915596A2E6E4E1B00D77E8C /* BottomSheet */; };
 		A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */; };
 		A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59932E5B9C4F00266D7E /* ContentView.swift */; };
@@ -88,6 +90,8 @@
 		A90A23602F1F11A8008AC9AE /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A90A23632F395ADF008AC9AE /* EditProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditProfileView.swift; sourceTree = "<group>"; };
 		A90A23652F3962D4008AC9AE /* CircularImageCropperView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircularImageCropperView.swift; sourceTree = "<group>"; };
+		A90A23672F4134B3008AC9AE /* AskAIPlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskAIPlannerView.swift; sourceTree = "<group>"; };
+		A90A23692F414972008AC9AE /* OpenRouterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenRouterService.swift; sourceTree = "<group>"; };
 		A93C598E2E5B9C4F00266D7E /* SkyLine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SkyLine.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineApp.swift; sourceTree = "<group>"; };
 		A93C59932E5B9C4F00266D7E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -228,6 +232,7 @@
 		A94165C32EA9D8400050BE19 /* Trips */ = {
 			isa = PBXGroup;
 			children = (
+				A90A23672F4134B3008AC9AE /* AskAIPlannerView.swift */,
 				A94166062EFA41610050BE19 /* ReviewItineraryView.swift */,
 				A94166022EFA410E0050BE19 /* UploadItineraryView.swift */,
 				A94165FA2EF9CCB80050BE19 /* EditEntryView.swift */,
@@ -290,6 +295,7 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A90A23692F414972008AC9AE /* OpenRouterService.swift */,
 				A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */,
 				A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */,
 				A94166042EFA412F0050BE19 /* AIItineraryService.swift */,
@@ -483,11 +489,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A90A236A2F414972008AC9AE /* OpenRouterService.swift in Sources */,
 				A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */,
 				FF03AC0B3E7B48D8BBFCCFFD /* RouteCache.swift in Sources */,
 				A94165D62EC7CDDF0050BE19 /* AppleIntelligenceBoardingPassService.swift in Sources */,
 				A94165D42EC1B87D0050BE19 /* DestinationSuggestion.swift in Sources */,
 				A94165DE2ED1FAFB0050BE19 /* BoardingPassConfirmationView.swift in Sources */,
+				A90A23682F4134B3008AC9AE /* AskAIPlannerView.swift in Sources */,
 				A94165942E8709EB0050BE19 /* SkyLineBottomBarView.swift in Sources */,
 				A99F90D32E5BAE8B00BE96FE /* Theme.swift in Sources */,
 				A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */,

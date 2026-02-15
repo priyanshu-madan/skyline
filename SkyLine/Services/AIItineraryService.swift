@@ -22,26 +22,7 @@ class AIItineraryService: ObservableObject {
     
     private init() {
         self.config = .default
-        loadApiKeyFromInfoPlist()
-    }
-    
-    private func loadApiKeyFromInfoPlist() {
-        guard let path = Bundle.main.path(forResource: "Info", ofType: "plist"),
-              let plist = NSDictionary(contentsOfFile: path),
-              let apiKey = plist["OPENROUTER_API_KEY"] as? String,
-              !apiKey.isEmpty && apiKey != "YOUR_OPENROUTER_API_KEY_HERE" else {
-            print("⚠️ AIItineraryService: API key not found in Info.plist")
-            return
-        }
-        
-        config = OpenRouterConfig(
-            apiKey: apiKey,
-            preferredModel: config.preferredModel,
-            fallbackModels: config.fallbackModels,
-            maxTokens: config.maxTokens,
-            temperature: config.temperature
-        )
-        print("✅ AIItineraryService: API key loaded from Info.plist")
+        print("✅ AIItineraryService: Initialized (using Cloudflare Worker proxy)")
     }
     
     // MARK: - Main Processing Methods
@@ -363,60 +344,67 @@ class AIItineraryService: ObservableObject {
             model: config.preferredModel.rawValue,
             messages: [
                 OpenRouterMessage(
-                    role: "user", 
+                    role: "user",
                     content: [MessageContent(type: "text", text: prompt, imageUrl: nil)]
                 )
             ],
-            maxTokens: config.maxTokens * 2,
+            maxTokens: config.maxTokens * 3, // Increased to 6000 tokens for complex itineraries
             temperature: config.temperature,
             responseFormat: OpenRouterRequest.ResponseFormat()
         )
     }
     
     // MARK: - HTTP Request Handling
-    
+
     private func sendRequest(_ request: OpenRouterRequest) async -> Result<String, AIItineraryError> {
-        guard let url = URL(string: "\(config.baseURL)/chat/completions") else {
-            return .failure(.networkError("Invalid URL"))
-        }
-        
         do {
-            var urlRequest = URLRequest(url: url)
-            urlRequest.httpMethod = "POST"
-            urlRequest.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
-            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            urlRequest.setValue("SkyLine-iOS", forHTTPHeaderField: "HTTP-Referer")
-            
-            urlRequest.httpBody = try JSONEncoder().encode(request)
-            
-            let (data, response) = try await session.data(for: urlRequest)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                return .failure(.networkError("Invalid response"))
+            // Extract prompt from request
+            let prompt = request.messages.first?.content.first(where: { $0.type == "text" })?.text ?? ""
+
+            // Check if request includes an image
+            let imageContent = request.messages.first?.content.first(where: { $0.type == "image_url" })
+
+            let response: String
+
+            if let imageUrl = imageContent?.imageUrl?.url,
+               imageUrl.hasPrefix("data:image/jpeg;base64,") {
+                // Extract base64 image data
+                let base64Image = String(imageUrl.dropFirst("data:image/jpeg;base64,".count))
+
+                // Use vision model endpoint with image
+                let service = OpenRouterService.shared
+                response = try await service.sendPromptWithImage(
+                    prompt,
+                    imageBase64: base64Image,
+                    model: request.model,
+                    maxTokens: request.maxTokens
+                )
+            } else {
+                // Use text-only endpoint
+                let service = OpenRouterService.shared
+                print("📤 AIItinerary: Requesting \(request.maxTokens) tokens for model \(request.model)")
+                response = try await service.sendPrompt(
+                    prompt,
+                    model: request.model,
+                    maxTokens: request.maxTokens
+                )
+                print("📥 AIItinerary: Received response length: \(response.count) characters")
+                print("📥 AIItinerary: Response preview: \(String(response.prefix(200)))")
             }
-            
-            guard httpResponse.statusCode == 200 else {
-                let errorMessage = "HTTP \(httpResponse.statusCode)"
-                if let errorData = String(data: data, encoding: .utf8) {
-                    print("❌ OpenRouter: Error response: \(errorData)")
-                }
-                return .failure(.networkError(errorMessage))
-            }
-            
-            let openRouterResponse = try JSONDecoder().decode(OpenRouterResponse.self, from: data)
-            
-            if let error = openRouterResponse.error {
-                return .failure(.aiProcessingFailed(error.message))
-            }
-            
-            guard let choice = openRouterResponse.choices.first else {
-                return .failure(.aiProcessingFailed("No response choices"))
-            }
-            
-            return .success(choice.message.content)
-            
+
+            return .success(response)
+
         } catch {
-            return .failure(.networkError("Request failed: \(error.localizedDescription)"))
+            // Convert any error to AIItineraryError
+            let errorMessage = error.localizedDescription
+
+            if errorMessage.contains("Rate limit") {
+                return .failure(.networkError(errorMessage))
+            } else if errorMessage.contains("API Error") {
+                return .failure(.aiProcessingFailed(errorMessage))
+            } else {
+                return .failure(.networkError("Request failed: \(errorMessage)"))
+            }
         }
     }
     
@@ -543,27 +531,15 @@ class AIItineraryService: ObservableObject {
     private func cleanJSONResponse(_ response: String) -> String {
         // Remove markdown code blocks and extra text
         var cleaned = response.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+
         // Remove markdown code blocks
         cleaned = cleaned.replacingOccurrences(of: "```json\n", with: "")
         cleaned = cleaned.replacingOccurrences(of: "```json", with: "")
         cleaned = cleaned.replacingOccurrences(of: "```\n", with: "")
         cleaned = cleaned.replacingOccurrences(of: "```", with: "")
-        
-        // Find JSON object boundaries with proper bounds checking
-        if let startRange = cleaned.range(of: "{"),
-           let endRange = cleaned.range(of: "}", options: .backwards),
-           startRange.lowerBound < endRange.upperBound {
-            // Ensure we have valid range bounds
-            let startIndex = startRange.lowerBound
-            let endIndex = endRange.upperBound
-            
-            // Double check that indices are within string bounds
-            if startIndex < cleaned.endIndex && endIndex <= cleaned.endIndex && startIndex <= endIndex {
-                cleaned = String(cleaned[startIndex..<endIndex])
-            }
-        }
-        
+
+        // Don't try to find JSON boundaries - just clean markdown and return
+        // The JSON decoder will handle validation
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
