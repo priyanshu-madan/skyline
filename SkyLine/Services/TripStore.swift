@@ -376,35 +376,22 @@ class TripStore: ObservableObject {
     func updateEntry(_ entry: TripEntry) async -> Result<Void, TripStoreError> {
         isLoading = true
         error = nil
-        
+
         do {
-            // Update in CloudKit
-            var updatedEntry = entry
-            updatedEntry = TripEntry(
-                id: entry.id,
-                tripId: entry.tripId,
-                timestamp: entry.timestamp,
-                entryType: entry.entryType,
-                title: entry.title,
-                content: entry.content,
-                imageURLs: entry.imageURLs,
-                latitude: entry.latitude,
-                longitude: entry.longitude,
-                locationName: entry.locationName,
-                flightId: entry.flightId,
-                isPreview: entry.isPreview,
-                createdAt: entry.createdAt,
-                updatedAt: Date()
-            )
-            
-            let record = updatedEntry.toCKRecord()
+            print("🔄 TripStore: Updating entry \(entry.id), isPreview: \(entry.isPreview)")
+
+            // Save to CloudKit
+            let record = entry.toCKRecord()
             let _ = try await cloudKitService.database.save(record)
-            
+
             // Update local store
             if var entries = tripEntries[entry.tripId],
                let index = entries.firstIndex(where: { $0.id == entry.id }) {
-                entries[index] = updatedEntry
+                entries[index] = entry
                 tripEntries[entry.tripId] = entries.sorted { $0.timestamp > $1.timestamp }
+                print("✅ TripStore: Updated entry in local store, isPreview: \(entry.isPreview)")
+            } else {
+                print("⚠️ TripStore: Entry not found in local store for tripId: \(entry.tripId)")
             }
 
             // Cache the updated data
@@ -412,13 +399,14 @@ class TripStore: ObservableObject {
 
             // Clear route cache for this trip since entry changed
             await RouteCache.shared.clearCache(for: entry.tripId)
-            
+
             isLoading = false
             return .success(())
-            
+
         } catch {
             isLoading = false
             self.error = "Failed to update entry: \(error.localizedDescription)"
+            print("❌ TripStore: Failed to update entry: \(error)")
             return .failure(.saveFailed)
         }
     }

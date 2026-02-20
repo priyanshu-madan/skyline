@@ -388,6 +388,8 @@ struct TripDetailView: View {
 
     private func acceptPreviews() {
         Task {
+            print("🎯 Accepting \(previewEntries.count) preview entries...")
+
             // Convert all preview entries to permanent entries
             for entry in previewEntries {
                 // Create a copy with isPreview = false
@@ -409,10 +411,18 @@ struct TripDetailView: View {
                 )
 
                 // Update the entry
-                _ = await tripStore.updateEntry(permanentEntry)
+                let result = await tripStore.updateEntry(permanentEntry)
+                switch result {
+                case .success:
+                    print("✅ Accepted entry: \(entry.title)")
+                case .failure(let error):
+                    print("❌ Failed to accept entry: \(error)")
+                }
             }
 
+            // Force refresh after all updates complete
             await MainActor.run {
+                print("🔄 Refreshing view after accepting previews")
                 refreshID = UUID()
             }
         }
