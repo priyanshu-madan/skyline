@@ -126,10 +126,8 @@ struct TripDetailView: View {
                     }
                 }
 
-                // AI Generation Loading Overlay
-                if aiService.isGeneratingItinerary {
-                    aiGenerationLoadingOverlay
-                }
+                // AI Generation Loading Overlay (hidden for streaming)
+                // Activities appear directly in timeline instead
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
