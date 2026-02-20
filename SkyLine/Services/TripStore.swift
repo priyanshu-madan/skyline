@@ -391,6 +391,8 @@ class TripStore: ObservableObject {
                 latitude: entry.latitude,
                 longitude: entry.longitude,
                 locationName: entry.locationName,
+                flightId: entry.flightId,
+                isPreview: entry.isPreview,
                 createdAt: entry.createdAt,
                 updatedAt: Date()
             )

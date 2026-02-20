@@ -20,7 +20,7 @@ export default {
     try {
       // Parse request body
       const body = await request.json();
-      const { prompt, model, userId, maxTokens, imageBase64 } = body;
+      const { prompt, model, userId, maxTokens, imageBase64, stream } = body;
 
       // Validate required fields
       if (!prompt || !userId) {
@@ -40,6 +40,11 @@ export default {
           limit: rateLimitResult.limit,
           resetAt: rateLimitResult.resetAt
         }, 429);
+      }
+
+      // Don't allow streaming with images (vision models)
+      if (stream && imageBase64) {
+        return jsonResponse({ error: 'Streaming not supported with image requests' }, 400);
       }
 
       // Build messages based on whether image is provided
@@ -78,11 +83,12 @@ export default {
         model: model || 'openai/gpt-4o-mini', // Default to cost-effective model
         messages: messages,
         max_tokens: Math.min(maxTokens || 1000, 8000), // Cap at 8000 tokens for itinerary generation
-        temperature: 0.1 // Lower temperature for boarding pass extraction
+        temperature: 0.1, // Lower temperature for boarding pass extraction
+        stream: stream || false // Enable streaming if requested
       };
 
-      // Add response_format for supported models to force JSON output
-      if (model && (model.includes('gpt-4') || model.includes('gpt-3.5'))) {
+      // Add response_format for supported models to force JSON output (only for non-streaming)
+      if (!stream && model && (model.includes('gpt-4') || model.includes('gpt-3.5'))) {
         requestBody.response_format = { type: 'json_object' };
       }
 
@@ -108,20 +114,37 @@ export default {
         }, openRouterResponse.status);
       }
 
-      const data = await openRouterResponse.json();
-
-      // Increment rate limit counter
+      // Increment rate limit counter (do this immediately, not after completion)
       await incrementRateLimit(env, userId);
 
-      // Return successful response
-      return jsonResponse({
-        success: true,
-        data: data,
-        usage: {
-          requestsRemaining: rateLimitResult.remaining - 1,
-          resetAt: rateLimitResult.resetAt
-        }
-      });
+      // Handle streaming vs non-streaming responses
+      if (stream) {
+        // Stream the response directly to the client
+        return new Response(openRouterResponse.body, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        });
+      } else {
+        // Non-streaming: wait for complete response
+        const data = await openRouterResponse.json();
+
+        // Return successful response
+        return jsonResponse({
+          success: true,
+          data: data,
+          usage: {
+            requestsRemaining: rateLimitResult.remaining - 1,
+            resetAt: rateLimitResult.resetAt
+          }
+        });
+      }
 
     } catch (error) {
       console.error('Worker error:', error);

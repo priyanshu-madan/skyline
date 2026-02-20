@@ -71,16 +71,21 @@ class OpenRouterService {
 
     private init() {}
 
+    /// Callback type for streaming responses - receives each chunk of text as it arrives
+    typealias StreamCallback = (String) -> Void
+
     /// Send a prompt to OpenRouter API via secure Cloudflare Worker
     /// - Parameters:
     ///   - prompt: The prompt to send to the AI
     ///   - model: The model to use (defaults to gpt-4o-mini)
     ///   - maxTokens: Maximum tokens in response (defaults to 1000)
+    ///   - timeout: Request timeout in seconds (defaults to 60)
     /// - Returns: The AI's response text
     func sendPrompt(
         _ prompt: String,
         model: String = "openai/gpt-4o-mini",
-        maxTokens: Int = 1000
+        maxTokens: Int = 1000,
+        timeout: TimeInterval = 60
     ) async throws -> String {
         guard let url = URL(string: workerURL) else {
             throw WorkerError.invalidURL
@@ -102,7 +107,7 @@ class OpenRouterService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-        request.timeoutInterval = 60 // 60 second timeout
+        request.timeoutInterval = timeout
 
         print("📤 OpenRouter: Sending request to worker...")
         print("📤 OpenRouter: Model: \(model), Tokens: \(maxTokens)")
@@ -224,6 +229,92 @@ class OpenRouterService {
         }
 
         return firstChoice.message.content
+    }
+
+    /// Send a prompt with streaming response - receives chunks as they arrive
+    /// - Parameters:
+    ///   - prompt: The prompt to send to the AI
+    ///   - model: The model to use (defaults to gpt-4o-mini)
+    ///   - maxTokens: Maximum tokens in response (defaults to 1000)
+    ///   - onChunk: Callback called for each chunk of text received
+    /// - Returns: Complete response text
+    func sendPromptStreaming(
+        _ prompt: String,
+        model: String = "openai/gpt-4o-mini",
+        maxTokens: Int = 1000,
+        onChunk: @escaping StreamCallback
+    ) async throws -> String {
+        guard let url = URL(string: workerURL) else {
+            throw WorkerError.invalidURL
+        }
+
+        // Get user ID for rate limiting
+        let userId = AuthenticationService.shared.authenticationState.user?.id ?? "anonymous"
+
+        // Prepare request body with stream: true
+        let requestBody: [String: Any] = [
+            "prompt": prompt,
+            "model": model,
+            "userId": userId,
+            "maxTokens": maxTokens,
+            "stream": true
+        ]
+
+        // Create request
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+        request.timeoutInterval = 300 // 5 minutes for streaming
+
+        print("📤 OpenRouter: Sending streaming request...")
+        print("📤 OpenRouter: Model: \(model), Tokens: \(maxTokens)")
+
+        // Use URLSession with streaming
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw WorkerError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            throw WorkerError.apiError("HTTP \(httpResponse.statusCode)")
+        }
+
+        var fullContent = ""
+
+        // Parse Server-Sent Events (SSE) stream
+        for try await line in bytes.lines {
+            // SSE format: "data: {json}"
+            if line.hasPrefix("data: ") {
+                let jsonString = String(line.dropFirst(6)) // Remove "data: " prefix
+
+                // Skip [DONE] message
+                if jsonString == "[DONE]" {
+                    break
+                }
+
+                // Parse JSON chunk
+                if let jsonData = jsonString.data(using: .utf8),
+                   let chunk = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                   let choices = chunk["choices"] as? [[String: Any]],
+                   let firstChoice = choices.first,
+                   let delta = firstChoice["delta"] as? [String: Any],
+                   let content = delta["content"] as? String {
+
+                    // Call callback with new content
+                    await MainActor.run {
+                        onChunk(content)
+                    }
+
+                    fullContent += content
+                }
+            }
+        }
+
+        print("✅ OpenRouter: Streaming complete - \(fullContent.count) characters")
+
+        return fullContent
     }
 
     /// Parse flight information from text using AI

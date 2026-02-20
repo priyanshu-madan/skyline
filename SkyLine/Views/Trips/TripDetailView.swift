@@ -35,8 +35,9 @@ struct TripDetailView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
     @EnvironmentObject var flightStore: FlightStore
+    @StateObject private var aiService = AIItineraryService.shared
     @Environment(\.dismiss) private var dismiss
-    
+
     let trip: Trip
     let onFlightSelected: ((Flight, Trip) -> Void)?
     @State private var presentedSheet: PresentedSheet?
@@ -50,9 +51,17 @@ struct TripDetailView: View {
     private var entries: [TripEntry] {
         tripStore.getEntries(for: trip.id).sortedByTimestamp()
     }
-    
+
     private var groupedEntries: [(Date, [TripEntry])] {
         tripStore.getEntriesGroupedByDay(for: trip.id)
+    }
+
+    private var previewEntries: [TripEntry] {
+        entries.filter { $0.isPreview }
+    }
+
+    private var hasPreview: Bool {
+        !previewEntries.isEmpty
     }
     
     var body: some View {
@@ -81,32 +90,45 @@ struct TripDetailView: View {
                     }
                 }
 
-                // Floating add button
+                // Preview accept/reject bar or floating add button
                 VStack {
                     Spacer()
-                    HStack {
-                        Spacer()
 
-                        Button {
-                            presentedSheet = .addEntryMenu
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(.title2, design: .monospaced))
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                                .frame(width: 56, height: 56)
-                                .background(themeManager.currentTheme.colors.primary)
-                                .clipShape(Circle())
-                                .shadow(
-                                    color: themeManager.currentTheme.colors.primary.opacity(0.3),
-                                    radius: 8,
-                                    x: 0,
-                                    y: 4
-                                )
+                    if hasPreview {
+                        // Preview action bar
+                        previewActionBar
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        // Regular floating add button
+                        HStack {
+                            Spacer()
+
+                            Button {
+                                presentedSheet = .addEntryMenu
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(.title2, design: .monospaced))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                    .frame(width: 56, height: 56)
+                                    .background(themeManager.currentTheme.colors.primary)
+                                    .clipShape(Circle())
+                                    .shadow(
+                                        color: themeManager.currentTheme.colors.primary.opacity(0.3),
+                                        radius: 8,
+                                        x: 0,
+                                        y: 4
+                                    )
+                            }
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 20)
                         }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
                     }
+                }
+
+                // AI Generation Loading Overlay
+                if aiService.isGeneratingItinerary {
+                    aiGenerationLoadingOverlay
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -184,9 +206,8 @@ struct TripDetailView: View {
                 }
                 .environmentObject(themeManager)
             case .askAI:
-                AskAIPlannerView(trip: trip) { parsedItinerary in
-                    handleProcessedItinerary(parsedItinerary)
-                    presentedSheet = nil
+                AskAIPlannerView(trip: trip) { activity in
+                    handleStreamingActivity(activity)
                 }
                 .environmentObject(themeManager)
                 .environmentObject(tripStore)
@@ -210,32 +231,208 @@ struct TripDetailView: View {
     
     // MARK: - Helper Methods
     
+    private func handleStreamingActivity(_ activity: ItineraryItem) {
+        Task {
+            // Convert single activity to preview trip entry
+            let entry = activity.toTripEntry(tripId: trip.id, isPreview: true)
+
+            // Add to trip store
+            let result = await tripStore.addEntry(entry)
+
+            if case .failure(let error) = result {
+                print("Failed to add streaming activity: \(error.localizedDescription)")
+            } else {
+                // Refresh UI to show new activity
+                await MainActor.run {
+                    refreshID = UUID()
+                }
+            }
+        }
+    }
+
     private func handleProcessedItinerary(_ parsedItinerary: ParsedItinerary) {
         Task {
             do {
-                // Convert all items to trip entries for this specific trip
-                let tripEntries = parsedItinerary.toTripEntries(tripId: trip.id)
-                
-                // Add each entry to the trip
+                // Convert all items to PREVIEW trip entries
+                let tripEntries = parsedItinerary.toTripEntries(tripId: trip.id, isPreview: true)
+
+                // Add each preview entry to the trip
                 for entry in tripEntries {
                     let result = await tripStore.addEntry(entry)
                     if case .failure(let error) = result {
-                        print("Failed to add entry: \(error.localizedDescription)")
+                        print("Failed to add preview entry: \(error.localizedDescription)")
                         return
                     }
                 }
-                
+
                 await MainActor.run {
                     presentedSheet = nil
                     refreshID = UUID()
                 }
-                
+
             } catch {
                 print("Failed to add entries: \(error.localizedDescription)")
             }
         }
     }
     
+    // MARK: - Preview Action Bar
+
+    private var previewActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            VStack(spacing: 8) {
+                Text("AI Generated \(previewEntries.count) Activities")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                HStack(spacing: 12) {
+                    Button {
+                        rejectPreviews()
+                    } label: {
+                        HStack {
+                            Image(systemName: "xmark")
+                            Text("Reject")
+                        }
+                    }
+                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red.opacity(0.1))
+                    .cornerRadius(12)
+
+                    Button {
+                        acceptPreviews()
+                    } label: {
+                        HStack {
+                            Image(systemName: "checkmark")
+                            Text("Accept All")
+                        }
+                    }
+                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(themeManager.currentTheme.colors.primary)
+                    .cornerRadius(12)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .background(themeManager.currentTheme.colors.background)
+    }
+
+    // MARK: - AI Generation Loading Overlay
+
+    private var aiGenerationLoadingOverlay: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+
+            // Loading card
+            VStack(spacing: 24) {
+                // Animated sparkles
+                ZStack {
+                    ForEach(0..<3, id: \.self) { index in
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 40))
+                            .foregroundColor(themeManager.currentTheme.colors.primary.opacity(0.8))
+                            .rotationEffect(.degrees(Double(index) * 120))
+                            .scaleEffect(1.0 + Double(index) * 0.1)
+                    }
+                }
+                .frame(height: 60)
+
+                VStack(spacing: 12) {
+                    Text("Creating Your Itinerary")
+                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                    Text(aiService.currentStatus)
+                        .font(.system(.body, design: .rounded))
+                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .multilineTextAlignment(.center)
+
+                    // Progress bar
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(themeManager.currentTheme.colors.surface)
+                                .frame(height: 8)
+
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(themeManager.currentTheme.colors.primary)
+                                .frame(width: geometry.size.width * aiService.processingProgress, height: 8)
+                                .animation(.easeInOut, value: aiService.processingProgress)
+                        }
+                    }
+                    .frame(height: 8)
+                }
+            }
+            .padding(32)
+            .background(
+                RoundedRectangle(cornerRadius: 24)
+                    .fill(themeManager.currentTheme.colors.background)
+            )
+            .shadow(
+                color: Color.black.opacity(0.2),
+                radius: 20,
+                x: 0,
+                y: 10
+            )
+            .padding(.horizontal, 40)
+        }
+    }
+
+    private func acceptPreviews() {
+        Task {
+            // Convert all preview entries to permanent entries
+            for entry in previewEntries {
+                // Create a copy with isPreview = false
+                let permanentEntry = TripEntry(
+                    id: entry.id,
+                    tripId: entry.tripId,
+                    timestamp: entry.timestamp,
+                    entryType: entry.entryType,
+                    title: entry.title,
+                    content: entry.content,
+                    imageURLs: entry.imageURLs,
+                    latitude: entry.latitude,
+                    longitude: entry.longitude,
+                    locationName: entry.locationName,
+                    flightId: entry.flightId,
+                    isPreview: false,
+                    createdAt: entry.createdAt,
+                    updatedAt: Date()
+                )
+
+                // Update the entry
+                _ = await tripStore.updateEntry(permanentEntry)
+            }
+
+            await MainActor.run {
+                refreshID = UUID()
+            }
+        }
+    }
+
+    private func rejectPreviews() {
+        Task {
+            // Delete all preview entries
+            for entry in previewEntries {
+                _ = await tripStore.deleteEntry(entry.id, tripId: entry.tripId)
+            }
+
+            await MainActor.run {
+                refreshID = UUID()
+            }
+        }
+    }
+
     private func handleEntryTap(_ entry: TripEntry) {
         // Only handle flight entries for tap - show flight details
         if entry.entryType == .flight {
@@ -281,6 +478,7 @@ struct TripDetailView: View {
                     longitude: entry.longitude,
                     locationName: entry.locationName,
                     flightId: matchedFlight.id,
+                    isPreview: entry.isPreview,
                     createdAt: entry.createdAt,
                     updatedAt: Date()
                 )
@@ -969,16 +1167,32 @@ struct TimelineEntryCard: View {
                 HStack(spacing: 6) {
                     Text(entry.entryType.emoji)
                         .font(.system(.body, design: .monospaced))
-                    
+
                     Text(entry.entryType.displayName)
                         .font(.system(.caption, design: .monospaced))
                         .fontWeight(.medium)
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
+
+                    // AI Preview badge
+                    if entry.isPreview {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.system(.caption2, design: .monospaced))
+                            Text("AI")
+                                .font(.system(.caption2, design: .monospaced))
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.15))
+                        .cornerRadius(4)
+                    }
                 }
-                
+
                 Spacer()
-                
+
                 Text(entry.timeText)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
@@ -1056,11 +1270,20 @@ struct TimelineEntryCard: View {
             }
         }
         .padding(16)
-        .background(themeManager.currentTheme.colors.surface)
+        .background(
+            entry.isPreview
+                ? Color.orange.opacity(0.05)
+                : themeManager.currentTheme.colors.surface
+        )
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+                .stroke(
+                    entry.isPreview
+                        ? Color.orange.opacity(0.3)
+                        : themeManager.currentTheme.colors.border,
+                    lineWidth: entry.isPreview ? 2 : 1
+                )
         )
         .onTapGesture {
             onTap()

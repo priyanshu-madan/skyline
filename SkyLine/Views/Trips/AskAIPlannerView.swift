@@ -14,7 +14,7 @@ struct AskAIPlannerView: View {
     @Environment(\.dismiss) private var dismiss
 
     let trip: Trip
-    let onComplete: (ParsedItinerary) -> Void
+    let onActivity: (ItineraryItem) -> Void
 
     // Preference States
     @State private var selectedBudget: ItineraryPreferences.BudgetLevel = .mid
@@ -23,12 +23,6 @@ struct AskAIPlannerView: View {
     @State private var selectedPace: ItineraryPreferences.TravelPace = .moderate
     @State private var specialRequests: String = ""
 
-    // UI States
-    @State private var isGenerating = false
-    @State private var showingError = false
-    @State private var errorMessage = ""
-    @State private var showingReview = false
-    @State private var generatedItinerary: ParsedItinerary?
 
     var body: some View {
         NavigationView {
@@ -77,27 +71,6 @@ struct AskAIPlannerView: View {
                     }
                 }
             }
-        }
-        .sheet(isPresented: $showingReview) {
-            if let itinerary = generatedItinerary {
-                ReviewItineraryView(
-                    parsedItinerary: itinerary,
-                    onConfirm: { finalItinerary in
-                        showingReview = false
-                        dismiss()
-                        onComplete(finalItinerary)
-                    },
-                    onCancel: {
-                        showingReview = false
-                    }
-                )
-                .environmentObject(themeManager)
-            }
-        }
-        .alert("Error", isPresented: $showingError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(errorMessage)
         }
     }
 
@@ -363,23 +336,16 @@ struct AskAIPlannerView: View {
                     generateItinerary()
                 } label: {
                     HStack {
-                        if isGenerating {
-                            ProgressView()
-                                .progressViewStyle(.circular)
-                                .tint(.white)
-                        } else {
-                            Text("Generate Itinerary")
-                            Image(systemName: "arrow.right")
-                        }
+                        Text("Generate Itinerary")
+                        Image(systemName: "arrow.right")
                     }
                 }
                 .font(.system(.body, design: .rounded, weight: .semibold))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(isGenerating ? Color.gray : themeManager.currentTheme.colors.primary)
+                .background(themeManager.currentTheme.colors.primary)
                 .cornerRadius(12)
-                .disabled(isGenerating)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -390,8 +356,6 @@ struct AskAIPlannerView: View {
     // MARK: - Generate Itinerary
 
     private func generateItinerary() {
-        isGenerating = true
-
         // Build preferences
         let preferences = ItineraryPreferences(
             budget: selectedBudget,
@@ -404,26 +368,31 @@ struct AskAIPlannerView: View {
         // Calculate trip duration in days
         let duration = Int(trip.duration / 86400) // Convert seconds to days
 
+        // Dismiss immediately - user doesn't need to wait here
+        dismiss()
+
+        // Start streaming generation in background
         Task {
-            let result = await aiService.generateCustomItinerary(
+            let result = await aiService.generateCustomItineraryStreaming(
                 destination: trip.destination,
                 duration: duration,
-                preferences: preferences
+                startDate: trip.startDate,
+                endDate: trip.endDate,
+                preferences: preferences,
+                onActivity: { activity in
+                    // Call callback for each activity as it arrives
+                    self.onActivity(activity)
+                }
             )
 
             await MainActor.run {
-                isGenerating = false
-
                 switch result {
-                case .success(let itinerary):
-                    print("✅ Generated \(itinerary.items.count) activities")
-                    generatedItinerary = itinerary
-                    showingReview = true
+                case .success:
+                    print("✅ Streaming generation complete")
 
                 case .failure(let error):
                     print("❌ AI generation failed: \(error.localizedDescription)")
-                    errorMessage = error.localizedDescription
-                    showingError = true
+                    // TODO: Show error on trip page instead
                 }
             }
         }
@@ -438,7 +407,7 @@ struct AskAIPlannerView: View {
             startDate: Date(),
             endDate: Calendar.current.date(byAdding: .day, value: 5, to: Date()) ?? Date()
         ),
-        onComplete: { _ in }
+        onActivity: { _ in }
     )
     .environmentObject(ThemeManager())
     .environmentObject(TripStore.shared)

@@ -20,7 +20,7 @@ struct ItineraryItem: Codable, Identifiable, Hashable {
     let estimatedDuration: TimeInterval? // in seconds
     let confidence: Double // 0.0 to 1.0, AI confidence in parsing
     let originalText: String? // Original parsed text for reference
-    
+
     init(
         id: String = UUID().uuidString,
         title: String,
@@ -41,6 +41,22 @@ struct ItineraryItem: Codable, Identifiable, Hashable {
         self.estimatedDuration = estimatedDuration
         self.confidence = confidence
         self.originalText = originalText
+    }
+
+    // Custom decoder to generate ID if missing from JSON
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Generate ID if not provided by AI
+        self.id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.title = try container.decode(String.self, forKey: .title)
+        self.content = try container.decode(String.self, forKey: .content)
+        self.activityType = try container.decode(TripEntryType.self, forKey: .activityType)
+        self.dateTime = try container.decode(Date.self, forKey: .dateTime)
+        self.location = try container.decodeIfPresent(ItineraryLocation.self, forKey: .location)
+        self.estimatedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .estimatedDuration)
+        self.confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
+        self.originalText = try container.decodeIfPresent(String.self, forKey: .originalText)
     }
 }
 
@@ -203,7 +219,7 @@ enum ItinerarySourceType: String, Codable, CaseIterable {
 
 extension ItineraryItem {
     /// Convert to TripEntry for adding to a trip
-    func toTripEntry(tripId: String) -> TripEntry {
+    func toTripEntry(tripId: String, isPreview: Bool = false) -> TripEntry {
         return TripEntry(
             tripId: tripId,
             timestamp: dateTime,
@@ -212,15 +228,16 @@ extension ItineraryItem {
             content: content,
             latitude: location?.latitude,
             longitude: location?.longitude,
-            locationName: location?.name
+            locationName: location?.name,
+            isPreview: isPreview
         )
     }
 }
 
 extension ParsedItinerary {
     /// Convert all items to TripEntries for a specific trip
-    func toTripEntries(tripId: String) -> [TripEntry] {
-        return items.map { $0.toTripEntry(tripId: tripId) }
+    func toTripEntries(tripId: String, isPreview: Bool = false) -> [TripEntry] {
+        return items.map { $0.toTripEntry(tripId: tripId, isPreview: isPreview) }
     }
     
     /// Suggest a trip from the parsed itinerary

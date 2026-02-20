@@ -23,6 +23,7 @@ struct TripEntry: Codable, Identifiable, Hashable {
     let longitude: Double?
     let locationName: String?
     let flightId: String? // Reference to original flight for flight entries
+    let isPreview: Bool // AI-generated preview that user hasn't accepted yet
     let createdAt: Date
     let updatedAt: Date
     
@@ -75,6 +76,7 @@ struct TripEntry: Codable, Identifiable, Hashable {
         longitude: Double? = nil,
         locationName: String? = nil,
         flightId: String? = nil,
+        isPreview: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -89,6 +91,7 @@ struct TripEntry: Codable, Identifiable, Hashable {
         self.longitude = longitude
         self.locationName = locationName
         self.flightId = flightId
+        self.isPreview = isPreview
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -284,7 +287,7 @@ extension TripEntry {
     // Convert to CloudKit record
     func toCKRecord() -> CKRecord {
         let record = CKRecord(recordType: "TripEntry", recordID: CKRecord.ID(recordName: id))
-        
+
         record["tripId"] = tripId
         record["timestamp"] = timestamp
         record["entryType"] = entryType.rawValue
@@ -298,9 +301,10 @@ extension TripEntry {
         record["longitude"] = longitude
         record["locationName"] = locationName
         record["flightId"] = flightId
+        record["isPreview"] = isPreview
         record["createdAt"] = createdAt
         record["updatedAt"] = updatedAt
-        
+
         return record
     }
     
@@ -327,6 +331,7 @@ extension TripEntry {
             longitude: record["longitude"] as? Double,
             locationName: record["locationName"] as? String,
             flightId: record["flightId"] as? String,
+            isPreview: record["isPreview"] as? Bool ?? false,
             createdAt: record["createdAt"] as? Date ?? Date(),
             updatedAt: record["updatedAt"] as? Date ?? Date()
         )

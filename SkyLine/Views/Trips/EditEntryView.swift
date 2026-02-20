@@ -328,6 +328,8 @@ struct EditEntryView: View {
             latitude: useCurrentLocation ? currentLocation?.coordinate.latitude : nil,
             longitude: useCurrentLocation ? currentLocation?.coordinate.longitude : nil,
             locationName: useCurrentLocation ? (currentLocation != nil ? "Current Location" : nil) : (locationName.isEmpty ? nil : locationName),
+            flightId: entry.flightId,
+            isPreview: entry.isPreview,
             createdAt: entry.createdAt,
             updatedAt: Date()
         )

@@ -12,10 +12,11 @@ import UniformTypeIdentifiers
 @MainActor
 class AIItineraryService: ObservableObject {
     static let shared = AIItineraryService()
-    
+
     @Published var isProcessing = false
     @Published var processingProgress: Double = 0.0
     @Published var currentStatus = "Ready"
+    @Published var isGeneratingItinerary = false
     
     private var config: OpenRouterConfig
     private let session = URLSession.shared
@@ -128,43 +129,131 @@ class AIItineraryService: ObservableObject {
     }
     
     /// Generate custom itinerary based on user preferences
-    func generateCustomItinerary(destination: String, duration: Int, preferences: ItineraryPreferences) async -> Result<ParsedItinerary, AIItineraryError> {
+    /// Callback type for streaming itinerary generation - receives each activity as it's parsed
+    typealias ActivityCallback = (ItineraryItem) -> Void
+
+    /// Generate custom itinerary with streaming - activities appear one by one
+    func generateCustomItineraryStreaming(
+        destination: String,
+        duration: Int,
+        startDate: Date,
+        endDate: Date,
+        preferences: ItineraryPreferences,
+        onActivity: @escaping ActivityCallback
+    ) async -> Result<Void, AIItineraryError> {
         isProcessing = true
+        // Don't show loading overlay for streaming - activities appear directly in timeline
+        isGeneratingItinerary = false
         currentStatus = "Generating custom itinerary..."
         processingProgress = 0.1
-        
+
+        do {
+            currentStatus = "Creating personalized itinerary..."
+
+            let prompt = createCustomItineraryPrompt(
+                destination: destination,
+                duration: duration,
+                startDate: startDate,
+                endDate: endDate,
+                preferences: preferences
+            )
+
+            var accumulatedResponse = ""
+            var itemsBuffer: [ItineraryItem] = []
+
+            // Use streaming to get response chunks
+            let fullResponse = try await OpenRouterService.shared.sendPromptStreaming(
+                prompt,
+                model: config.preferredModel.rawValue,
+                maxTokens: config.maxTokens * 3,
+                onChunk: { chunk in
+                    Task { @MainActor in
+                        accumulatedResponse += chunk
+
+                        print("📦 Streaming chunk received (\(accumulatedResponse.count) chars total)")
+
+                        // Log first chunk to see response format
+                        if accumulatedResponse.count < 500 && accumulatedResponse.count > 10 {
+                            print("🔍 First chunk content: \(accumulatedResponse)")
+                        }
+
+                        // Try to parse activities from accumulated response
+                        if let newItems = self.tryParsePartialActivities(accumulatedResponse, parsedCount: itemsBuffer.count) {
+                            print("✨ Parsed \(newItems.count) new activities!")
+
+                            for item in newItems {
+                                // Call callback for each new activity
+                                onActivity(item)
+                                itemsBuffer.append(item)
+                            }
+
+                            // Update progress based on items received
+                            let estimatedTotal = Double(duration * 4) // Rough estimate: 4 activities per day
+                            self.processingProgress = 0.3 + (Double(itemsBuffer.count) / estimatedTotal) * 0.6
+                        }
+                    }
+                }
+            )
+
+            print("📥 Streaming complete: \(accumulatedResponse.count) characters, \(itemsBuffer.count) activities parsed")
+
+            processingProgress = 1.0
+            currentStatus = "Complete"
+            isProcessing = false
+            // isGeneratingItinerary already false - no overlay for streaming
+
+            return .success(())
+
+        } catch {
+            isProcessing = false
+            isGeneratingItinerary = false
+            currentStatus = "Failed"
+            return .failure(.aiProcessingFailed(error.localizedDescription))
+        }
+    }
+
+    /// Original non-streaming version (kept for backward compatibility)
+    func generateCustomItinerary(destination: String, duration: Int, startDate: Date, endDate: Date, preferences: ItineraryPreferences) async -> Result<ParsedItinerary, AIItineraryError> {
+        isProcessing = true
+        isGeneratingItinerary = true
+        currentStatus = "Generating custom itinerary..."
+        processingProgress = 0.1
+
         let startTime = Date()
-        
+
         do {
             processingProgress = 0.3
             currentStatus = "Creating personalized itinerary..."
-            
-            let prompt = createCustomItineraryPrompt(destination: destination, duration: duration, preferences: preferences)
-            
+
+            let prompt = createCustomItineraryPrompt(destination: destination, duration: duration, startDate: startDate, endDate: endDate, preferences: preferences)
+
             let request = createTextRequest(prompt: prompt)
             let response = await sendRequest(request)
-            
+
             processingProgress = 0.7
             currentStatus = "Finalizing itinerary..."
-            
+
             switch response {
             case .success(let aiResponse):
                 let parsedItinerary = try parseAIResponse(aiResponse, sourceType: .manual, processingTime: Date().timeIntervalSince(startTime))
-                
+
                 processingProgress = 1.0
                 currentStatus = "Complete"
                 isProcessing = false
-                
+                isGeneratingItinerary = false
+
                 return .success(parsedItinerary)
-                
+
             case .failure(let error):
                 isProcessing = false
+                isGeneratingItinerary = false
                 currentStatus = "Failed"
                 return .failure(error)
             }
-            
+
         } catch {
             isProcessing = false
+            isGeneratingItinerary = false
             currentStatus = "Failed"
             return .failure(.aiProcessingFailed(error.localizedDescription))
         }
@@ -268,9 +357,24 @@ class AIItineraryService: ObservableObject {
         """
     }
     
-    private func createCustomItineraryPrompt(destination: String, duration: Int, preferences: ItineraryPreferences) -> String {
+    private func createCustomItineraryPrompt(destination: String, duration: Int, startDate: Date, endDate: Date, preferences: ItineraryPreferences) -> String {
+        // Format dates for the prompt
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let startDateString = dateFormatter.string(from: startDate)
+        let endDateString = dateFormatter.string(from: endDate)
+
+        // Format for ISO8601 in examples
+        let iso8601Formatter = ISO8601DateFormatter()
+        let exampleDate = iso8601Formatter.string(from: startDate)
+
         return """
-        You are an expert travel planner. Create a detailed \(duration)-day itinerary for \(destination).
+        CRITICAL: Your entire response must be ONLY valid JSON. Do not include any text, explanations, or markdown before or after the JSON. Start your response with { and end with }. No code blocks, no explanations.
+
+        Create a detailed \(duration)-day itinerary for \(destination).
+
+        TRIP DATES: \(startDateString) to \(endDateString)
+        IMPORTANT: Use these EXACT dates. Start Day 1 activities on \(startDateString).
 
         USER PREFERENCES:
         - Budget: \(preferences.budget.rawValue)
@@ -280,24 +384,23 @@ class AIItineraryService: ObservableObject {
         \(preferences.specialRequests.isEmpty ? "" : "- Special Requests: \(preferences.specialRequests)")
 
         REQUIREMENTS:
-        1. Create a realistic daily schedule with specific times
-        2. Include a mix of activities based on preferences
-        3. Consider travel time between locations
-        4. Include meal recommendations
-        5. Suggest accommodations if relevant
-        6. Provide detailed descriptions for each activity
+        1. Create realistic daily schedule with specific times
+        2. Use ACTUAL trip dates (\(startDateString) to \(endDateString)) in ISO 8601 format
+        3. Include mix of activities based on preferences
+        4. Consider travel time between locations
+        5. Include meal recommendations and detailed descriptions
 
-        RESPONSE FORMAT (JSON only, no additional text):
+        RESPOND WITH ONLY THIS JSON STRUCTURE (no other text):
         {
           "tripTitle": "\(duration)-Day \(destination) Itinerary",
-          "destination": "\(destination)", 
+          "destination": "\(destination)",
           "detectedTimeZone": "appropriate timezone",
           "items": [
             {
               "title": "Activity name",
               "content": "Detailed description with why it's recommended",
               "activityType": "food|activity|sightseeing|accommodation|transportation|shopping|note|photo",
-              "dateTime": "2024-01-15T10:30:00Z",
+              "dateTime": "\(exampleDate)",
               "location": {
                 "name": "Location name",
                 "address": "Full address when possible",
@@ -313,6 +416,7 @@ class AIItineraryService: ObservableObject {
           ]
         }
 
+        CRITICAL: All dateTime values must be within the trip dates (\(startDateString) to \(endDateString)). Use ISO 8601 format with timezone.
         Create a realistic, enjoyable itinerary that matches the user's preferences and provides great local experiences.
         """
     }
@@ -383,10 +487,15 @@ class AIItineraryService: ObservableObject {
                 // Use text-only endpoint
                 let service = OpenRouterService.shared
                 print("📤 AIItinerary: Requesting \(request.maxTokens) tokens for model \(request.model)")
+
+                // Use longer timeout for large requests (3 minutes for itinerary generation)
+                let timeout: TimeInterval = request.maxTokens > 2000 ? 180 : 60
+
                 response = try await service.sendPrompt(
                     prompt,
                     model: request.model,
-                    maxTokens: request.maxTokens
+                    maxTokens: request.maxTokens,
+                    timeout: timeout
                 )
                 print("📥 AIItinerary: Received response length: \(response.count) characters")
                 print("📥 AIItinerary: Response preview: \(String(response.prefix(200)))")
@@ -410,6 +519,131 @@ class AIItineraryService: ObservableObject {
     
     // MARK: - Response Parsing
     
+    /// Try to parse complete activities from partial JSON response
+    /// Returns array of new activities that haven't been parsed yet
+    private func tryParsePartialActivities(_ partialResponse: String, parsedCount: Int) -> [ItineraryItem]? {
+        // Clean the response
+        let cleaned = cleanJSONResponse(partialResponse)
+
+        // Try to extract the items array even if JSON is incomplete
+        // Look for "items": [ ... ] (note: the field is called "items" not "activities")
+        guard let itemsStart = cleaned.range(of: "\"items\"")?.upperBound,
+              let arrayStart = cleaned[itemsStart...].range(of: "[")?.upperBound else {
+            print("⚠️ Could not find 'items' array in response")
+            return nil
+        }
+
+        let itemsString = String(cleaned[arrayStart...])
+        print("🔍 Attempting to parse items from partial JSON (already parsed: \(parsedCount))")
+
+        // Extract complete activity objects (those ending with "},")
+        var items: [ItineraryItem] = []
+        var currentObject = ""
+        var braceCount = 0
+        var inString = false
+        var escapeNext = false
+
+        for char in itemsString {
+            if escapeNext {
+                escapeNext = false
+                currentObject.append(char)
+                continue
+            }
+
+            if char == "\\" {
+                escapeNext = true
+                currentObject.append(char)
+                continue
+            }
+
+            if char == "\"" {
+                inString.toggle()
+            }
+
+            // Skip commas and whitespace when we're between objects (braceCount == 0)
+            if !inString && braceCount == 0 && (char == "," || char.isWhitespace) {
+                continue
+            }
+
+            currentObject.append(char)
+
+            if !inString {
+                if char == "{" {
+                    braceCount += 1
+                } else if char == "}" {
+                    braceCount -= 1
+
+                    // Found a complete object
+                    if braceCount == 0 {
+                        // Try to parse this activity
+                        if let activityData = currentObject.data(using: .utf8) {
+                            do {
+                                let decoder = createItineraryDecoder()
+                                let activity = try decoder.decode(ItineraryItem.self, from: activityData)
+                                items.append(activity)
+                                print("✅ Successfully parsed activity: \(activity.title)")
+                            } catch {
+                                print("❌ Failed to parse activity JSON: \(error)")
+                                print("   JSON was: \(currentObject.prefix(200))")
+                            }
+                        }
+                        currentObject = ""
+                    }
+                }
+            }
+        }
+
+        // Return only new items (those after parsedCount)
+        let newItems = Array(items.dropFirst(parsedCount))
+        print("📊 Total activities found: \(items.count), New activities: \(newItems.count)")
+        return newItems.isEmpty ? nil : newItems
+    }
+
+    /// Create a JSONDecoder configured for parsing itinerary data
+    private func createItineraryDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+
+        // Custom date decoding strategy that can handle multiple formats
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+
+            // Try ISO8601 first
+            let iso8601Formatter = ISO8601DateFormatter()
+            if let date = iso8601Formatter.date(from: dateString) {
+                return date
+            }
+
+            // Try common date formats
+            let formatters = [
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss",
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy-MM-dd",
+                "MM/dd/yyyy",
+                "dd/MM/yyyy"
+            ].map { format -> DateFormatter in
+                let formatter = DateFormatter()
+                formatter.dateFormat = format
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                return formatter
+            }
+
+            for formatter in formatters {
+                if let date = formatter.date(from: dateString) {
+                    return date
+                }
+            }
+
+            // If all else fails, return current date
+            print("⚠️ AIItinerary: Could not parse date string '\(dateString)', using current date")
+            return Date()
+        }
+
+        return decoder
+    }
+
     private func parseAIResponse(_ response: String, sourceType: ItinerarySourceType, processingTime: TimeInterval) throws -> ParsedItinerary {
         print("🔍 AIItinerary: Raw AI response: \(response.prefix(500))...")
         
@@ -426,46 +660,7 @@ class AIItineraryService: ObservableObject {
         }
         
         do {
-            let decoder = JSONDecoder()
-            
-            // Custom date decoding strategy that can handle multiple formats
-            decoder.dateDecodingStrategy = .custom { decoder in
-                let container = try decoder.singleValueContainer()
-                let dateString = try container.decode(String.self)
-                
-                // Try ISO8601 first
-                let iso8601Formatter = ISO8601DateFormatter()
-                if let date = iso8601Formatter.date(from: dateString) {
-                    return date
-                }
-                
-                // Try common date formats
-                let formatters = [
-                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                    "yyyy-MM-dd'T'HH:mm:ss",
-                    "yyyy-MM-dd HH:mm:ss",
-                    "yyyy-MM-dd",
-                    "MM/dd/yyyy",
-                    "dd/MM/yyyy"
-                ].map { format -> DateFormatter in
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = format
-                    formatter.locale = Locale(identifier: "en_US_POSIX")
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    return formatter
-                }
-                
-                for formatter in formatters {
-                    if let date = formatter.date(from: dateString) {
-                        return date
-                    }
-                }
-                
-                // If all else fails, return current date
-                print("⚠️ AIItinerary: Could not parse date string '\(dateString)', using current date")
-                return Date()
-            }
-            
+            let decoder = createItineraryDecoder()
             let aiResponse = try decoder.decode(AIItineraryResponse.self, from: data)
             print("✅ AIItinerary: Successfully decoded AI response with \(aiResponse.items.count) items")
             
@@ -538,8 +733,31 @@ class AIItineraryService: ObservableObject {
         cleaned = cleaned.replacingOccurrences(of: "```\n", with: "")
         cleaned = cleaned.replacingOccurrences(of: "```", with: "")
 
-        // Don't try to find JSON boundaries - just clean markdown and return
-        // The JSON decoder will handle validation
+        // Extract JSON from potential surrounding text
+        // Find the first { and the matching closing }
+        if let firstBrace = cleaned.firstIndex(of: "{") {
+            // Count braces to find the matching closing brace
+            var braceCount = 0
+            var endIndex: String.Index?
+
+            for index in cleaned[firstBrace...].indices {
+                let char = cleaned[index]
+                if char == "{" {
+                    braceCount += 1
+                } else if char == "}" {
+                    braceCount -= 1
+                    if braceCount == 0 {
+                        endIndex = index
+                        break
+                    }
+                }
+            }
+
+            if let endIndex = endIndex {
+                cleaned = String(cleaned[firstBrace...endIndex])
+            }
+        }
+
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
