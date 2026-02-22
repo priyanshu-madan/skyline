@@ -41,7 +41,6 @@ struct TripDetailView: View {
     let trip: Trip
     let onFlightSelected: ((Flight, Trip) -> Void)?
     @State private var presentedSheet: PresentedSheet?
-    @State private var refreshID = UUID()
 
     init(trip: Trip, onFlightSelected: ((Flight, Trip) -> Void)? = nil) {
         self.trip = trip
@@ -211,7 +210,6 @@ struct TripDetailView: View {
                 .environmentObject(tripStore)
             }
         }
-        .id(refreshID)
         .onAppear {
             // Make navigation bar completely transparent
             let appearance = UINavigationBarAppearance()
@@ -222,7 +220,6 @@ struct TripDetailView: View {
             Task {
                 await tripStore.fetchEntriesForTrip(trip.id)
                 await migrateFlightEntries()
-                refreshID = UUID()
             }
         }
     }
@@ -234,16 +231,11 @@ struct TripDetailView: View {
             // Convert single activity to preview trip entry
             let entry = activity.toTripEntry(tripId: trip.id, isPreview: true)
 
-            // Add to trip store
+            // Add to trip store - TripStore is @ObservableObject so view will update automatically
             let result = await tripStore.addEntry(entry)
 
             if case .failure(let error) = result {
                 print("Failed to add streaming activity: \(error.localizedDescription)")
-            } else {
-                // Refresh UI to show new activity
-                await MainActor.run {
-                    refreshID = UUID()
-                }
             }
         }
     }
@@ -265,7 +257,6 @@ struct TripDetailView: View {
 
                 await MainActor.run {
                     presentedSheet = nil
-                    refreshID = UUID()
                 }
 
             } catch {
@@ -420,10 +411,9 @@ struct TripDetailView: View {
                 }
             }
 
-            // Force refresh after all updates complete
+            // UI will update automatically via TripStore's @Published properties
             await MainActor.run {
-                print("🔄 Refreshing view after accepting previews")
-                refreshID = UUID()
+                print("✅ All previews accepted")
             }
         }
     }
@@ -435,8 +425,9 @@ struct TripDetailView: View {
                 _ = await tripStore.deleteEntry(entry.id, tripId: entry.tripId)
             }
 
+            // UI will update automatically via TripStore's @Published properties
             await MainActor.run {
-                refreshID = UUID()
+                print("✅ All previews rejected")
             }
         }
     }
