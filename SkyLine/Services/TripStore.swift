@@ -380,9 +380,30 @@ class TripStore: ObservableObject {
         do {
             print("🔄 TripStore: Updating entry \(entry.id), isPreview: \(entry.isPreview)")
 
-            // Save to CloudKit
-            let record = entry.toCKRecord()
-            let _ = try await cloudKitService.database.save(record)
+            // Fetch the existing record from CloudKit first
+            let recordID = CKRecord.ID(recordName: entry.id)
+            let existingRecord = try await cloudKitService.database.record(for: recordID)
+
+            // Update the fields on the existing record
+            existingRecord["tripId"] = entry.tripId
+            existingRecord["timestamp"] = entry.timestamp
+            existingRecord["entryType"] = entry.entryType.rawValue
+            existingRecord["title"] = entry.title
+            existingRecord["content"] = entry.content
+            if !entry.imageURLs.isEmpty {
+                existingRecord["imageURLs"] = entry.imageURLs
+            }
+            existingRecord["latitude"] = entry.latitude
+            existingRecord["longitude"] = entry.longitude
+            existingRecord["locationName"] = entry.locationName
+            existingRecord["flightId"] = entry.flightId
+            existingRecord["isPreview"] = entry.isPreview
+            existingRecord["createdAt"] = entry.createdAt
+            existingRecord["updatedAt"] = entry.updatedAt
+
+            // Save the modified record back to CloudKit
+            let _ = try await cloudKitService.database.save(existingRecord)
+            print("✅ TripStore: Updated entry in CloudKit, isPreview: \(entry.isPreview)")
 
             // Update local store
             if var entries = tripEntries[entry.tripId],

@@ -42,7 +42,7 @@ struct TripDetailView: View {
     let onFlightSelected: ((Flight, Trip) -> Void)?
     @State private var presentedSheet: PresentedSheet?
     @State private var refreshID = UUID()
-    
+
     init(trip: Trip, onFlightSelected: ((Flight, Trip) -> Void)? = nil) {
         self.trip = trip
         self.onFlightSelected = onFlightSelected
@@ -1057,6 +1057,14 @@ struct TimelineView: View {
                         onLongPress: { onEntryLongPress(entry) }
                     )
                     .padding(.horizontal, 20)
+                    .transition(
+                        entry.isPreview
+                            ? .asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .identity
+                            )
+                            : .identity
+                    )
                 }
             }
             
@@ -1160,10 +1168,58 @@ struct TimelineEntryView: View {
     }
 }
 
+// MARK: - Animated AI Gradient (Arc-style)
+struct AnimatedAIGradient: View {
+    @State private var animationPhase: CGFloat = 0
+
+    let colors: [Color] = [
+        Color(red: 0.4, green: 0.2, blue: 0.8), // Purple
+        Color(red: 0.2, green: 0.4, blue: 0.9), // Blue
+        Color(red: 0.6, green: 0.3, blue: 0.9), // Purple-pink
+        Color(red: 0.3, green: 0.5, blue: 1.0)  // Light blue
+    ]
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Moving gradient
+                LinearGradient(
+                    gradient: Gradient(colors: colors),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .hueRotation(.degrees(animationPhase * 60))
+                .blur(radius: 30)
+                .opacity(0.15)
+
+                // Animated overlay shimmer
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        .clear,
+                        .white.opacity(0.2),
+                        .clear
+                    ]),
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .offset(x: -geometry.size.width + (geometry.size.width * 2 * animationPhase))
+            }
+        }
+        .onAppear {
+            withAnimation(
+                .linear(duration: 2.5)
+                .repeatForever(autoreverses: false)
+            ) {
+                animationPhase = 1.0
+            }
+        }
+    }
+}
+
 // MARK: - Timeline Entry Card
 struct TimelineEntryCard: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+
     let entry: TripEntry
     let onTap: () -> Void
     let onLongPress: () -> Void
@@ -1182,7 +1238,7 @@ struct TimelineEntryCard: View {
                         .foregroundColor(themeManager.currentTheme.colors.textSecondary)
                         .textCase(.uppercase)
 
-                    // AI Preview badge
+                    // AI Preview badge with gradient
                     if entry.isPreview {
                         HStack(spacing: 4) {
                             Image(systemName: "sparkles")
@@ -1191,10 +1247,28 @@ struct TimelineEntryCard: View {
                                 .font(.system(.caption2, design: .monospaced))
                                 .fontWeight(.semibold)
                         }
-                        .foregroundColor(.orange)
+                        .foregroundStyle(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(red: 0.5, green: 0.3, blue: 0.9),
+                                    Color(red: 0.3, green: 0.5, blue: 1.0)
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.15))
+                        .background(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    Color(red: 0.4, green: 0.2, blue: 0.8).opacity(0.15),
+                                    Color(red: 0.3, green: 0.5, blue: 1.0).opacity(0.15)
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .cornerRadius(4)
                     }
                 }
@@ -1279,19 +1353,45 @@ struct TimelineEntryCard: View {
         }
         .padding(16)
         .background(
-            entry.isPreview
-                ? Color.orange.opacity(0.05)
-                : themeManager.currentTheme.colors.surface
+            ZStack {
+                // Base background
+                themeManager.currentTheme.colors.surface
+
+                // Animated gradient for AI preview
+                if entry.isPreview {
+                    AnimatedAIGradient()
+                }
+            }
         )
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(
                     entry.isPreview
-                        ? Color.orange.opacity(0.3)
-                        : themeManager.currentTheme.colors.border,
+                        ? LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(red: 0.4, green: 0.2, blue: 0.8),
+                                Color(red: 0.3, green: 0.5, blue: 1.0)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        : LinearGradient(
+                            gradient: Gradient(colors: [
+                                themeManager.currentTheme.colors.border,
+                                themeManager.currentTheme.colors.border
+                            ]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
                     lineWidth: entry.isPreview ? 2 : 1
                 )
+        )
+        .shadow(
+            color: entry.isPreview ? Color(red: 0.4, green: 0.3, blue: 0.9).opacity(0.2) : .clear,
+            radius: 8,
+            x: 0,
+            y: 2
         )
         .onTapGesture {
             onTap()
