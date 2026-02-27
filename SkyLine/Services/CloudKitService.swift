@@ -161,6 +161,9 @@ class CloudKitService: ObservableObject {
         sampleEntryRecord["latitude"] = 0.0
         sampleEntryRecord["longitude"] = 0.0
         sampleEntryRecord["locationName"] = ""
+        sampleEntryRecord["regionName"] = ""
+        sampleEntryRecord["regionOrder"] = 0
+        sampleEntryRecord["isRegionAIGenerated"] = false
         sampleEntryRecord["createdAt"] = Date()
         sampleEntryRecord["updatedAt"] = Date()
         

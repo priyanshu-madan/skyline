@@ -20,6 +20,7 @@ struct ItineraryItem: Codable, Identifiable, Hashable {
     let estimatedDuration: TimeInterval? // in seconds
     let confidence: Double // 0.0 to 1.0, AI confidence in parsing
     let originalText: String? // Original parsed text for reference
+    let suggestedRegion: String? // AI's suggested region/destination name
 
     init(
         id: String = UUID().uuidString,
@@ -30,7 +31,8 @@ struct ItineraryItem: Codable, Identifiable, Hashable {
         location: ItineraryLocation? = nil,
         estimatedDuration: TimeInterval? = nil,
         confidence: Double = 1.0,
-        originalText: String? = nil
+        originalText: String? = nil,
+        suggestedRegion: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -41,6 +43,7 @@ struct ItineraryItem: Codable, Identifiable, Hashable {
         self.estimatedDuration = estimatedDuration
         self.confidence = confidence
         self.originalText = originalText
+        self.suggestedRegion = suggestedRegion
     }
 
     // Custom decoder to generate ID if missing from JSON
@@ -57,6 +60,7 @@ struct ItineraryItem: Codable, Identifiable, Hashable {
         self.estimatedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .estimatedDuration)
         self.confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 1.0
         self.originalText = try container.decodeIfPresent(String.self, forKey: .originalText)
+        self.suggestedRegion = try container.decodeIfPresent(String.self, forKey: .suggestedRegion)
     }
 }
 
@@ -219,7 +223,7 @@ enum ItinerarySourceType: String, Codable, CaseIterable {
 
 extension ItineraryItem {
     /// Convert to TripEntry for adding to a trip
-    func toTripEntry(tripId: String, isPreview: Bool = false) -> TripEntry {
+    func toTripEntry(tripId: String, isPreview: Bool = false, regionOrder: Int? = nil) -> TripEntry {
         return TripEntry(
             tripId: tripId,
             timestamp: dateTime,
@@ -229,7 +233,10 @@ extension ItineraryItem {
             latitude: location?.latitude,
             longitude: location?.longitude,
             locationName: location?.name,
-            isPreview: isPreview
+            isPreview: isPreview,
+            regionName: suggestedRegion,
+            regionOrder: regionOrder,
+            isRegionAIGenerated: suggestedRegion != nil
         )
     }
 }

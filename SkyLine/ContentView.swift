@@ -16,21 +16,25 @@ struct ContentView: View {
     @StateObject private var webViewCoordinator = WebViewCoordinator()
     @State private var retryFlightSelection: (() -> Void)? = nil
     @State private var currentActiveTab: SkyLineTab? = nil
-    
+
     var body: some View {
-        // Background Globe View (replaces Map in original)
-        WebViewGlobeView(coordinator: webViewCoordinator, currentTab: currentActiveTab)
-            .environmentObject(themeManager)
-            .environmentObject(flightStore)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea(.all)
-            .id("mainGlobe") // Force unique instance
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Rectangle()
-                    .foregroundStyle(.clear)
-                    .frame(height: 60)
-            }
-            .sheet(isPresented: $isGlobeReady) {
+        ZStack {
+            // Background Globe View
+            WebViewGlobeView(coordinator: webViewCoordinator, currentTab: currentActiveTab)
+                .environmentObject(themeManager)
+                .environmentObject(flightStore)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea(.all)
+
+            Rectangle()
+                .foregroundStyle(.clear)
+                .frame(height: 60)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .ignoresSafeArea(.all)
+
+            // Bottom sheet with tabs
+            Color.clear
+                .sheet(isPresented: $isGlobeReady) {
                 SkyLineBottomBarView(
                     onFlightSelected: handleFlightSelection,
                     onTabSelected: handleTabSelection,
@@ -52,6 +56,7 @@ struct ContentView: View {
             }
             .preferredColorScheme(themeManager.currentTheme.colorScheme)
             .accentColor(themeManager.currentTheme.colors.primary)
+        }
     }
     
     // MARK: - Flight Selection Handler
@@ -181,7 +186,6 @@ struct ContentView: View {
         webViewCoordinator.evaluateJavaScript(resetScript)
     }
 }
-
 
 #Preview {
     ContentView(isGlobeReady: .constant(true))

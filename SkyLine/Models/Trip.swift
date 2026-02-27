@@ -23,10 +23,16 @@ struct Trip: Codable, Identifiable, Hashable {
     let coverImageURL: String?
     let latitude: Double?
     let longitude: Double?
+    let timeZoneIdentifier: String? // IANA timezone identifier, e.g. "America/New_York"
     let createdAt: Date
     let updatedAt: Date
     
     // Computed properties
+    var destinationTimeZone: TimeZone {
+        if let id = timeZoneIdentifier, let tz = TimeZone(identifier: id) { return tz }
+        return .current
+    }
+
     var coordinate: CLLocationCoordinate2D? {
         guard let lat = latitude, let lng = longitude else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lng)
@@ -110,6 +116,7 @@ struct Trip: Codable, Identifiable, Hashable {
         coverImageURL: String? = nil,
         latitude: Double? = nil,
         longitude: Double? = nil,
+        timeZoneIdentifier: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -125,6 +132,7 @@ struct Trip: Codable, Identifiable, Hashable {
         self.coverImageURL = coverImageURL
         self.latitude = latitude
         self.longitude = longitude
+        self.timeZoneIdentifier = timeZoneIdentifier
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -212,6 +220,7 @@ extension Trip {
         record["coverImageURL"] = coverImageURL
         record["latitude"] = latitude
         record["longitude"] = longitude
+        record["timeZoneIdentifier"] = timeZoneIdentifier
         record["createdAt"] = createdAt
         record["updatedAt"] = updatedAt
         
@@ -238,6 +247,7 @@ extension Trip {
             coverImageURL: record["coverImageURL"] as? String,
             latitude: record["latitude"] as? Double,
             longitude: record["longitude"] as? Double,
+            timeZoneIdentifier: record["timeZoneIdentifier"] as? String,
             createdAt: record["createdAt"] as? Date ?? Date(),
             updatedAt: record["updatedAt"] as? Date ?? Date()
         )

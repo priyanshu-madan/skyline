@@ -24,6 +24,9 @@ struct TripEntry: Codable, Identifiable, Hashable {
     let locationName: String?
     let flightId: String? // Reference to original flight for flight entries
     let isPreview: Bool // AI-generated preview that user hasn't accepted yet
+    let regionName: String? // Geographic region/destination (e.g., "Santa Barbara", "Tokyo - Shibuya")
+    let regionOrder: Int? // Sort order of regions within trip (0, 1, 2...)
+    let isRegionAIGenerated: Bool // Track if region was AI-assigned or manually set
     let createdAt: Date
     let updatedAt: Date
     
@@ -77,6 +80,9 @@ struct TripEntry: Codable, Identifiable, Hashable {
         locationName: String? = nil,
         flightId: String? = nil,
         isPreview: Bool = false,
+        regionName: String? = nil,
+        regionOrder: Int? = nil,
+        isRegionAIGenerated: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -92,6 +98,9 @@ struct TripEntry: Codable, Identifiable, Hashable {
         self.locationName = locationName
         self.flightId = flightId
         self.isPreview = isPreview
+        self.regionName = regionName
+        self.regionOrder = regionOrder
+        self.isRegionAIGenerated = isRegionAIGenerated
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -302,6 +311,9 @@ extension TripEntry {
         record["locationName"] = locationName
         record["flightId"] = flightId
         record["isPreview"] = isPreview
+        record["regionName"] = regionName
+        record["regionOrder"] = regionOrder
+        record["isRegionAIGenerated"] = isRegionAIGenerated
         record["createdAt"] = createdAt
         record["updatedAt"] = updatedAt
 
@@ -318,7 +330,7 @@ extension TripEntry {
               let content = record["content"] as? String else {
             return nil
         }
-        
+
         return TripEntry(
             id: record.recordID.recordName,
             tripId: tripId,
@@ -332,6 +344,9 @@ extension TripEntry {
             locationName: record["locationName"] as? String,
             flightId: record["flightId"] as? String,
             isPreview: record["isPreview"] as? Bool ?? false,
+            regionName: record["regionName"] as? String,
+            regionOrder: record["regionOrder"] as? Int,
+            isRegionAIGenerated: record["isRegionAIGenerated"] as? Bool ?? false,
             createdAt: record["createdAt"] as? Date ?? Date(),
             updatedAt: record["updatedAt"] as? Date ?? Date()
         )
@@ -344,12 +359,13 @@ extension Array where Element == TripEntry {
         return sorted { $0.timestamp < $1.timestamp }
     }
     
-    func groupedByDay() -> [(Date, [TripEntry])] {
-        let calendar = Calendar.current
+    func groupedByDay(in timeZone: TimeZone = .current) -> [(Date, [TripEntry])] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
         let grouped = Dictionary(grouping: self) { entry in
             calendar.startOfDay(for: entry.timestamp)
         }
-        
+
         return grouped.sorted { $0.key < $1.key }.map { (key, value) in
             (key, value.sorted { $0.timestamp < $1.timestamp })
         }

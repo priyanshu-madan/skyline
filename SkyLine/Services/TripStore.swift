@@ -203,6 +203,7 @@ class TripStore: ObservableObject {
                 coverImageURL: trip.coverImageURL,
                 latitude: trip.latitude,
                 longitude: trip.longitude,
+                timeZoneIdentifier: trip.timeZoneIdentifier,
                 createdAt: trip.createdAt,
                 updatedAt: Date()
             )
@@ -398,6 +399,9 @@ class TripStore: ObservableObject {
             existingRecord["locationName"] = entry.locationName
             existingRecord["flightId"] = entry.flightId
             existingRecord["isPreview"] = entry.isPreview
+            existingRecord["regionName"] = entry.regionName
+            existingRecord["regionOrder"] = entry.regionOrder
+            existingRecord["isRegionAIGenerated"] = entry.isRegionAIGenerated
             existingRecord["createdAt"] = entry.createdAt
             existingRecord["updatedAt"] = entry.updatedAt
 
@@ -527,11 +531,123 @@ class TripStore: ObservableObject {
         tripEntries[tripId] ?? []
     }
     
-    func getEntriesGroupedByDay(for tripId: String) -> [(Date, [TripEntry])] {
+    func getEntriesGroupedByDay(for tripId: String, in timeZone: TimeZone = .current) -> [(Date, [TripEntry])] {
         let entries = getEntries(for: tripId)
-        return entries.groupedByDay()
+        return entries.groupedByDay(in: timeZone)
     }
-    
+
+    // MARK: - Region Grouping Methods
+
+    /// Get entries grouped by region and then by day within each region
+    /// Returns: [(regionName, regionOrder, days: [(date, entries)])]
+    func getEntriesGroupedByRegionAndDay(for tripId: String, in timeZone: TimeZone = .current) -> [(regionName: String, regionOrder: Int, days: [(Date, [TripEntry])])] {
+        let entries = getEntries(for: tripId)
+        guard !entries.isEmpty else { return [] }
+
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+
+        // Step 1: Group all entries by calendar day (day is the atomic unit)
+        let entriesByDay = Dictionary(grouping: entries) { cal.startOfDay(for: $0.timestamp) }
+        let sortedDays = entriesByDay.keys.sorted()
+
+        // Step 2: For each day, determine its region by majority vote among entries that have one
+        struct DayAssignment {
+            let date: Date
+            let regionName: String
+            let regionOrder: Int
+            let entries: [TripEntry]
+        }
+
+        let dayAssignments: [DayAssignment] = sortedDays.map { day in
+            let dayEntries = (entriesByDay[day] ?? []).sorted { $0.timestamp < $1.timestamp }
+            let withRegion = dayEntries.filter { $0.regionName != nil }
+
+            guard !withRegion.isEmpty else {
+                return DayAssignment(date: day, regionName: "Unassigned", regionOrder: Int.max, entries: dayEntries)
+            }
+
+            let regionCounts = Dictionary(grouping: withRegion) { $0.regionName! }
+            let dominant = regionCounts.max(by: { $0.value.count < $1.value.count })!
+            let dominantOrder = dominant.value.compactMap { $0.regionOrder }.min() ?? Int.max
+
+            return DayAssignment(date: day, regionName: dominant.key, regionOrder: dominantOrder, entries: dayEntries)
+        }
+
+        // Step 3: Merge consecutive days that share the same region into a single leg.
+        // This guarantees strict chronological order with no day appearing in two sections.
+        var legs: [(regionName: String, regionOrder: Int, days: [(Date, [TripEntry])])] = []
+        var i = 0
+        while i < dayAssignments.count {
+            let regionName = dayAssignments[i].regionName
+            let regionOrder = dayAssignments[i].regionOrder
+            var legDays: [(Date, [TripEntry])] = []
+
+            while i < dayAssignments.count && dayAssignments[i].regionName == regionName {
+                legDays.append((dayAssignments[i].date, dayAssignments[i].entries))
+                i += 1
+            }
+
+            legs.append((regionName, regionOrder, legDays))
+        }
+
+        return legs
+    }
+
+    /// Get entries grouped by region only (for region selector banner).
+    /// Derived from the same day-first logic so counts stay consistent.
+    func getEntriesGroupedByRegion(for tripId: String) -> [(regionName: String, regionOrder: Int, entryCount: Int)] {
+        return getEntriesGroupedByRegionAndDay(for: tripId).map { leg in
+            let totalEntries = leg.days.flatMap { $0.1 }.count
+            return (leg.regionName, leg.regionOrder, totalEntries)
+        }
+    }
+
+    /// Get entries for a specific region
+    func getEntries(for tripId: String, region: String) -> [TripEntry] {
+        getEntries(for: tripId).filter { $0.regionName == region }
+    }
+
+    /// Update entry's region assignment
+    func updateEntryRegion(_ entryId: String, tripId: String, regionName: String?, regionOrder: Int?, isAIGenerated: Bool = false) async -> Result<Void, TripStoreError> {
+        // Find existing entry
+        guard var entries = tripEntries[tripId],
+              let index = entries.firstIndex(where: { $0.id == entryId }) else {
+            return .failure(.notFound)
+        }
+
+        let entry = entries[index]
+
+        // Create updated entry with new region
+        let updatedEntry = TripEntry(
+            id: entry.id,
+            tripId: entry.tripId,
+            timestamp: entry.timestamp,
+            entryType: entry.entryType,
+            title: entry.title,
+            content: entry.content,
+            imageURLs: entry.imageURLs,
+            latitude: entry.latitude,
+            longitude: entry.longitude,
+            locationName: entry.locationName,
+            flightId: entry.flightId,
+            isPreview: entry.isPreview,
+            regionName: regionName,
+            regionOrder: regionOrder,
+            isRegionAIGenerated: isAIGenerated,
+            createdAt: entry.createdAt,
+            updatedAt: Date()
+        )
+
+        // Update in memory
+        entries[index] = updatedEntry
+        tripEntries[tripId] = entries
+        cacheData()
+
+        // Update in CloudKit
+        return await updateEntry(updatedEntry)
+    }
+
     // MARK: - Caching
     
     private func loadCachedData() {

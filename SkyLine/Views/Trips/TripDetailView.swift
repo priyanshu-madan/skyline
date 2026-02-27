@@ -14,6 +14,7 @@ enum PresentedSheet: Identifiable {
     case uploadItinerary
     case addEntryMenu
     case askAI
+    case moveToRegion(TripEntry)
 
     var id: String {
         switch self {
@@ -27,6 +28,8 @@ enum PresentedSheet: Identifiable {
             return "addEntryMenu"
         case .askAI:
             return "askAI"
+        case .moveToRegion(let entry):
+            return "moveToRegion_\(entry.id)"
         }
     }
 }
@@ -45,6 +48,7 @@ struct TripDetailView: View {
     init(trip: Trip, onFlightSelected: ((Flight, Trip) -> Void)? = nil) {
         self.trip = trip
         self.onFlightSelected = onFlightSelected
+        _destinationTimeZone = State(initialValue: trip.destinationTimeZone)
     }
     
     private var entries: [TripEntry] {
@@ -52,7 +56,19 @@ struct TripDetailView: View {
     }
 
     private var groupedEntries: [(Date, [TripEntry])] {
-        tripStore.getEntriesGroupedByDay(for: trip.id)
+        tripStore.getEntriesGroupedByDay(for: trip.id, in: destinationTimeZone)
+    }
+
+    private var groupedByRegionAndDay: [(regionName: String, regionOrder: Int, days: [(Date, [TripEntry])])] {
+        tripStore.getEntriesGroupedByRegionAndDay(for: trip.id, in: destinationTimeZone)
+    }
+
+    private var groupedByRegion: [(regionName: String, regionOrder: Int, entryCount: Int)] {
+        tripStore.getEntriesGroupedByRegion(for: trip.id)
+    }
+
+    private var hasRegions: Bool {
+        groupedByRegion.count > 1 || (groupedByRegion.count == 1 && groupedByRegion.first?.regionName != "Unassigned")
     }
 
     private var previewEntries: [TripEntry] {
@@ -62,29 +78,99 @@ struct TripDetailView: View {
     private var hasPreview: Bool {
         !previewEntries.isEmpty
     }
-    
+
+    @State private var selectedDayIndex: Int = 0
+    @State private var selectedRegionIndex: Int? = nil
+    @State private var collapsedRegions: Set<String> = []
+    @State private var destinationTimeZone: TimeZone
+    @State private var showRegionDetectionBanner = false
+    @State private var isDetectingRegions = false
+    @State private var longPressedEntry: TripEntry? = nil
+    @State private var showEntryActionSheet = false
+    @State private var regionToRename: String? = nil
+    @State private var showRenameRegionAlert = false
+    @State private var newRegionNameInput = ""
+
     var body: some View {
         NavigationView {
             ZStack {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        // Trip header (map extends behind navigation bar)
-                        TripHeaderView(trip: trip, entries: entries)
-                            .ignoresSafeArea(edges: .top)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Trip header (map extends behind navigation bar)
+                            TripHeaderView(trip: trip, entries: entries)
+                                .ignoresSafeArea(edges: .top)
 
-                        // Timeline content
-                        if entries.isEmpty {
-                            EmptyTimelineView(onAddEntry: { presentedSheet = .addEntryMenu })
-                        } else {
-                            TimelineView(
-                                groupedEntries: groupedEntries,
-                                onEntryTap: { entry in
-                                    handleEntryTap(entry)
-                                },
-                                onEntryLongPress: { entry in
-                                    handleEntryLongPress(entry)
+                            // Region selector banner (if multiple regions exist)
+                            if hasRegions && !entries.isEmpty {
+                                RegionSelectorBanner(
+                                    groupedByRegion: groupedByRegion,
+                                    selectedRegionIndex: $selectedRegionIndex,
+                                    onRegionSelected: { regionIndex in
+                                        withAnimation {
+                                            selectedRegionIndex = regionIndex
+                                            let regionName = groupedByRegion[regionIndex].regionName
+                                            proxy.scrollTo("region_\(regionIndex)", anchor: .top)
+                                        }
+                                    }
+                                )
+                                .padding(.top, 16)
+                                .padding(.bottom, 8)
+                                .background(themeManager.currentTheme.colors.background)
+                            }
+
+                            // Region detection banner
+                            if showRegionDetectionBanner {
+                                RegionDetectionBannerView(
+                                    isDetecting: isDetectingRegions,
+                                    onDetect: { detectRegions() },
+                                    onDismiss: {
+                                        UserDefaults.standard.set(true, forKey: "regionBannerDismissed_\(trip.id)")
+                                        withAnimation { showRegionDetectionBanner = false }
+                                    }
+                                )
+                                .padding(.horizontal, 20)
+                                .padding(.top, 16)
+                                .padding(.bottom, 4)
+                            }
+
+                            // Timeline content
+                            if entries.isEmpty {
+                                EmptyTimelineView(onAddEntry: { presentedSheet = .addEntryMenu })
+                            } else {
+                                if hasRegions {
+                                    // Region-based timeline
+                                    RegionTimelineView(
+                                        groupedByRegionAndDay: groupedByRegionAndDay,
+                                        collapsedRegions: $collapsedRegions,
+                                        timeZone: destinationTimeZone,
+                                        onEntryTap: { entry in
+                                            handleEntryTap(entry)
+                                        },
+                                        onEntryLongPress: { entry in
+                                            handleEntryLongPress(entry)
+                                        },
+                                        onRegionLongPress: { regionName in
+                                            regionToRename = regionName
+                                            newRegionNameInput = regionName
+                                            showRenameRegionAlert = true
+                                        }
+                                    )
+                                } else {
+                                    // Day-based timeline (original)
+                                    TimelineView(
+                                        groupedEntries: groupedEntries,
+                                        selectedDayIndex: selectedDayIndex,
+                                        timeZone: destinationTimeZone,
+                                        onEntryTap: { entry in
+                                            handleEntryTap(entry)
+                                        },
+                                        onEntryLongPress: { entry in
+                                            handleEntryLongPress(entry)
+                                        }
+                                    )
                                 }
-                            )
+                            }
                         }
                     }
                 }
@@ -208,7 +294,31 @@ struct TripDetailView: View {
                 }
                 .environmentObject(themeManager)
                 .environmentObject(tripStore)
+            case .moveToRegion(let entry):
+                RegionPickerView(
+                    entry: entry,
+                    existingRegions: groupedByRegion,
+                    tripId: trip.id
+                )
+                .environmentObject(themeManager)
+                .environmentObject(tripStore)
             }
+        }
+        .confirmationDialog("", isPresented: $showEntryActionSheet, presenting: longPressedEntry) { entry in
+            Button("Edit Activity") { presentedSheet = .editEntry(entry) }
+            if hasRegions {
+                Button("Move to Region...") { presentedSheet = .moveToRegion(entry) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { entry in
+            Text(entry.title)
+        }
+        .alert("Rename Region", isPresented: $showRenameRegionAlert) {
+            TextField("Region name", text: $newRegionNameInput)
+            Button("Rename") { renameRegion(from: regionToRename, to: newRegionNameInput) }
+            Button("Cancel", role: .cancel) { regionToRename = nil }
+        } message: {
+            Text("Enter a new name for this region")
         }
         .onAppear {
             // Make navigation bar completely transparent
@@ -220,6 +330,8 @@ struct TripDetailView: View {
             Task {
                 await tripStore.fetchEntriesForTrip(trip.id)
                 await migrateFlightEntries()
+                await MainActor.run { checkIfShouldShowRegionBanner() }
+                await resolveDestinationTimeZone()
             }
         }
     }
@@ -397,6 +509,9 @@ struct TripDetailView: View {
                     locationName: entry.locationName,
                     flightId: entry.flightId,
                     isPreview: false,
+                    regionName: entry.regionName,
+                    regionOrder: entry.regionOrder,
+                    isRegionAIGenerated: entry.isRegionAIGenerated,
                     createdAt: entry.createdAt,
                     updatedAt: Date()
                 )
@@ -448,8 +563,77 @@ struct TripDetailView: View {
     }
     
     private func handleEntryLongPress(_ entry: TripEntry) {
-        // Long press always shows edit view for any entry type
-        presentedSheet = .editEntry(entry)
+        longPressedEntry = entry
+        showEntryActionSheet = true
+    }
+
+    private func resolveDestinationTimeZone() async {
+        // Already stored — nothing to do
+        guard trip.timeZoneIdentifier == nil else { return }
+        guard let lat = trip.latitude, let lng = trip.longitude else { return }
+        let location = CLLocation(latitude: lat, longitude: lng)
+        let geocoder = CLGeocoder()
+        guard let placemarks = try? await geocoder.reverseGeocodeLocation(location),
+              let tz = placemarks.first?.timeZone else { return }
+        await MainActor.run { destinationTimeZone = tz }
+        // Persist so future loads skip geocoding entirely
+        let updatedTrip = Trip(
+            id: trip.id, title: trip.title, destination: trip.destination,
+            destinationCode: trip.destinationCode, state: trip.state, country: trip.country,
+            startDate: trip.startDate, endDate: trip.endDate, description: trip.description,
+            coverImageURL: trip.coverImageURL, latitude: trip.latitude, longitude: trip.longitude,
+            timeZoneIdentifier: tz.identifier,
+            createdAt: trip.createdAt, updatedAt: Date()
+        )
+        _ = await tripStore.updateTrip(updatedTrip)
+    }
+
+    private func checkIfShouldShowRegionBanner() {
+        let dismissed = UserDefaults.standard.bool(forKey: "regionBannerDismissed_\(trip.id)")
+        if !dismissed && entries.count >= 5 && !hasRegions {
+            showRegionDetectionBanner = true
+        }
+    }
+
+    private func detectRegions() {
+        isDetectingRegions = true
+        Task {
+            let regionGroups = await TripRegionService.shared.detectRegions(for: entries, trip: trip)
+            let updatedEntries = TripRegionService.shared.assignRegionsToEntries(entries, regions: regionGroups)
+            for entry in updatedEntries {
+                _ = await tripStore.updateEntryRegion(
+                    entry.id,
+                    tripId: entry.tripId,
+                    regionName: entry.regionName,
+                    regionOrder: entry.regionOrder,
+                    isAIGenerated: true
+                )
+            }
+            await MainActor.run {
+                isDetectingRegions = false
+                withAnimation { showRegionDetectionBanner = false }
+            }
+        }
+    }
+
+    private func renameRegion(from oldName: String?, to newName: String) {
+        guard let oldName = oldName, !newName.isEmpty, newName != oldName else {
+            regionToRename = nil
+            return
+        }
+        let entriesToRename = entries.filter { $0.regionName == oldName }
+        Task {
+            for entry in entriesToRename {
+                _ = await tripStore.updateEntryRegion(
+                    entry.id,
+                    tripId: entry.tripId,
+                    regionName: newName,
+                    regionOrder: entry.regionOrder,
+                    isAIGenerated: entry.isRegionAIGenerated
+                )
+            }
+        }
+        regionToRename = nil
     }
     
     /// Migrates existing flight entries that are missing flightId
@@ -1020,30 +1204,387 @@ struct TripHeaderImageView: View {
     }
 }
 
+// MARK: - Region Selector Banner
+struct RegionSelectorBanner: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let groupedByRegion: [(regionName: String, regionOrder: Int, entryCount: Int)]
+    @Binding var selectedRegionIndex: Int?
+    let onRegionSelected: (Int) -> Void
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(groupedByRegion.enumerated()), id: \.offset) { index, regionGroup in
+                        let isSelected = index == selectedRegionIndex
+                        let (regionName, _, entryCount) = regionGroup
+
+                        Button {
+                            onRegionSelected(index)
+                        } label: {
+                            HStack(spacing: 12) {
+                                // Location pin icon
+                                Image(systemName: "mappin.circle.fill")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
+                                    .frame(width: 20)
+
+                                // Region info
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(regionName)
+                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                                    Text("\(entryCount) \(entryCount == 1 ? "activity" : "activities")")
+                                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .frame(minWidth: 180)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(
+                                        isSelected
+                                            ? themeManager.currentTheme.colors.primary.opacity(0.12)
+                                            : (themeManager.currentTheme == .dark
+                                                ? Color(white: 0.15)
+                                                : Color(white: 0.96))
+                                    )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(
+                                        isSelected ? themeManager.currentTheme.colors.primary.opacity(0.3) : Color.clear,
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .id("region_selector_\(index)")
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .onChange(of: selectedRegionIndex) { _, newValue in
+                if let newValue = newValue {
+                    withAnimation {
+                        scrollProxy.scrollTo("region_selector_\(newValue)", anchor: .center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Day Selector Banner
+struct DaySelectorBanner: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let groupedEntries: [(Date, [TripEntry])]
+    @Binding var selectedDayIndex: Int
+    let onDaySelected: (Int) -> Void
+
+    private func dayTitle(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        return formatter.string(from: date)
+    }
+
+    private func dateRange(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
+    }
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(groupedEntries.enumerated()), id: \.offset) { index, dayGroup in
+                        let (date, entries) = dayGroup
+                        let isSelected = index == selectedDayIndex
+
+                        Button {
+                            onDaySelected(index)
+                        } label: {
+                            HStack(spacing: 12) {
+                                // Calendar icon
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
+                                    .frame(width: 20)
+
+                                // Day info
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(dayTitle(for: date))
+                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                                    Text(dateRange(for: date))
+                                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                }
+
+                                Spacer()
+
+                                // Activity count badge
+                                HStack(spacing: 4) {
+                                    Image(systemName: "list.bullet")
+                                        .font(.system(size: 10, weight: .medium))
+                                    Text("\(entries.count)")
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                }
+                                .foregroundColor(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .frame(minWidth: 200)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(
+                                        isSelected
+                                            ? themeManager.currentTheme.colors.primary.opacity(0.12)
+                                            : (themeManager.currentTheme == .dark
+                                                ? Color(white: 0.15)
+                                                : Color(white: 0.96))
+                                    )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .stroke(
+                                        isSelected ? themeManager.currentTheme.colors.primary.opacity(0.3) : Color.clear,
+                                        lineWidth: 1
+                                    )
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .id("day_selector_\(index)")
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .onChange(of: selectedDayIndex) { _, newValue in
+                withAnimation {
+                    scrollProxy.scrollTo("day_selector_\(newValue)", anchor: .center)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Region Timeline View
+struct RegionTimelineView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let groupedByRegionAndDay: [(regionName: String, regionOrder: Int, days: [(Date, [TripEntry])])]
+    @Binding var collapsedRegions: Set<String>
+    let timeZone: TimeZone
+    let onEntryTap: (TripEntry) -> Void
+    let onEntryLongPress: (TripEntry) -> Void
+    let onRegionLongPress: (String) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(groupedByRegionAndDay.enumerated()), id: \.offset) { regionIndex, regionGroup in
+                let (regionName, _, days) = regionGroup
+                let legKey = "\(regionName)_\(regionIndex)"
+                let isCollapsed = collapsedRegions.contains(legKey)
+
+                // Calculate date range for region
+                let dateRange = calculateDateRange(for: days, in: timeZone)
+                let totalEntries = days.flatMap { $0.1 }.count
+
+                // Region header
+                RegionHeaderView(
+                    regionName: regionName,
+                    dateRange: dateRange,
+                    totalDays: days.count,
+                    totalEntries: totalEntries,
+                    isCollapsed: isCollapsed,
+                    onToggle: {
+                        withAnimation {
+                            if isCollapsed {
+                                collapsedRegions.remove(legKey)
+                            } else {
+                                collapsedRegions.insert(legKey)
+                            }
+                        }
+                    },
+                    onLongPress: { onRegionLongPress(regionName) }
+                )
+                .id("region_\(regionIndex)")
+                .padding(.horizontal, 20)
+                .padding(.top, regionIndex == 0 ? 20 : 32)
+                .padding(.bottom, 16)
+
+                // Days within region (only if not collapsed)
+                if !isCollapsed {
+                    ForEach(Array(days.enumerated()), id: \.element.0) { dayIndex, dayGroup in
+                        let (date, entries) = dayGroup
+
+                        // Day header
+                        TimelineDayHeader(date: date, entryCount: entries.count, timeZone: timeZone)
+                            .padding(.horizontal, 20)
+                            .padding(.top, dayIndex == 0 ? 0 : 24)
+                            .padding(.bottom, 12)
+
+                        // Entries for this day
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { entryIndex, entry in
+                            let isLast = entryIndex == entries.count - 1 && dayIndex == days.count - 1
+
+                            TimelineEntryView(
+                                entry: entry,
+                                isLast: isLast,
+                                timeZone: timeZone,
+                                onTap: { onEntryTap(entry) },
+                                onLongPress: { onEntryLongPress(entry) }
+                            )
+                            .padding(.horizontal, 20)
+                            .transition(
+                                entry.isPreview
+                                    ? .asymmetric(
+                                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                                        removal: .identity
+                                    )
+                                    : .identity
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom padding
+            Color.clear
+                .frame(height: 100)
+        }
+    }
+
+    private func calculateDateRange(for days: [(Date, [TripEntry])], in timeZone: TimeZone) -> String {
+        guard !days.isEmpty else { return "" }
+
+        let dates = days.map { $0.0 }.sorted()
+        guard let firstDate = dates.first, let lastDate = dates.last else { return "" }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        formatter.timeZone = timeZone
+
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        if cal.isDate(firstDate, inSameDayAs: lastDate) {
+            return formatter.string(from: firstDate)
+        } else {
+            return "\(formatter.string(from: firstDate)) - \(formatter.string(from: lastDate))"
+        }
+    }
+}
+
+// MARK: - Region Header View
+struct RegionHeaderView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let regionName: String
+    let dateRange: String
+    let totalDays: Int
+    let totalEntries: Int
+    let isCollapsed: Bool
+    let onToggle: () -> Void
+    let onLongPress: () -> Void
+
+    var body: some View {
+        Button {
+            onToggle()
+        } label: {
+            HStack(spacing: 12) {
+                // Location icon
+                Image(systemName: "mappin.circle.fill")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundColor(themeManager.currentTheme.colors.primary)
+
+                // Region info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(regionName)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(themeManager.currentTheme.colors.text)
+
+                    HStack(spacing: 8) {
+                        Text(dateRange)
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                        Text("•")
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                        Text("\(totalDays) \(totalDays == 1 ? "day" : "days")")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                        Text("•")
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+
+                        Text("\(totalEntries) \(totalEntries == 1 ? "activity" : "activities")")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    }
+                }
+
+                Spacer()
+
+                // Chevron
+                Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(themeManager.currentTheme.colors.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5).onEnded { _ in onLongPress() }
+        )
+    }
+}
+
 // MARK: - Timeline View
 struct TimelineView: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+
     let groupedEntries: [(Date, [TripEntry])]
+    let selectedDayIndex: Int
+    let timeZone: TimeZone
     let onEntryTap: (TripEntry) -> Void
     let onEntryLongPress: (TripEntry) -> Void
-    
+
     var body: some View {
         LazyVStack(spacing: 0) {
             ForEach(Array(groupedEntries.enumerated()), id: \.offset) { dayIndex, dayGroup in
                 let (date, entries) = dayGroup
-                
-                // Day header
-                TimelineDayHeader(date: date, entryCount: entries.count)
+
+                // Day header with ID for scrolling
+                TimelineDayHeader(date: date, entryCount: entries.count, timeZone: timeZone)
+                    .id("day_\(dayIndex)")
                     .padding(.horizontal, 20)
                     .padding(.top, dayIndex == 0 ? 20 : 32)
                     .padding(.bottom, 16)
-                
+
                 // Entries for this day
                 ForEach(Array(entries.enumerated()), id: \.element.id) { entryIndex, entry in
                     TimelineEntryView(
                         entry: entry,
                         isLast: entryIndex == entries.count - 1 && dayIndex == groupedEntries.count - 1,
+                        timeZone: timeZone,
                         onTap: { onEntryTap(entry) },
                         onLongPress: { onEntryLongPress(entry) }
                     )
@@ -1069,13 +1610,15 @@ struct TimelineView: View {
 // MARK: - Timeline Day Header
 struct TimelineDayHeader: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+
     let date: Date
     let entryCount: Int
-    
+    let timeZone: TimeZone
+
     private var dateText: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "EEEE, MMM d"
+        formatter.timeZone = timeZone
         return formatter.string(from: date)
     }
     
@@ -1100,12 +1643,13 @@ struct TimelineDayHeader: View {
 // MARK: - Timeline Entry View
 struct TimelineEntryView: View {
     @EnvironmentObject var themeManager: ThemeManager
-    
+
     let entry: TripEntry
     let isLast: Bool
+    let timeZone: TimeZone
     let onTap: () -> Void
     let onLongPress: () -> Void
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             // Timeline line and dot
@@ -1132,7 +1676,7 @@ struct TimelineEntryView: View {
             .frame(width: 16)
             
             // Entry content
-            TimelineEntryCard(entry: entry, onTap: onTap, onLongPress: onLongPress)
+            TimelineEntryCard(entry: entry, timeZone: timeZone, onTap: onTap, onLongPress: onLongPress)
                 .padding(.bottom, isLast ? 0 : 16)
         }
     }
@@ -1212,9 +1756,17 @@ struct TimelineEntryCard: View {
     @EnvironmentObject var themeManager: ThemeManager
 
     let entry: TripEntry
+    let timeZone: TimeZone
     let onTap: () -> Void
     let onLongPress: () -> Void
-    
+
+    private var timeText: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        formatter.timeZone = timeZone
+        return formatter.string(from: entry.timestamp)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Header with type and time
@@ -1266,7 +1818,7 @@ struct TimelineEntryCard: View {
 
                 Spacer()
 
-                Text(entry.timeText)
+                Text(timeText)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundColor(themeManager.currentTheme.colors.textSecondary)
             }
@@ -1927,6 +2479,183 @@ struct ExpandedMapView: View {
             blue: Double(blue),
             opacity: Double(alpha)
         )
+    }
+}
+
+// MARK: - Region Detection Banner
+
+struct RegionDetectionBannerView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let isDetecting: Bool
+    let onDetect: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "map.fill")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(themeManager.currentTheme.colors.primary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Organize by regions?")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(themeManager.currentTheme.colors.text)
+                Text("Group activities by location automatically")
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+            }
+
+            Spacer()
+
+            if isDetecting {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .scaleEffect(0.85)
+            } else {
+                HStack(spacing: 8) {
+                    Button(action: onDismiss) {
+                        Text("Not now")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    }
+                    Button(action: onDetect) {
+                        Text("Detect")
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(themeManager.currentTheme.colors.primary)
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(themeManager.currentTheme.colors.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(themeManager.currentTheme.colors.primary.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - Region Picker View
+
+struct RegionPickerView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @EnvironmentObject var tripStore: TripStore
+    @Environment(\.dismiss) private var dismiss
+
+    let entry: TripEntry
+    let existingRegions: [(regionName: String, regionOrder: Int, entryCount: Int)]
+    let tripId: String
+
+    @State private var showNewRegionField = false
+    @State private var newRegionName = ""
+    @State private var isUpdating = false
+
+    var body: some View {
+        NavigationView {
+            List {
+                // Existing regions
+                if !existingRegions.isEmpty {
+                    Section("Existing Regions") {
+                        ForEach(Array(existingRegions.enumerated()), id: \.offset) { _, region in
+                            Button {
+                                moveEntry(to: region.regionName, order: region.regionOrder)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "mappin.circle.fill")
+                                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    Text(region.regionName)
+                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                    Spacer()
+                                    if entry.regionName == region.regionName {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // New region option
+                Section("New Region") {
+                    if showNewRegionField {
+                        HStack {
+                            TextField("Region name", text: $newRegionName)
+                            Button("Add") {
+                                let nextOrder = (existingRegions.map { $0.regionOrder }.max() ?? -1) + 1
+                                moveEntry(to: newRegionName, order: nextOrder)
+                            }
+                            .disabled(newRegionName.trimmingCharacters(in: .whitespaces).isEmpty)
+                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                        }
+                    } else {
+                        Button {
+                            showNewRegionField = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                                Text("Create new region")
+                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                            }
+                        }
+                    }
+                }
+
+                // Remove from region
+                if entry.regionName != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            moveEntry(to: nil, order: nil)
+                        } label: {
+                            HStack {
+                                Image(systemName: "minus.circle.fill")
+                                Text("Remove from region")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Move to Region")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .overlay {
+                if isUpdating {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.1))
+                }
+            }
+        }
+    }
+
+    private func moveEntry(to regionName: String?, order: Int?) {
+        isUpdating = true
+        Task {
+            _ = await tripStore.updateEntryRegion(
+                entry.id,
+                tripId: tripId,
+                regionName: regionName,
+                regionOrder: order,
+                isAIGenerated: false
+            )
+            await MainActor.run {
+                isUpdating = false
+                dismiss()
+            }
+        }
     }
 }
 

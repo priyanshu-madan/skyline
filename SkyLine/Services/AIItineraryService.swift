@@ -389,6 +389,8 @@ class AIItineraryService: ObservableObject {
         3. Include mix of activities based on preferences
         4. Consider travel time between locations
         5. Include meal recommendations and detailed descriptions
+        6. For multi-day or multi-location trips, group activities into logical regions/areas
+           (e.g., "Santa Barbara", "Big Sur", "Tokyo - Shibuya", "Downtown Manhattan")
 
         RESPOND WITH ONLY THIS JSON STRUCTURE (no other text):
         {
@@ -411,7 +413,8 @@ class AIItineraryService: ObservableObject {
               },
               "estimatedDuration": 7200,
               "confidence": 1.0,
-              "originalText": null
+              "originalText": null,
+              "suggestedRegion": "Region/area name (e.g., 'Downtown', 'Santa Barbara', 'Shibuya') or null for single-location trips"
             }
           ]
         }
