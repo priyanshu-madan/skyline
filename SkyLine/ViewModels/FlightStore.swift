@@ -626,38 +626,6 @@ class FlightStore: ObservableObject {
         saveSearchHistory()
     }
     
-    // MARK: - Flight Status Refresh
-    
-    @MainActor
-    func refreshFlightStatuses() async {
-        setLoading(true)
-        
-        do {
-            for (index, flight) in flights.enumerated() {
-                // Try to get updated flight data from API
-                do {
-                    let updatedFlights = try await FlightAPIService.shared.searchFlightsByNumber(flight.flightNumber)
-                    if let updatedFlight = updatedFlights.first {
-                        flights[index] = updatedFlight
-                        // Updated flight status
-                    }
-                } catch {
-                    // Failed to refresh flight status
-                    // Continue with other flights even if one fails
-                }
-                
-                // Small delay to avoid overwhelming the API
-                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            }
-            
-            saveFlights()
-            setLoading(false, success: "Flight statuses updated")
-            
-        } catch {
-            setLoading(false, error: "Failed to refresh flight statuses")
-        }
-    }
-    
     // MARK: - Loading States
     
     private func setLoading(_ loading: Bool, success message: String? = nil, error: String? = nil) {
@@ -883,151 +851,6 @@ class FlightStore: ObservableObject {
         isSyncing = false
     }
     
-    // MARK: - API Integration Methods
-    
-    func searchFlights(query: String) async -> Result<[Flight], FlightError> {
-        await MainActor.run {
-            setLoading(true)
-            addToSearchHistory(query)
-        }
-        
-        do {
-            let flights: [Flight]
-            
-            // Determine if it's a flight number or route search
-            if query.contains("to") || query.contains("-") {
-                // Route search (e.g., "LAX to JFK" or "LAX-JFK")
-                let components = query.uppercased()
-                    .replacingOccurrences(of: " TO ", with: "-")
-                    .split(separator: "-")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                
-                if components.count == 2 {
-                    flights = try await FlightAPIService.shared.searchFlightsByRoute(components[0], components[1])
-                } else {
-                    flights = try await FlightAPIService.shared.searchFlightsByNumber(query)
-                }
-            } else {
-                // Flight number search
-                flights = try await FlightAPIService.shared.searchFlightsByNumber(query)
-            }
-            
-            await MainActor.run {
-                setLoading(false)
-            }
-            return .success(flights)
-        } catch {
-            await MainActor.run {
-                setLoading(false, error: "Search failed: \(error.localizedDescription)")
-            }
-            return .failure(.searchFailed)
-        }
-    }
-    
-    @MainActor
-    func refreshFlightData() async {
-        setLoading(true)
-        
-        do {
-            // Refresh each saved flight by re-searching for it
-            var refreshedFlights: [Flight] = []
-            
-            for flight in flights {
-                do {
-                    let searchResults = try await FlightAPIService.shared.searchFlightsByNumber(flight.flightNumber)
-                    
-                    // Find the matching flight and update it
-                    if let updatedFlight = searchResults.first(where: { $0.flightNumber == flight.flightNumber }) {
-                        // Preserve the original ID to maintain consistency
-                        let preservedFlight = Flight(
-                            id: flight.id,
-                            flightNumber: updatedFlight.flightNumber,
-                            airline: updatedFlight.airline,
-                            departure: updatedFlight.departure,
-                            arrival: updatedFlight.arrival,
-                            status: updatedFlight.status,
-                            aircraft: updatedFlight.aircraft,
-                            currentPosition: updatedFlight.currentPosition,
-                            progress: updatedFlight.progress,
-                            flightDate: updatedFlight.flightDate,
-                            dataSource: updatedFlight.dataSource,
-                            date: flight.date,
-                            departureDate: flight.departureDate,
-                            arrivalDate: flight.arrivalDate,
-                            flightDuration: flight.flightDuration,
-                            isUserConfirmed: flight.isUserConfirmed,
-                            userConfirmedFields: flight.userConfirmedFields
-                        )
-                        refreshedFlights.append(preservedFlight)
-                    } else {
-                        // Keep original flight if no update found
-                        refreshedFlights.append(flight)
-                    }
-                } catch {
-                    // Keep original flight if refresh fails
-                    refreshedFlights.append(flight)
-                }
-            }
-            
-            flights = refreshedFlights
-            setLoading(false, success: "Flight data refreshed")
-        } catch {
-            setLoading(false, error: "Refresh failed")
-        }
-    }
-    
-    private func generateMockSearchResults(for query: String) -> [Flight] {
-        // This would be replaced with actual API calls
-        let mockFlights = [
-            Flight(
-                id: "search-\(query)-1",
-                flightNumber: query.uppercased().contains("AA") ? "AA\(Int.random(in: 100...999))" : "\(query.prefix(2).uppercased())\(Int.random(in: 100...999))",
-                airline: "Mock Airline",
-                departure: Airport(
-                    airport: "Mock Departure Airport",
-                    code: "LAX",
-                    city: "Los Angeles",
-                    latitude: 33.9425,
-                    longitude: -118.4081,
-                    time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)),
-                    actualTime: nil,
-                    terminal: "2",
-                    gate: "A\(Int.random(in: 1...50))",
-                    delay: nil
-                ),
-                arrival: Airport(
-                    airport: "Mock Arrival Airport",
-                    code: "JFK",
-                    city: "New York",
-                    latitude: 40.6413,
-                    longitude: -73.7781,
-                    time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(14400)),
-                    actualTime: nil,
-                    terminal: "4",
-                    gate: "B\(Int.random(in: 1...30))",
-                    delay: nil
-                ),
-                status: FlightStatus.allCases.randomElement() ?? .boarding,
-                aircraft: Aircraft(
-                    type: "Boeing 737",
-                    registration: "N\(Int.random(in: 100...999))XX",
-                    icao24: nil
-                ),
-                currentPosition: nil,
-                progress: Double.random(in: 0...1),
-                flightDate: ISO8601DateFormatter().string(from: Date()),
-                dataSource: .aviationstack,
-                date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600))),
-                departureDate: nil,
-                arrivalDate: nil,
-                flightDuration: nil,
-                isUserConfirmed: false,
-                userConfirmedFields: .none
-            )
-        ]
-        
-        return mockFlights
-    }
 }
 
 // MARK: - Flight Error Types
@@ -1036,10 +859,9 @@ enum FlightError: LocalizedError {
     case flightNotFound
     case saveFailed
     case removeFailed
-    case searchFailed
     case networkError
     case invalidData
-    
+
     var errorDescription: String? {
         switch self {
         case .duplicateFlight:
@@ -1050,8 +872,6 @@ enum FlightError: LocalizedError {
             return "Failed to save flight"
         case .removeFailed:
             return "Failed to remove flight"
-        case .searchFailed:
-            return "Failed to search flights"
         case .networkError:
             return "Network connection error"
         case .invalidData:

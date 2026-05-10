@@ -48,7 +48,6 @@
 		A94166072EFA41610050BE19 /* ReviewItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166062EFA41610050BE19 /* ReviewItineraryView.swift */; };
 		A9693D812F4E71F100281903 /* TripRegionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9693D802F4E71F100281903 /* TripRegionService.swift */; };
 		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
-		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
 		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
 		A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A99F90B22E5BAE8B00BE96FE /* Preview Assets.xcassets */; };
 		A99F90C72E5BAE8B00BE96FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A99F90B32E5BAE8B00BE96FE /* Assets.xcassets */; };
@@ -126,7 +125,6 @@
 		A94166062EFA41610050BE19 /* ReviewItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewItineraryView.swift; sourceTree = "<group>"; };
 		A9693D802F4E71F100281903 /* TripRegionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripRegionService.swift; sourceTree = "<group>"; };
 		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
-		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
 		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
 		A99F90B22E5BAE8B00BE96FE /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		A99F90B32E5BAE8B00BE96FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -311,7 +309,6 @@
 				A99F90F22E662B0700BE96FE /* SharedAirportService.swift */,
 				A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */,
 				A99F90EA2E6503C200BE96FE /* CloudKitService.swift */,
-				A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */,
 				A99F90B02E5BAE8B00BE96FE /* AirportService.swift */,
 			);
 			path = Services;
@@ -497,7 +494,6 @@
 				A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */,
 				A94166032EFA410E0050BE19 /* UploadItineraryView.swift in Sources */,
 				A90A23662F3962D4008AC9AE /* CircularImageCropperView.swift in Sources */,
-				A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */,
 				A94165FB2EF9CCB80050BE19 /* EditEntryView.swift in Sources */,
 				A99F90EB2E6503C200BE96FE /* CloudKitService.swift in Sources */,
 				A94166012EFA40D40050BE19 /* ItineraryModels.swift in Sources */,
