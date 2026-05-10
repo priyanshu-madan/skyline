@@ -269,3 +269,55 @@ struct OpenRouterParsingConfig: Codable {
         maxCostPerRequest: 0.05
     )
 }
+
+// MARK: - Boarding Pass Data Model
+
+struct BoardingPassData: CustomStringConvertible, Identifiable {
+    let id = UUID()
+    var flightNumber: String?
+    var airline: String?
+    var departureCode: String?
+    var departureCity: String?
+    var arrivalCode: String?
+    var arrivalCity: String?
+    var departureDate: Date?
+    var departureTime: String?
+    var arrivalDate: Date?
+    var arrivalTime: String?
+    var gate: String?
+    var terminal: String?
+    var seat: String?
+    var confirmationCode: String?
+    var passengerName: String?
+    var flightDuration: String?
+
+    var isValid: Bool {
+        return flightNumber != nil && departureCode != nil && arrivalCode != nil
+    }
+
+    var summary: String {
+        let flight = flightNumber ?? "Unknown"
+        let route: String
+        if let depCity = departureCity, let arrCity = arrivalCity {
+            route = "\(depCity) → \(arrCity)"
+        } else {
+            route = "\(departureCode ?? "???") → \(arrivalCode ?? "???")"
+        }
+        return "\(flight): \(route)"
+    }
+
+    var description: String {
+        return """
+        BoardingPassData(
+          flight: \(flightNumber ?? "nil"),
+          airline: \(airline ?? "nil"),
+          route: \(departureCode ?? "nil")/\(departureCity ?? "nil") → \(arrivalCode ?? "nil")/\(arrivalCity ?? "nil"),
+          seat: \(seat ?? "nil"),
+          gate: \(gate ?? "nil"),
+          time: \(departureTime ?? "nil"),
+          passenger: \(passengerName ?? "nil"),
+          pnr: \(confirmationCode ?? "nil")
+        )
+        """
+    }
+}
