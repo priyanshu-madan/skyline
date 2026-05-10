@@ -21,38 +21,19 @@ class BoardingPassScanner: ObservableObject {
     @Published var lastError: String?
     
     private init() {
-        print("🔧 BoardingPassScanner initialized with Apple Intelligence + Vision framework")
+        print("🔧 BoardingPassScanner initialized (Vision + pattern matching)")
     }
-    
+
     // MARK: - OCR Processing
-    
+
     func scanBoardingPass(from image: UIImage) async -> BoardingPassData? {
-        print("🔍 Starting intelligent boarding pass scan...")
-        
+        print("🔍 Starting Vision + pattern boarding pass scan...")
+
         await MainActor.run {
             isProcessing = true
             lastError = nil
         }
-        
-        // Try Apple Intelligence first (iOS 18+)
-        if #available(iOS 18.0, *) {
-            print("🧠 Attempting Apple Intelligence extraction...")
-            let intelligentResult = await AppleIntelligenceBoardingPassService.shared.analyzeBoardingPass(from: image)
-            
-            if let data = intelligentResult, isExtractionComplete(data) {
-                print("✅ Apple Intelligence extraction successful!")
-                await MainActor.run {
-                    self.isProcessing = false
-                }
-                return data
-            } else {
-                print("⚠️ Apple Intelligence extraction incomplete, falling back to Vision + patterns...")
-            }
-        } else {
-            print("📱 iOS 18+ required for Apple Intelligence, using Vision + patterns...")
-        }
-        
-        // Fallback to existing Vision + pattern matching approach
+
         for attempt in 1...3 {
             print("📋 Vision + Pattern Attempt \(attempt)/3...")
             
@@ -96,7 +77,7 @@ class BoardingPassScanner: ObservableObject {
         print("❌ All extraction methods failed")
         await MainActor.run {
             self.isProcessing = false
-            self.lastError = "Failed to extract sufficient boarding pass information after trying Apple Intelligence and Vision + patterns"
+            self.lastError = "Failed to extract boarding pass information from Vision + pattern matching"
         }
         
         return nil
