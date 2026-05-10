@@ -16,7 +16,6 @@
 		A90A23662F3962D4008AC9AE /* CircularImageCropperView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23652F3962D4008AC9AE /* CircularImageCropperView.swift */; };
 		A90A23682F4134B3008AC9AE /* AskAIPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23672F4134B3008AC9AE /* AskAIPlannerView.swift */; };
 		A90A236A2F414972008AC9AE /* OpenRouterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A23692F414972008AC9AE /* OpenRouterService.swift */; };
-		A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */ = {isa = PBXBuildFile; productRef = A915596A2E6E4E1B00D77E8C /* BottomSheet */; };
 		A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */; };
 		A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59932E5B9C4F00266D7E /* ContentView.swift */; };
 		A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */; };
@@ -47,6 +46,7 @@
 		A94166032EFA410E0050BE19 /* UploadItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166022EFA410E0050BE19 /* UploadItineraryView.swift */; };
 		A94166052EFA412F0050BE19 /* AIItineraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166042EFA412F0050BE19 /* AIItineraryService.swift */; };
 		A94166072EFA41610050BE19 /* ReviewItineraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94166062EFA41610050BE19 /* ReviewItineraryView.swift */; };
+		A9693D812F4E71F100281903 /* TripRegionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9693D802F4E71F100281903 /* TripRegionService.swift */; };
 		A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F909A2E5BAB9700BE96FE /* FlightStore.swift */; };
 		A99F90C42E5BAE8B00BE96FE /* FlightAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */; };
 		A99F90C52E5BAE8B00BE96FE /* AirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90B02E5BAE8B00BE96FE /* AirportService.swift */; };
@@ -125,6 +125,7 @@
 		A94166022EFA410E0050BE19 /* UploadItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadItineraryView.swift; sourceTree = "<group>"; };
 		A94166042EFA412F0050BE19 /* AIItineraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIItineraryService.swift; sourceTree = "<group>"; };
 		A94166062EFA41610050BE19 /* ReviewItineraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewItineraryView.swift; sourceTree = "<group>"; };
+		A9693D802F4E71F100281903 /* TripRegionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripRegionService.swift; sourceTree = "<group>"; };
 		A99F909A2E5BAB9700BE96FE /* FlightStore.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightStore.swift; sourceTree = "<group>"; };
 		A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = FlightAPIService.swift; sourceTree = "<group>"; };
 		A99F90B02E5BAE8B00BE96FE /* AirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AirportService.swift; sourceTree = "<group>"; };
@@ -150,7 +151,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A915596B2E6E4E1B00D77E8C /* BottomSheet in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -295,6 +295,7 @@
 		A99F90AE2E5BAE8B00BE96FE /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A9693D802F4E71F100281903 /* TripRegionService.swift */,
 				A90A23692F414972008AC9AE /* OpenRouterService.swift */,
 				A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */,
 				A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */,
@@ -366,7 +367,6 @@
 			);
 			name = SkyLine;
 			packageProductDependencies = (
-				A915596A2E6E4E1B00D77E8C /* BottomSheet */,
 			);
 			productName = SkyLine;
 			productReference = A93C598E2E5B9C4F00266D7E /* SkyLine.app */;
@@ -441,7 +441,6 @@
 			);
 			mainGroup = A93C59852E5B9C4F00266D7E;
 			packageReferences = (
-				A91559692E6E4E1B00D77E8C /* XCRemoteSwiftPackageReference "BottomSheet" */,
 			);
 			productRefGroup = A93C598F2E5B9C4F00266D7E /* Products */;
 			projectDirPath = "";
@@ -531,6 +530,7 @@
 				A94165EE2EF14E3B0050BE19 /* DestinationSearchService.swift in Sources */,
 				A94165EF2EF14E3B0050BE19 /* OpenRouterBoardingPassService.swift in Sources */,
 				A94165F02EF14E3B0050BE19 /* UnifiedBoardingPassService.swift in Sources */,
+				A9693D812F4E71F100281903 /* TripRegionService.swift in Sources */,
 				A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */,
 				A94165CC2EA9D8670050BE19 /* TripStore.swift in Sources */,
 				A94165C92EA9D8560050BE19 /* TripEntry.swift in Sources */,
@@ -860,25 +860,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		A91559692E6E4E1B00D77E8C /* XCRemoteSwiftPackageReference "BottomSheet" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/lucaszischka/BottomSheet";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 3.1.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		A915596A2E6E4E1B00D77E8C /* BottomSheet */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A91559692E6E4E1B00D77E8C /* XCRemoteSwiftPackageReference "BottomSheet" */;
-			productName = BottomSheet;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A93C59862E5B9C4F00266D7E /* Project object */;
 }
