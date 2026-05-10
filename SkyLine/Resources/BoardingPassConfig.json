@@ -65,6 +65,6 @@
       "maxCostPerRequest": 0.05
     },
     "enableFallbacks": true,
-    "fallbackOrder": ["openrouter", "apple_intelligence", "vision_framework"]
+    "fallbackOrder": ["openrouter", "apple_intelligence"]
   }
 }

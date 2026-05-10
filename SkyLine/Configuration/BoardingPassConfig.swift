@@ -225,22 +225,19 @@ struct ErrorMessages: Codable {
 
 enum ParsingMethod: String, CaseIterable, Codable {
     case openRouter = "openrouter"
-    case appleIntelligence = "apple_intelligence" 
-    case visionFramework = "vision_framework"
-    
+    case appleIntelligence = "apple_intelligence"
+
     var displayName: String {
         switch self {
         case .openRouter: return "OpenRouter AI"
         case .appleIntelligence: return "Apple Intelligence"
-        case .visionFramework: return "Vision Framework"
         }
     }
-    
+
     var description: String {
         switch self {
         case .openRouter: return "Advanced AI models via OpenRouter API"
         case .appleIntelligence: return "On-device Apple Intelligence"
-        case .visionFramework: return "Basic OCR text recognition"
         }
     }
 }
@@ -255,7 +252,7 @@ struct ParsingConfig: Codable {
         parsingMethod: .openRouter,
         openRouterConfig: OpenRouterParsingConfig.default,
         enableFallbacks: true,
-        fallbackOrder: [.openRouter, .appleIntelligence, .visionFramework]
+        fallbackOrder: [.openRouter, .appleIntelligence]
     )
 }
 
