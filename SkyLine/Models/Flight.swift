@@ -234,6 +234,15 @@ enum DataSource: String, Codable {
         case .manual: return "Manual Entry"
         }
     }
+
+    // Backward-compat: old persisted flights may have rawValue
+    // "aviationstack" or "opensky" from removed APIs. Map any unknown
+    // raw value to .manual instead of failing the decode (which would
+    // make the entire Flight unreadable).
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = DataSource(rawValue: raw) ?? .manual
+    }
 }
 
 // MARK: - User Confirmation Tracking

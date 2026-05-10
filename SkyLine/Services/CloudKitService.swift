@@ -501,10 +501,12 @@ class CloudKitService: ObservableObject {
               let airline = record["airline"] as? String,
               let statusRaw = record["status"] as? String,
               let status = FlightStatus(rawValue: statusRaw),
-              let dataSourceRaw = record["dataSource"] as? String,
-              let dataSource = DataSource(rawValue: dataSourceRaw) else {
+              let dataSourceRaw = record["dataSource"] as? String else {
             return nil
         }
+        // Backward-compat: legacy records may use removed raw values
+        // ("aviationstack", "opensky") — fall back to .manual.
+        let dataSource = DataSource(rawValue: dataSourceRaw) ?? .manual
         
         // Create departure airport
         let departure = Airport(
