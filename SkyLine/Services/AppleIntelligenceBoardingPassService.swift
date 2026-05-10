@@ -48,9 +48,7 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
     
     @Published var isProcessing = false
     @Published var lastError: String?
-    
-    private let visionFallback = BoardingPassScanner.shared
-    
+
     private init() {}
     
     // MARK: - Main Analysis Method
@@ -74,10 +72,11 @@ class AppleIntelligenceBoardingPassService: ObservableObject {
         
         // Step 2: Use Apple Intelligence to understand the boarding pass
         guard let intelligentData = await analyzeWithAppleIntelligence(extractedText) else {
-            // Fallback to existing scanner if Apple Intelligence fails
-            print("🔄 Apple Intelligence failed, falling back to Vision + pattern matching...")
-            await MainActor.run { isProcessing = false }
-            return await visionFallback.scanBoardingPass(from: image)
+            await MainActor.run {
+                isProcessing = false
+                lastError = "Apple Intelligence analysis failed"
+            }
+            return nil
         }
         
         // Step 3: Convert to legacy format

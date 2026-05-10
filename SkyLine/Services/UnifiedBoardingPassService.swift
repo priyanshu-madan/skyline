@@ -75,7 +75,6 @@ class UnifiedBoardingPassService: ObservableObject {
     
     private let openRouterService = OpenRouterBoardingPassService.shared
     private let appleIntelligenceService = AppleIntelligenceBoardingPassService.shared
-    private let visionService = BoardingPassScanner.shared
     
     private let networkMonitor = NWPathMonitor()
     private var isNetworkAvailable = true
@@ -185,10 +184,6 @@ class UnifiedBoardingPassService: ObservableObject {
             case .appleIntelligence:
                 result = await appleIntelligenceService.analyzeBoardingPass(from: image)
                 error = appleIntelligenceService.lastError
-                
-            case .visionFramework:
-                result = await visionService.scanBoardingPass(from: image)
-                error = visionService.lastError
             }
         } catch {
             print("❌ Unified: Error with \(method.displayName): \(error.localizedDescription)")

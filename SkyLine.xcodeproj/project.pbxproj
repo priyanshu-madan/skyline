@@ -56,7 +56,6 @@
 		A99F90D32E5BAE8B00BE96FE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90C32E5BAE8B00BE96FE /* Theme.swift */; };
 		A99F90E32E5C11A600BE96FE /* WebViewGlobeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90E22E5C11A600BE96FE /* WebViewGlobeView.swift */; };
 		A99F90E52E5C123200BE96FE /* globe.html in Resources */ = {isa = PBXBuildFile; fileRef = A99F90E42E5C123200BE96FE /* globe.html */; };
-		A99F90E72E636C4500BE96FE /* BoardingPassScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90E62E636C4500BE96FE /* BoardingPassScanner.swift */; };
 		A99F90EB2E6503C200BE96FE /* CloudKitService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90EA2E6503C200BE96FE /* CloudKitService.swift */; };
 		A99F90ED2E650FD500BE96FE /* AuthenticationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */; };
 		A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90EE2E650FE100BE96FE /* AuthenticationView.swift */; };
@@ -135,7 +134,6 @@
 		A99F90C32E5BAE8B00BE96FE /* Theme.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		A99F90E22E5C11A600BE96FE /* WebViewGlobeView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewGlobeView.swift; sourceTree = "<group>"; };
 		A99F90E42E5C123200BE96FE /* globe.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = globe.html; sourceTree = "<group>"; };
-		A99F90E62E636C4500BE96FE /* BoardingPassScanner.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BoardingPassScanner.swift; sourceTree = "<group>"; };
 		A99F90E82E64F8F600BE96FE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A99F90E92E65027900BE96FE /* SkyLine.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SkyLine.entitlements; sourceTree = "<group>"; };
 		A99F90EA2E6503C200BE96FE /* CloudKitService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CloudKitService.swift; sourceTree = "<group>"; };
@@ -313,7 +311,6 @@
 				A99F90F22E662B0700BE96FE /* SharedAirportService.swift */,
 				A99F90EC2E650FD500BE96FE /* AuthenticationService.swift */,
 				A99F90EA2E6503C200BE96FE /* CloudKitService.swift */,
-				A99F90E62E636C4500BE96FE /* BoardingPassScanner.swift */,
 				A99F90AF2E5BAE8B00BE96FE /* FlightAPIService.swift */,
 				A99F90B02E5BAE8B00BE96FE /* AirportService.swift */,
 			);
@@ -517,7 +514,6 @@
 				A99F90A72E5BAB9700BE96FE /* FlightStore.swift in Sources */,
 				A99F90F32E662B0700BE96FE /* SharedAirportService.swift in Sources */,
 				A99F90ED2E650FD500BE96FE /* AuthenticationService.swift in Sources */,
-				A99F90E72E636C4500BE96FE /* BoardingPassScanner.swift in Sources */,
 				A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */,
 				A94165CE2EA9DCA40050BE19 /* AddEntryView.swift in Sources */,
 				A99F90EF2E650FE100BE96FE /* AuthenticationView.swift in Sources */,

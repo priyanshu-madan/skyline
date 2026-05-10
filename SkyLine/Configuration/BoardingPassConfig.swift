@@ -225,22 +225,19 @@ struct ErrorMessages: Codable {
 
 enum ParsingMethod: String, CaseIterable, Codable {
     case openRouter = "openrouter"
-    case appleIntelligence = "apple_intelligence" 
-    case visionFramework = "vision_framework"
-    
+    case appleIntelligence = "apple_intelligence"
+
     var displayName: String {
         switch self {
         case .openRouter: return "OpenRouter AI"
         case .appleIntelligence: return "Apple Intelligence"
-        case .visionFramework: return "Vision Framework"
         }
     }
-    
+
     var description: String {
         switch self {
         case .openRouter: return "Advanced AI models via OpenRouter API"
         case .appleIntelligence: return "On-device Apple Intelligence"
-        case .visionFramework: return "Basic OCR text recognition"
         }
     }
 }
@@ -255,7 +252,7 @@ struct ParsingConfig: Codable {
         parsingMethod: .openRouter,
         openRouterConfig: OpenRouterParsingConfig.default,
         enableFallbacks: true,
-        fallbackOrder: [.openRouter, .appleIntelligence, .visionFramework]
+        fallbackOrder: [.openRouter, .appleIntelligence]
     )
 }
 
@@ -271,4 +268,56 @@ struct OpenRouterParsingConfig: Codable {
         temperature: 0.1,
         maxCostPerRequest: 0.05
     )
+}
+
+// MARK: - Boarding Pass Data Model
+
+struct BoardingPassData: CustomStringConvertible, Identifiable {
+    let id = UUID()
+    var flightNumber: String?
+    var airline: String?
+    var departureCode: String?
+    var departureCity: String?
+    var arrivalCode: String?
+    var arrivalCity: String?
+    var departureDate: Date?
+    var departureTime: String?
+    var arrivalDate: Date?
+    var arrivalTime: String?
+    var gate: String?
+    var terminal: String?
+    var seat: String?
+    var confirmationCode: String?
+    var passengerName: String?
+    var flightDuration: String?
+
+    var isValid: Bool {
+        return flightNumber != nil && departureCode != nil && arrivalCode != nil
+    }
+
+    var summary: String {
+        let flight = flightNumber ?? "Unknown"
+        let route: String
+        if let depCity = departureCity, let arrCity = arrivalCity {
+            route = "\(depCity) → \(arrCity)"
+        } else {
+            route = "\(departureCode ?? "???") → \(arrivalCode ?? "???")"
+        }
+        return "\(flight): \(route)"
+    }
+
+    var description: String {
+        return """
+        BoardingPassData(
+          flight: \(flightNumber ?? "nil"),
+          airline: \(airline ?? "nil"),
+          route: \(departureCode ?? "nil")/\(departureCity ?? "nil") → \(arrivalCode ?? "nil")/\(arrivalCity ?? "nil"),
+          seat: \(seat ?? "nil"),
+          gate: \(gate ?? "nil"),
+          time: \(departureTime ?? "nil"),
+          passenger: \(passengerName ?? "nil"),
+          pnr: \(confirmationCode ?? "nil")
+        )
+        """
+    }
 }
