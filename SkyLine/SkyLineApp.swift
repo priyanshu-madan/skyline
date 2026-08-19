@@ -14,6 +14,7 @@ struct SkyLineApp: App {
     @StateObject private var themeManager = ThemeManager()
     @StateObject private var flightStore = FlightStore()
     @StateObject private var authService = AuthenticationService.shared
+    @StateObject private var placeStore = PlaceStore.shared
     @State private var isGlobeReady = false
 
     var body: some Scene {
@@ -26,19 +27,44 @@ struct SkyLineApp: App {
                             .environmentObject(themeManager)
                             .environmentObject(flightStore)
                             .environmentObject(authService)
+                            .environmentObject(placeStore)
                             .onAppear {
                                 // Sync trip data when user is authenticated
                                 Task {
                                     await TripStore.shared.syncIfNeeded()
+                                    await placeStore.syncIfNeeded()
 
                                     // Seed initial airline data if needed
                                     await AirlineService.shared.seedInitialAirlines()
+
+                                    // Place/Visit record types have to exist in
+                                    // CloudKit before the first save, and the
+                                    // one-way import backfills places from the
+                                    // Trip/TripEntry/Flight records the user
+                                    // already has - so a returning user does not
+                                    // open the new app to an empty map.
+                                    CountryLocator.shared.preload()
+                                    await PlaceSchemaService.shared.initializePlaceSchema()
+
+                                    // The import must not start before the
+                                    // flights it reads have loaded. FlightStore
+                                    // fetches asynchronously, so calling this
+                                    // with flightStore.flights straight away is
+                                    // a race: on a cold cache the flight half
+                                    // of the backfill silently imports nothing,
+                                    // and whether it works depends on whether
+                                    // the local cache happened to be warm.
+                                    await flightStore.syncIfNeeded()
+                                    await PlaceImportService.shared.runIfNeeded(
+                                        flights: flightStore.flights)
                                 }
                             }
                             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                                 // Sync when app comes to foreground
                                 Task {
                                     await TripStore.shared.syncIfNeeded()
+                                    await flightStore.syncIfNeeded()
+                                    await placeStore.syncIfNeeded()
                                 }
                             }
                             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("GlobeReady"))) { _ in

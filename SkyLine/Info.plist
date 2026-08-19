@@ -7,7 +7,7 @@
 	<key>OPENROUTER_API_KEY</key>
 	<string></string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Access photos to scan boarding passes from Apple Wallet screenshots for automatic flight import</string>
+	<string>SkyLine looks at the photos from your trip dates to work out which places you spent time at, so you can log them without typing. Your photos stay on your device.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos of boarding passes for automatic flight information import</string>
 	<key>UIBackgroundModes</key>
@@ -18,28 +18,6 @@
 	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<false/>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>api.aviationstack.com</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<false/>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-			</dict>
-			<key>opensky-network.org</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<false/>
-				<key>NSExceptionRequiresForwardSecrecy</key>
-				<false/>
-			</dict>
-		</dict>
-	</dict>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>comgooglemaps</string>

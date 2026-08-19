@@ -2,7 +2,12 @@
 //  TripsListView.swift
 //  SkyLine
 //
-//  Main trips listing view for the travel journal
+//  The trips tab. A trip is an object you open — a photograph with a name on
+//  it — not a database record with four labelled fields.
+//
+//  Every colour here comes from `themeManager.currentTheme.colors` or a
+//  `Verdict` token. Nothing resolves against the DEVICE appearance, which is
+//  what used to make the app's Light theme render dark cards on a dark phone.
 //
 
 import SwiftUI
@@ -34,9 +39,9 @@ struct TripsListView: View {
             // Segmented Control
             if !tripStore.trips.isEmpty {
                 TripFilterSegmentedControl(selectedFilter: $selectedFilter)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.top, AppSpacing.sm)
+                    .padding(.bottom, AppSpacing.sm)
             }
 
             ScrollView {
@@ -56,6 +61,10 @@ struct TripsListView: View {
                     )
                 }
             }
+            // Content fades under the floating tab bar instead of colliding
+            // with it. `.soft` rather than `.hard`: over the live globe a hard
+            // edge reads as a seam.
+            .skylineScrollEdges()
         }
         .refreshable {
             await tripStore.forceSync()
@@ -84,94 +93,174 @@ struct TripsListView: View {
     }
 }
 
+// MARK: - Photo Scrim
+/// A photograph, a map tile or a placeholder has no theme of its own. Rather
+/// than laying absolute black over it and writing in absolute white — which
+/// gives one hardcoded pair that only suits dark mode — the image dissolves
+/// into the page colour at its bottom edge, so the caption over it can use the
+/// ordinary `text` / `textSecondary` tokens and stays legible in both themes.
+struct TripImageScrim: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    /// Where the fade starts. Lower = more of the image is veiled.
+    var start: CGFloat = 0.30
+
+    var body: some View {
+        let base = themeManager.currentTheme.colors.background
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: start),
+                .init(color: base.opacity(0.55), location: (start + 1.0) / 2),
+                .init(color: base.opacity(0.97), location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .allowsHitTesting(false)
+    }
+}
+
 // MARK: - Empty State
+/// Thin wrapper so the existing call site keeps its name. The layout, copy and
+/// accent all live in `PlaceLogEmptyState`, which is the one empty state in the
+/// app.
 struct EmptyTripsView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let onAddTrip: () -> Void
-    
+
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
-            
-            VStack(spacing: 16) {
-                Image(systemName: "suitcase")
-                    .font(.system(size: 64, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                    .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-                
-                Text("Start Your Journey")
-                    .font(.system(.title2, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Text("Document your travels and create beautiful memories with photos and stories")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+        PlaceLogEmptyStateView(state: .noTrips, onPrimaryAction: onAddTrip)
+            .frame(maxWidth: .infinity)
+            .padding(.top, AppSpacing.xl)
+    }
+}
+
+// MARK: - Trip Empty State
+/// One shared empty state for the trip surfaces that `PlaceLogEmptyState` has
+/// no case for yet (filtered lists, an empty timeline). Same grammar as
+/// `PlaceLogEmptyStateView` deliberately — glyph in a tinted glass well, title,
+/// message, optional glass-prominent action.
+struct TripEmptyStateView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
+    let systemImage: String
+    let title: String
+    let message: String
+    var accent: Color? = nil
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    @ScaledMetric(relativeTo: .largeTitle) private var glyphSize: CGFloat = 34
+    @ScaledMetric(relativeTo: .largeTitle) private var glyphWell: CGFloat = 76
+
+    var body: some View {
+        let theme = themeManager.currentTheme
+        let ink = accent ?? theme.colors.textSecondary
+
+        return VStack(spacing: AppSpacing.md) {
+            Image(systemName: systemImage)
+                .font(.system(size: glyphSize, weight: .regular, design: .monospaced))
+                .foregroundStyle(ink)
+                .symbolRenderingMode(.hierarchical)
+                .frame(width: glyphWell, height: glyphWell)
+                .skylineGlass(.card, in: Circle(), tint: ink.opacity(0.22), theme: theme)
+
+            VStack(spacing: AppSpacing.sm) {
+                Text(title)
+                    .appFont(.headline)
+                    .foregroundStyle(theme.colors.text)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                
-                Button {
-                    onAddTrip()
-                } label: {
-                    HStack {
-                        Image(systemName: "plus")
-                        Text("Add Your First Trip")
-                    }
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(themeManager.currentTheme.colors.primary)
-                    .cornerRadius(8)
-                }
-                .padding(.top, 8)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text(message)
+                    .appFont(.bodySmall, lineLimit: .unlimited)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
             }
-            
-            Spacer()
+
+            if let actionTitle, let action {
+                Button {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                    impactFeedback.impactOccurred()
+                    action()
+                } label: {
+                    Text(actionTitle)
+                        .appFont(.bodyBold)
+                        .padding(.horizontal, AppSpacing.lg)
+                        .padding(.vertical, AppSpacing.xs)
+                }
+                // `.glassProminent` picks its own label colour against the tint.
+                // A hand-written `.white` on `colors.primary` is 2.6:1 in dark
+                // theme, which is the single worst contrast bug in the app.
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(theme.colors.primary)
+                .padding(.top, AppSpacing.xs)
+            }
         }
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.xl)
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
     }
 }
 
 // MARK: - Segmented Control
 struct TripFilterSegmentedControl: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selectedFilter: TripFilter
-    @Namespace private var animation
+
+    @ScaledMetric(relativeTo: .body) private var minHeight: CGFloat = 38
+
+    private var selectionAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.22)
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(TripFilter.allCases, id: \.self) { filter in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selectedFilter = filter
+        let theme = themeManager.currentTheme
+
+        // One container, so the three capsules sample a single backdrop
+        // instead of stacking three separate blurs over the globe.
+        return SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                ForEach(TripFilter.allCases, id: \.self) { filter in
+                    let isSelected = selectedFilter == filter
+
+                    Button {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        withAnimation(selectionAnimation) {
+                            selectedFilter = filter
+                        }
+                    } label: {
+                        Text(filter.rawValue.uppercased())
+                            .appFont(.verdictLabel)
+                            .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: minHeight)
+                            .contentShape(Capsule())
                     }
-                } label: {
-                    Text(filter.rawValue)
-                        .font(.system(.body, design: .monospaced, weight: .semibold))
-                        .foregroundColor(selectedFilter == filter
-                            ? themeManager.currentTheme.colors.primary
-                            : themeManager.currentTheme.colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            Group {
-                                if selectedFilter == filter {
-                                    RoundedRectangle(cornerRadius: 25)
-                                        .fill(themeManager.currentTheme.colors.surface)
-                                        .matchedGeometryEffect(id: "filter", in: animation)
-                                }
-                            }
-                        )
+                    .buttonStyle(.plain)
+                    .skylineGlassCapsule(
+                        tint: isSelected ? theme.colors.primary.opacity(0.32) : nil,
+                        interactive: true,
+                        theme: theme
+                    )
+                    .overlay {
+                        // Second, colour-independent selection cue.
+                        if isSelected {
+                            Capsule().stroke(theme.colors.primary, lineWidth: 1.5)
+                        }
+                    }
+                    .animation(selectionAnimation, value: isSelected)
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                 }
             }
         }
-        .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: 25)
-                .fill(themeManager.currentTheme.colors.surface.opacity(0.3))
-        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Filter trips"))
     }
 }
 
@@ -203,19 +292,22 @@ struct TripsContentView: View {
     }
     
     var body: some View {
-        LazyVStack(spacing: 24) {
+        LazyVStack(spacing: AppSpacing.lg) {
             // Show subtle loading indicator when refreshing
             if tripStore.isLoading && !tripStore.trips.isEmpty {
-                HStack {
+                HStack(spacing: AppSpacing.sm) {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
                         .scaleEffect(0.8)
 
-                    Text("Syncing...")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    Text("Syncing…")
+                        .appFont(.placeMeta)
+                        .foregroundStyle(themeManager.currentTheme.colors.textSecondary)
                 }
-                .padding(.top, 8)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+                .skylineGlassCapsule(theme: themeManager.currentTheme)
+                .padding(.top, AppSpacing.sm)
             }
 
             switch selectedFilter {
@@ -262,8 +354,9 @@ struct TripsContentView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 20)
+        .padding(.horizontal, AppSpacing.md)
+        // Clears the floating tab bar.
+        .padding(.bottom, AppSpacing.xxl)
     }
 }
 
@@ -277,26 +370,25 @@ struct TripSectionView: View {
     let deletingTripId: String?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(title)
-                    .font(.system(.title3, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Spacer()
-                
+        let theme = themeManager.currentTheme
+
+        return VStack(alignment: .leading, spacing: AppSpacing.md) {
+            // Section headers are metadata, not titles: small, uppercase,
+            // secondary. The trip names are what should carry weight.
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
+                Text(title.uppercased())
+                    .appFont(.verdictLabel)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityAddTraits(.isHeader)
+
                 Text("\(trips.count)")
-                    .font(.system(.caption, design: .monospaced))
-                    .fontWeight(.medium)
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(6)
+                    .appFont(.footnote)
+                    .foregroundStyle(theme.colors.textSecondary)
+
+                Spacer()
             }
-            
-            LazyVStack(spacing: 12) {
+
+            LazyVStack(spacing: AppSpacing.md) {
                 ForEach(trips) { trip in
                     TripCard(
                         trip: trip,
@@ -315,113 +407,100 @@ struct TripSectionView: View {
 }
 
 // MARK: - Trip Card
+/// Photography-forward: the map snapshot is the trip's identity and the title
+/// sits on it. One metadata line, plus the verdict tallies — the only place
+/// colour is allowed to be loud.
 struct TripCard: View {
     @EnvironmentObject var themeManager: ThemeManager
+    /// Read directly off the singleton rather than the environment so a
+    /// missing injection can never crash a row.
+    @ObservedObject private var placeStore = PlaceStore.shared
+
     let trip: Trip
     let onTap: () -> Void
     let onDelete: (Trip) -> Void
     let isDeleting: Bool
-    
+
     @State private var showingDeleteConfirmation = false
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Trip image or placeholder
-            TripImageView(trip: trip)
-                .frame(height: 140)
-                .clipped()
-            
-            // Trip info
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(trip.title)
-                        .font(.system(.headline, design: .monospaced))
-                        .fontWeight(.semibold)
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                        .lineLimit(1)
-                    
-                    Text(trip.destination)
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(1)
-                }
-                
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Duration")
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            .textCase(.uppercase)
-                        
-                        Text(trip.durationText)
-                            .font(.system(.caption, design: .monospaced))
-                            .fontWeight(.medium)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                    }
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Status")
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            .textCase(.uppercase)
-                        
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(statusColor)
-                                .frame(width: 6, height: 6)
-                            
-                            Text(trip.statusText)
-                                .font(.system(.caption, design: .monospaced))
-                                .fontWeight(.medium)
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-                        }
-                    }
-                }
-                
-                Text(trip.dateRangeText)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-            }
-            .padding(16)
+
+    @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 176
+
+    private var verdictCounts: [Verdict: Int] {
+        placeStore.places(forTrip: trip.id).reduce(into: [:]) { totals, summary in
+            guard let verdict = summary.verdict else { return }
+            totals[verdict, default: 0] += 1
         }
-        .background(themeManager.currentTheme.colors.surface)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-        )
-        .shadow(
-            color: .black.opacity(0.05),
-            radius: 8,
-            x: 0,
-            y: 2
-        )
-        .overlay(
-            // Deleting overlay
-            Group {
-                if isDeleting {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.3))
-                        .overlay(
-                            VStack(spacing: 8) {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .scaleEffect(1.2)
-                                
-                                Text("Deleting...")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .fontWeight(.medium)
-                            }
-                        )
-                        .cornerRadius(16)
+    }
+
+    private var placeCount: Int {
+        placeStore.places(forTrip: trip.id).count
+    }
+
+    var body: some View {
+        let theme = themeManager.currentTheme
+        let cardShape = RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                TripImageView(trip: trip)
+                    .frame(height: heroHeight)
+                    .frame(maxWidth: .infinity)
+                    // A concentric child keeps its curvature in step with the
+                    // card's instead of guessing a smaller radius.
+                    .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
+                    .overlay { TripImageScrim() }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(trip.title)
+                        .appFont(.placeName, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.text)
+
+                    Text(trip.destination)
+                        .appFont(.placeMeta, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.textSecondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppSpacing.md - 4)
+                .padding(.bottom, AppSpacing.sm + 2)
             }
-        )
+
+            metaRow
+                .padding(.horizontal, AppSpacing.md - 4)
+                .padding(.top, AppSpacing.sm + 2)
+                .padding(.bottom, AppSpacing.sm)
+        }
+        .padding(AppSpacing.xs)
+        // Glass is the card. `surface` on `background` is a ≤2% luminance step
+        // in both palettes and cannot carry an edge on its own; the material
+        // shifts relative to whatever is behind it, so it works in both.
+        // One elevation signal — no stroke, no shadow on top of it.
+        .skylineGlassCard(theme: theme)
+        .containerShape(cardShape)
+        .overlay {
+            if isDeleting {
+                ZStack {
+                    cardShape.fill(theme.colors.scrim)
+
+                    HStack(spacing: AppSpacing.sm) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: theme.colors.text))
+
+                        Text("Deleting…")
+                            .appFont(.verdictLabel)
+                            .foregroundStyle(theme.colors.text)
+                    }
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.sm)
+                    .skylineGlassCapsule(theme: theme)
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .contentShape(cardShape)
         .onTapGesture {
             if !isDeleting {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
                 onTap()
             }
         }
@@ -438,26 +517,80 @@ struct TripCard: View {
         } message: {
             Text("Are you sure you want to delete \"\(trip.title)\"? This action cannot be undone.")
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(accessibilitySummary))
+        .accessibilityAddTraits(.isButton)
     }
-    
-    private var statusColor: Color {
-        switch trip.statusColor {
-        case "green":
-            return .green
-        case "blue":
-            return .blue
-        default:
-            return .gray
+
+    // MARK: Meta
+
+    /// One line, not four labelled fields. Status is deliberately absent — the
+    /// filter above the list and the section header already say it, and a
+    /// coloured dot with a word beside it was the lowest information density
+    /// on the screen.
+    private var metaRow: some View {
+        let theme = themeManager.currentTheme
+        let counts = verdictCounts
+
+        return HStack(spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.xs + 1) {
+                Text(trip.dateRangeText)
+                Text("·")
+                Text(trip.durationText)
+                if placeCount > 0 {
+                    Text("·")
+                    Text(placeCount == 1 ? "1 place" : "\(placeCount) places")
+                }
+            }
+            .appFont(.placeMeta, lineLimit: .exactly(1))
+            .foregroundStyle(theme.colors.textSecondary)
+
+            Spacer(minLength: AppSpacing.sm)
+
+            // Verdicts are the only saturated colour on this screen. Icon
+            // silhouettes differ too, so the tally survives greyscale.
+            if !counts.isEmpty {
+                HStack(spacing: AppSpacing.sm) {
+                    ForEach(Verdict.allCases) { verdict in
+                        if let count = counts[verdict], count > 0 {
+                            HStack(spacing: 2) {
+                                Image(systemName: verdict.systemImage)
+                                    .symbolRenderingMode(.hierarchical)
+                                Text("\(count)")
+                            }
+                            .appFont(.verdictLabel)
+                            .foregroundStyle(verdict.color(for: theme))
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private var accessibilitySummary: String {
+        var parts: [String] = [trip.title, trip.destination, trip.dateRangeText, trip.durationText]
+        if placeCount > 0 {
+            parts.append(placeCount == 1 ? "1 place logged" : "\(placeCount) places logged")
+        }
+        for verdict in Verdict.allCases {
+            if let count = verdictCounts[verdict], count > 0 {
+                parts.append("\(count) \(verdict.displayName)")
+            }
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
 // MARK: - Trip Image View
+/// The trip's photograph. Clipping is the caller's job so the image can nest
+/// concentrically inside whatever card is hosting it.
 struct TripImageView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
 
     var body: some View {
+        let theme = themeManager.currentTheme
+
         if let latitude = trip.latitude, let longitude = trip.longitude {
             // Show map preview for trips with coordinates
             let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -468,50 +601,40 @@ struct TripImageView: View {
 
             Map(initialPosition: .region(region)) {
                 Marker(trip.destination, coordinate: coordinate)
-                    .tint(.red)
+                    .tint(theme.colors.primary)
             }
             .mapStyle(.standard)
             .mapControlVisibility(.hidden)
             .allowsHitTesting(false)
-            .cornerRadius(16, corners: [.topLeft, .topRight])
+            // MapKit renders against the trait colour scheme, which is the
+            // DEVICE appearance. Pin it to the app's theme, or a light-theme
+            // app on a dark phone shows a black map inside a white card.
+            .environment(\.colorScheme, theme.colorScheme)
             .id("\(latitude),\(longitude)")  // Force update when coordinates change
         } else {
             // Fallback for trips without coordinates
             ZStack {
-                // Background gradient
                 LinearGradient(
-                    colors: themeManager.currentTheme == .dark ? [
-                        Color(red: 0.31, green: 0.31, blue: 0.31),
-                        Color(red: 0.11, green: 0.11, blue: 0.15)
-                    ] : [
-                        Color(red: 0.98, green: 0.98, blue: 0.98),
-                        Color.white
-                    ],
+                    colors: [theme.colors.surface, theme.colors.background],
                     startPoint: .top,
                     endPoint: .bottom
                 )
 
-                // Fallback icon and destination name
-                VStack(spacing: 8) {
-                    Image(systemName: "building.2")
-                        .font(.system(size: 32, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                    Text(trip.destination)
-                        .font(.system(.caption, design: .monospaced))
-                        .fontWeight(.medium)
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 16)
+                Image(systemName: "map")
+                    .font(AppTypography.mono(.largeTitle))
+                    .foregroundStyle(theme.colors.textSecondary.opacity(0.5))
+                    .symbolRenderingMode(.hierarchical)
             }
-            .cornerRadius(16, corners: [.topLeft, .topRight])
+            .accessibilityHidden(true)
         }
     }
 }
 
 // MARK: - Corner Radius Extension
+// DEPRECATED. `UnevenRoundedRectangle` and `ConcentricRectangle` cover every
+// case this used to, and `.cornerRadius(_:)` clips before the shadow so it
+// eats the elevation. Kept only because `AddTripView.swift:577` still calls it;
+// delete both once that call site is converted.
 extension View {
     func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
         clipShape(RoundedCorner(radius: radius, corners: corners))
@@ -534,27 +657,14 @@ struct RoundedCorner: Shape {
 
 // MARK: - Empty Filter State
 struct EmptyFilterStateView: View {
-    @EnvironmentObject var themeManager: ThemeManager
     let filterType: String
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: iconName)
-                .font(.system(size: 48, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary.opacity(0.5))
-
-            Text(emptyTitle)
-                .font(.system(.title3, design: .monospaced, weight: .semibold))
-                .foregroundColor(themeManager.currentTheme.colors.text)
-
-            Text(emptyMessage)
-                .font(.system(.body, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        TripEmptyStateView(
+            systemImage: iconName,
+            title: emptyTitle,
+            message: emptyMessage
+        )
     }
 
     private var iconName: String {
@@ -587,27 +697,24 @@ struct LoadingTripsView: View {
     @EnvironmentObject var themeManager: ThemeManager
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        let theme = themeManager.currentTheme
 
-            VStack(spacing: 16) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                    .scaleEffect(1.2)
+        return VStack(spacing: AppSpacing.md) {
+            ProgressView()
+                .progressViewStyle(CircularProgressViewStyle(tint: theme.colors.primary))
+                .scaleEffect(1.2)
 
-                Text("Loading Your Trips...")
-                    .font(.system(.title3, design: .monospaced))
-                    .fontWeight(.medium)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
+            Text("Loading your trips…")
+                .appFont(.bodyBold)
+                .foregroundStyle(theme.colors.text)
 
-                Text("Syncing from iCloud")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-            }
-
-            Spacer()
+            Text("Syncing from iCloud")
+                .appFont(.placeMeta)
+                .foregroundStyle(theme.colors.textSecondary)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, AppSpacing.xxl)
+        .accessibilityElement(children: .combine)
     }
 }
 

@@ -108,15 +108,6 @@ class FlightStore: ObservableObject {
         setupCloudKitSync()
         self.isInitialized = true
         
-        // EMERGENCY FIX: Completely disable enhancement to stop infinite loop
-        // Only run enhancement once on first app launch
-        if !UserDefaults.standard.bool(forKey: "hasRunEnhancement") && false { // DISABLED
-            Task {
-                await updateAllFlightsWithEnhancedData()
-                UserDefaults.standard.set(true, forKey: "hasRunEnhancement")
-            }
-        }
-        
         // Fix flight dates for existing saved flights (run once)
         if !UserDefaults.standard.bool(forKey: "hasFixedFlightDates") {
             Task {
@@ -212,105 +203,6 @@ class FlightStore: ObservableObject {
         )
     }
 
-    @MainActor
-    func updateAllFlightsWithEnhancedData() async {
-        print("🔄 Updating all flights with enhanced airport data...")
-        
-        // Remove duplicate flights first
-        removeDuplicateFlights()
-        
-        // Force refresh major airports that might have incomplete data
-        await refreshMajorAirports()
-        
-        // Process flights in smaller batches to prevent overwhelming the system
-        let batchSize = 2
-        for batchStart in stride(from: 0, to: flights.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, flights.count)
-            
-            for i in batchStart..<batchEnd {
-                let flight = flights[i]
-                
-                // Skip flights with empty airport codes
-                guard !flight.departure.code.isEmpty && !flight.arrival.code.isEmpty else {
-                    print("⚠️ Skipping flight \(flight.flightNumber) - empty airport codes")
-                    continue
-                }
-                
-                // Check if flight already has enhanced data to avoid redundant processing
-                if !flight.departure.city.isEmpty && !flight.arrival.city.isEmpty && 
-                   flight.departure.city != flight.departure.code && 
-                   flight.arrival.city != flight.arrival.code {
-                    print("✅ Flight \(flight.flightNumber) already has enhanced data, skipping")
-                    continue
-                }
-                
-                // Get enhanced airport information for both departure and arrival
-                let airportService = AirportService.shared
-                let depInfo = await airportService.getAirportInfo(for: flight.departure.code)
-                let arrInfo = await airportService.getAirportInfo(for: flight.arrival.code)
-            
-            // Create new Airport instances with enhanced information
-            let updatedDeparture = Airport(
-                airport: depInfo.name ?? flight.departure.airport,
-                code: flight.departure.code,
-                city: depInfo.city ?? (flight.departure.city.isEmpty ? flight.departure.code : flight.departure.city),
-                latitude: depInfo.coordinates?.latitude ?? flight.departure.latitude,
-                longitude: depInfo.coordinates?.longitude ?? flight.departure.longitude,
-                time: flight.departure.time,
-                actualTime: flight.departure.actualTime,
-                terminal: flight.departure.terminal,
-                gate: flight.departure.gate,
-                delay: flight.departure.delay
-            )
-            
-            let updatedArrival = Airport(
-                airport: arrInfo.name ?? flight.arrival.airport,
-                code: flight.arrival.code,
-                city: arrInfo.city ?? (flight.arrival.city.isEmpty ? flight.arrival.code : flight.arrival.city),
-                latitude: arrInfo.coordinates?.latitude ?? flight.arrival.latitude,
-                longitude: arrInfo.coordinates?.longitude ?? flight.arrival.longitude,
-                time: flight.arrival.time,
-                actualTime: flight.arrival.actualTime,
-                terminal: flight.arrival.terminal,
-                gate: flight.arrival.gate,
-                delay: flight.arrival.delay
-            )
-            
-            // Create new Flight instance with enhanced airport data
-            let updatedFlight = Flight(
-                id: flight.id,
-                flightNumber: flight.flightNumber,
-                airline: flight.airline,
-                departure: updatedDeparture,
-                arrival: updatedArrival,
-                status: flight.status,
-                aircraft: flight.aircraft,
-                currentPosition: flight.currentPosition,
-                progress: flight.progress,
-                flightDate: flight.flightDate,
-                dataSource: flight.dataSource,
-                date: flight.date,
-                departureDate: flight.departureDate,
-                arrivalDate: flight.arrivalDate,
-                flightDuration: flight.flightDuration,
-                isUserConfirmed: flight.isUserConfirmed,
-                userConfirmedFields: flight.userConfirmedFields
-            )
-            
-                flights[i] = updatedFlight
-                print("✅ Enhanced flight \(flight.flightNumber): \(updatedDeparture.city) to \(updatedArrival.city)")
-            }
-            
-            // Add delay between batches to prevent overwhelming CloudKit
-            if batchEnd < flights.count {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            }
-        }
-        
-        saveFlights()
-        print("🎉 All flights updated with enhanced airport data")
-    }
-    
     private func removeDuplicateFlights() {
         let uniqueFlights = flights.reduce(into: [String: Flight]()) { result, flight in
             let key = "\(flight.flightNumber)-\(flight.departure.code)-\(flight.arrival.code)-\(DateFormatter.flightCardDate.string(from: flight.date))"
@@ -418,90 +310,6 @@ class FlightStore: ObservableObject {
         print("🎉 Flight date fixing completed")
     }
 
-    @MainActor
-    func updateFlightCoordinates(_ flightId: String) {
-        // EMERGENCY FIX: Completely disable this method to stop infinite loop
-        print("⚠️ updateFlightCoordinates disabled to prevent infinite loop")
-        return
-        
-        guard let index = flights.firstIndex(where: { $0.id == flightId }) else { return }
-        
-        let flight = flights[index]
-        
-        // Check if flight already has enhanced data
-        let hasEnhancedData = !flight.departure.city.isEmpty && 
-                             !flight.arrival.city.isEmpty && 
-                             flight.departure.city != flight.departure.code && 
-                             flight.arrival.city != flight.arrival.code
-        
-        if hasEnhancedData {
-            print("✅ Flight \(flight.flightNumber) already has enhanced data, skipping")
-            return
-        }
-        
-        Task {
-            // Get enhanced airport information including city/country data
-            let airportService = AirportService.shared
-            let depInfo = await airportService.getAirportInfo(for: flight.departure.code)
-            let arrInfo = await airportService.getAirportInfo(for: flight.arrival.code)
-            
-            await MainActor.run {
-                // Create new Airport instances with enhanced information
-                let updatedDeparture = Airport(
-                    airport: depInfo.name ?? flight.departure.airport,
-                    code: flight.departure.code,
-                    city: depInfo.city ?? flight.departure.city,
-                    latitude: depInfo.coordinates?.latitude ?? flight.departure.latitude,
-                    longitude: depInfo.coordinates?.longitude ?? flight.departure.longitude,
-                    time: flight.departure.time,
-                    actualTime: flight.departure.actualTime,
-                    terminal: flight.departure.terminal,
-                    gate: flight.departure.gate,
-                    delay: flight.departure.delay
-                )
-                
-                let updatedArrival = Airport(
-                    airport: arrInfo.name ?? flight.arrival.airport,
-                    code: flight.arrival.code,
-                    city: arrInfo.city ?? flight.arrival.city,
-                    latitude: arrInfo.coordinates?.latitude ?? flight.arrival.latitude,
-                    longitude: arrInfo.coordinates?.longitude ?? flight.arrival.longitude,
-                    time: flight.arrival.time,
-                    actualTime: flight.arrival.actualTime,
-                    terminal: flight.arrival.terminal,
-                    gate: flight.arrival.gate,
-                    delay: flight.arrival.delay
-                )
-                
-                // Create new Flight instance with enhanced airport data
-                let updatedFlight = Flight(
-                    id: flight.id,
-                    flightNumber: flight.flightNumber,
-                    airline: flight.airline,
-                    departure: updatedDeparture,
-                    arrival: updatedArrival,
-                    status: flight.status,
-                    aircraft: flight.aircraft,
-                    currentPosition: flight.currentPosition,
-                    progress: flight.progress,
-                    flightDate: flight.flightDate,
-                    dataSource: flight.dataSource,
-                    date: flight.date,
-                    departureDate: flight.departureDate,
-                    arrivalDate: flight.arrivalDate,
-                    flightDuration: flight.flightDuration,
-                    isUserConfirmed: flight.isUserConfirmed,
-                    userConfirmedFields: flight.userConfirmedFields
-                )
-                
-                flights[index] = updatedFlight
-                saveFlights()
-                
-                print("✅ Updated flight \(flight.flightNumber) with enhanced airport data")
-            }
-        }
-    }
-    
     @MainActor
     func removeFlight(_ flightId: String) async -> Result<Void, FlightError> {
         guard isFlightSaved(flightId) else {
@@ -626,38 +434,6 @@ class FlightStore: ObservableObject {
         saveSearchHistory()
     }
     
-    // MARK: - Flight Status Refresh
-    
-    @MainActor
-    func refreshFlightStatuses() async {
-        setLoading(true)
-        
-        do {
-            for (index, flight) in flights.enumerated() {
-                // Try to get updated flight data from API
-                do {
-                    let updatedFlights = try await FlightAPIService.shared.searchFlightsByNumber(flight.flightNumber)
-                    if let updatedFlight = updatedFlights.first {
-                        flights[index] = updatedFlight
-                        // Updated flight status
-                    }
-                } catch {
-                    // Failed to refresh flight status
-                    // Continue with other flights even if one fails
-                }
-                
-                // Small delay to avoid overwhelming the API
-                try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            }
-            
-            saveFlights()
-            setLoading(false, success: "Flight statuses updated")
-            
-        } catch {
-            setLoading(false, error: "Failed to refresh flight statuses")
-        }
-    }
-    
     // MARK: - Loading States
     
     private func setLoading(_ loading: Bool, success message: String? = nil, error: String? = nil) {
@@ -764,23 +540,45 @@ class FlightStore: ObservableObject {
     }
     
     private func setupCloudKitSync() {
-        // Check CloudKit availability on app launch
-        Task {
-            let available = await cloudKitService.checkAccountStatus()
-            await MainActor.run {
-                cloudKitAvailable = available
-                if available {
-                    // CloudKit available - auto-sync enabled
-                } else {
-                    // CloudKit not available - using local storage only
-                }
+        // iCloud is often not ready at launch - the user may sign in afterwards,
+        // or switch accounts while the app is running. Availability must be
+        // re-checked on every account change rather than latched at init, or the
+        // flight list stays empty for the whole session.
+        NotificationCenter.default.publisher(for: .CKAccountChanged)
+            .sink { [weak self] _ in
+                Task { await self?.refreshCloudKitAvailability() }
             }
-            
-            // Perform initial sync if CloudKit is available
-            if available {
-                await performInitialSync()
-            }
+            .store(in: &cancellables)
+
+        Task { await refreshCloudKitAvailability() }
+    }
+
+    /// Re-checks iCloud availability, merging cloud flights the first time the
+    /// account becomes usable. Safe to call repeatedly - the merge only runs on
+    /// the unavailable -> available transition.
+    func refreshCloudKitAvailability() async {
+        let available = await cloudKitService.checkAccountStatus()
+
+        let becameAvailable = await MainActor.run { () -> Bool in
+            let wasAvailable = cloudKitAvailable
+            cloudKitAvailable = available
+            return available && !wasAvailable
         }
+
+        if becameAvailable {
+            await performInitialSync()
+        }
+    }
+
+    /// Called when the app returns to the foreground. Picks up flights added on
+    /// another device, and recovers the case where iCloud was unavailable at
+    /// launch and the account has since become usable.
+    func syncIfNeeded() async {
+        let available = await cloudKitService.checkAccountStatus()
+        await MainActor.run { cloudKitAvailable = available }
+
+        guard available else { return }
+        await performInitialSync()
     }
     
     // MARK: - CloudKit Sync Methods
@@ -883,151 +681,6 @@ class FlightStore: ObservableObject {
         isSyncing = false
     }
     
-    // MARK: - API Integration Methods
-    
-    func searchFlights(query: String) async -> Result<[Flight], FlightError> {
-        await MainActor.run {
-            setLoading(true)
-            addToSearchHistory(query)
-        }
-        
-        do {
-            let flights: [Flight]
-            
-            // Determine if it's a flight number or route search
-            if query.contains("to") || query.contains("-") {
-                // Route search (e.g., "LAX to JFK" or "LAX-JFK")
-                let components = query.uppercased()
-                    .replacingOccurrences(of: " TO ", with: "-")
-                    .split(separator: "-")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                
-                if components.count == 2 {
-                    flights = try await FlightAPIService.shared.searchFlightsByRoute(components[0], components[1])
-                } else {
-                    flights = try await FlightAPIService.shared.searchFlightsByNumber(query)
-                }
-            } else {
-                // Flight number search
-                flights = try await FlightAPIService.shared.searchFlightsByNumber(query)
-            }
-            
-            await MainActor.run {
-                setLoading(false)
-            }
-            return .success(flights)
-        } catch {
-            await MainActor.run {
-                setLoading(false, error: "Search failed: \(error.localizedDescription)")
-            }
-            return .failure(.searchFailed)
-        }
-    }
-    
-    @MainActor
-    func refreshFlightData() async {
-        setLoading(true)
-        
-        do {
-            // Refresh each saved flight by re-searching for it
-            var refreshedFlights: [Flight] = []
-            
-            for flight in flights {
-                do {
-                    let searchResults = try await FlightAPIService.shared.searchFlightsByNumber(flight.flightNumber)
-                    
-                    // Find the matching flight and update it
-                    if let updatedFlight = searchResults.first(where: { $0.flightNumber == flight.flightNumber }) {
-                        // Preserve the original ID to maintain consistency
-                        let preservedFlight = Flight(
-                            id: flight.id,
-                            flightNumber: updatedFlight.flightNumber,
-                            airline: updatedFlight.airline,
-                            departure: updatedFlight.departure,
-                            arrival: updatedFlight.arrival,
-                            status: updatedFlight.status,
-                            aircraft: updatedFlight.aircraft,
-                            currentPosition: updatedFlight.currentPosition,
-                            progress: updatedFlight.progress,
-                            flightDate: updatedFlight.flightDate,
-                            dataSource: updatedFlight.dataSource,
-                            date: flight.date,
-                            departureDate: flight.departureDate,
-                            arrivalDate: flight.arrivalDate,
-                            flightDuration: flight.flightDuration,
-                            isUserConfirmed: flight.isUserConfirmed,
-                            userConfirmedFields: flight.userConfirmedFields
-                        )
-                        refreshedFlights.append(preservedFlight)
-                    } else {
-                        // Keep original flight if no update found
-                        refreshedFlights.append(flight)
-                    }
-                } catch {
-                    // Keep original flight if refresh fails
-                    refreshedFlights.append(flight)
-                }
-            }
-            
-            flights = refreshedFlights
-            setLoading(false, success: "Flight data refreshed")
-        } catch {
-            setLoading(false, error: "Refresh failed")
-        }
-    }
-    
-    private func generateMockSearchResults(for query: String) -> [Flight] {
-        // This would be replaced with actual API calls
-        let mockFlights = [
-            Flight(
-                id: "search-\(query)-1",
-                flightNumber: query.uppercased().contains("AA") ? "AA\(Int.random(in: 100...999))" : "\(query.prefix(2).uppercased())\(Int.random(in: 100...999))",
-                airline: "Mock Airline",
-                departure: Airport(
-                    airport: "Mock Departure Airport",
-                    code: "LAX",
-                    city: "Los Angeles",
-                    latitude: 33.9425,
-                    longitude: -118.4081,
-                    time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600)),
-                    actualTime: nil,
-                    terminal: "2",
-                    gate: "A\(Int.random(in: 1...50))",
-                    delay: nil
-                ),
-                arrival: Airport(
-                    airport: "Mock Arrival Airport",
-                    code: "JFK",
-                    city: "New York",
-                    latitude: 40.6413,
-                    longitude: -73.7781,
-                    time: ISO8601DateFormatter().string(from: Date().addingTimeInterval(14400)),
-                    actualTime: nil,
-                    terminal: "4",
-                    gate: "B\(Int.random(in: 1...30))",
-                    delay: nil
-                ),
-                status: FlightStatus.allCases.randomElement() ?? .boarding,
-                aircraft: Aircraft(
-                    type: "Boeing 737",
-                    registration: "N\(Int.random(in: 100...999))XX",
-                    icao24: nil
-                ),
-                currentPosition: nil,
-                progress: Double.random(in: 0...1),
-                flightDate: ISO8601DateFormatter().string(from: Date()),
-                dataSource: .aviationstack,
-                date: Flight.extractFlightDate(from: ISO8601DateFormatter().string(from: Date().addingTimeInterval(3600))),
-                departureDate: nil,
-                arrivalDate: nil,
-                flightDuration: nil,
-                isUserConfirmed: false,
-                userConfirmedFields: .none
-            )
-        ]
-        
-        return mockFlights
-    }
 }
 
 // MARK: - Flight Error Types
@@ -1036,10 +689,9 @@ enum FlightError: LocalizedError {
     case flightNotFound
     case saveFailed
     case removeFailed
-    case searchFailed
     case networkError
     case invalidData
-    
+
     var errorDescription: String? {
         switch self {
         case .duplicateFlight:
@@ -1050,8 +702,6 @@ enum FlightError: LocalizedError {
             return "Failed to save flight"
         case .removeFailed:
             return "Failed to remove flight"
-        case .searchFailed:
-            return "Failed to search flights"
         case .networkError:
             return "Network connection error"
         case .invalidData:

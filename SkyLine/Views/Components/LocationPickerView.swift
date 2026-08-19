@@ -2,7 +2,12 @@
 //  LocationPickerView.swift
 //  SkyLine
 //
-//  Interactive map view for selecting travel destinations with draggable pin
+//  Interactive map view for selecting travel destinations with a centre crosshair.
+//
+//  Everything on this screen floats over LIVE map imagery, which has no theme and
+//  no predictable luminance. So every piece of chrome here is glass, exactly as the
+//  globe overlay is: glass samples what is actually behind it, which is the only
+//  treatment that stays legible over a satellite tile, a motorway and a lake.
 //
 
 import SwiftUI
@@ -11,210 +16,60 @@ import MapKit
 struct LocationPickerView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.dismiss) private var dismiss
-    
+
     @StateObject private var locationManager = SkyLineLocationManager()
     @StateObject private var destinationSearchManager = DestinationSearchManager()
-    
+
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var selectedCoordinate: CLLocationCoordinate2D?
     @State private var selectedLocationName = ""
     @State private var searchText = ""
     @State private var showingSearch = false
     @State private var isGettingLocationDetails = false
-    
+
+    @FocusState private var isSearchFocused: Bool
+    @ScaledMetric(relativeTo: .body) private var crosshairSize: CGFloat = 40
+
     let onLocationSelected: (DestinationSuggestion) -> Void
-    
+
     var body: some View {
-        NavigationView {
+        let theme = themeManager.currentTheme
+
+        // NavigationStack, not the deprecated NavigationView: this screen is
+        // presented modally and owns its own bar, and NavigationView splits into a
+        // sidebar on iPad.
+        return NavigationStack {
             ZStack {
-                // Map View
-                ZStack {
-                    Map(position: $cameraPosition) {
-                        // Show user location if available
-                        if let userLocation = locationManager.currentLocation {
-                            Marker("Your Location", coordinate: userLocation.coordinate)
-                                .tint(.blue)
-                        }
-                    }
-                    .onMapCameraChange { context in
-                        // Update selected coordinate as map moves
-                        selectedCoordinate = context.camera.centerCoordinate
-                        if !isGettingLocationDetails {
-                            getLocationName(for: context.camera.centerCoordinate)
-                        }
-                    }
-                    .mapStyle(.standard)
-                    
-                    // Center crosshair for pin placement
-                    Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(themeManager.currentTheme.colors.primary)
-                        .background(
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 30, height: 30)
-                                .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
-                        )
-                }
-                
-                // Search overlay
-                VStack {
-                    // Search bar
-                    HStack {
-                        TextField("Search destinations...", text: $searchText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .onChange(of: searchText) { _, newValue in
-                                destinationSearchManager.search(for: newValue)
-                                showingSearch = !newValue.isEmpty
-                            }
-                        
-                        if showingSearch {
-                            Button("Cancel") {
-                                searchText = ""
-                                showingSearch = false
-                                destinationSearchManager.clearSearch()
-                            }
-                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                        }
-                    }
-                    .padding()
-                    .background(themeManager.currentTheme.colors.background.opacity(0.95))
-                    
-                    // Search results
+                mapLayer
+
+                VStack(spacing: AppSpacing.sm) {
+                    searchBar
+
                     if showingSearch && !destinationSearchManager.searchResults.isEmpty {
-                        VStack(spacing: 0) {
-                            ForEach(Array(destinationSearchManager.searchResults.prefix(5).enumerated()), id: \.element.title) { index, result in
-                                Button {
-                                    selectSearchResult(result)
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(result.title)
-                                                .font(.system(.body, design: .monospaced))
-                                                .foregroundColor(themeManager.currentTheme.colors.text)
-                                                .lineLimit(1)
-                                            
-                                            if !result.subtitle.isEmpty {
-                                                Text(result.subtitle)
-                                                    .font(.system(.caption, design: .monospaced))
-                                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                                    .lineLimit(1)
-                                            }
-                                        }
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: "location")
-                                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                                    }
-                                    .padding()
-                                    .background(themeManager.currentTheme.colors.surface)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                                
-                                if index < min(destinationSearchManager.searchResults.count - 1, 4) {
-                                    Divider()
-                                }
-                            }
-                        }
-                        .background(themeManager.currentTheme.colors.surface)
-                        .cornerRadius(8)
-                        .padding(.horizontal)
-                        .shadow(color: .black.opacity(0.1), radius: 4)
+                        searchResults
                     }
-                    
-                    Spacer()
-                    
-                    // Bottom controls
-                    VStack(spacing: 16) {
-                        // Current location info
-                        if !selectedLocationName.isEmpty {
-                            VStack(spacing: 8) {
-                                Text("Selected Location")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                    .textCase(.uppercase)
-                                
-                                Text(selectedLocationName)
-                                    .font(.system(.body, design: .monospaced))
-                                    .fontWeight(.medium)
-                                    .foregroundColor(themeManager.currentTheme.colors.text)
-                                    .multilineTextAlignment(.center)
-                                    .lineLimit(2)
-                            }
-                            .padding()
-                            .background(themeManager.currentTheme.colors.surface.opacity(0.95))
-                            .cornerRadius(12)
-                        }
-                        
-                        // Action buttons
-                        HStack(spacing: 16) {
-                            // Use current location button
-                            if locationManager.canRequestLocation {
-                                Button {
-                                    useCurrentLocation()
-                                } label: {
-                                    HStack {
-                                        if locationManager.isLoading {
-                                            ProgressView()
-                                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                                .scaleEffect(0.8)
-                                        } else {
-                                            Image(systemName: "location.circle.fill")
-                                        }
-                                        Text("Current")
-                                    }
-                                    .font(.system(.body, design: .monospaced))
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .padding()
-                                    .background(themeManager.currentTheme.colors.primary.opacity(0.8))
-                                    .cornerRadius(8)
-                                }
-                                .disabled(locationManager.isLoading)
-                            }
-                            
-                            // Confirm selection button
-                            Button {
-                                confirmSelection()
-                            } label: {
-                                HStack {
-                                    if isGettingLocationDetails {
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                            .scaleEffect(0.8)
-                                        Text("Processing...")
-                                    } else {
-                                        Image(systemName: "checkmark")
-                                        Text("Select Location")
-                                    }
-                                }
-                                .font(.system(.body, design: .monospaced))
-                                .fontWeight(.medium)
-                                .foregroundColor(.white)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(selectedCoordinate != nil ? themeManager.currentTheme.colors.primary : Color.gray)
-                                .cornerRadius(8)
-                            }
-                            .disabled(selectedCoordinate == nil || isGettingLocationDetails)
-                        }
-                    }
-                    .padding()
+
+                    Spacer(minLength: AppSpacing.md)
+
+                    bottomControls
                 }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.md)
             }
             .navigationTitle("Select Location")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
                         dismiss()
                     }
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.primary)
+                    .tint(theme.colors.primary)
                 }
             }
         }
+        .environment(\.colorScheme, theme.colorScheme)
         .onAppear {
             requestLocationPermissionIfNeeded()
         }
@@ -227,18 +82,181 @@ struct LocationPickerView: View {
             Text(locationManager.permissionMessage)
         }
     }
-    
+
+    // MARK: - Map
+
+    private var mapLayer: some View {
+        let theme = themeManager.currentTheme
+
+        return ZStack {
+            Map(position: $cameraPosition) {
+                // Show user location if available
+                if let userLocation = locationManager.currentLocation {
+                    Marker("Your Location", coordinate: userLocation.coordinate)
+                        .tint(theme.colors.primary)
+                }
+            }
+            .onMapCameraChange { context in
+                // Update selected coordinate as map moves
+                selectedCoordinate = context.camera.centerCoordinate
+                if !isGettingLocationDetails {
+                    getLocationName(for: context.camera.centerCoordinate)
+                }
+            }
+            .mapStyle(.standard)
+            .ignoresSafeArea()
+
+            // Centre crosshair. A white disc with a black shadow — what this used to
+            // be — disappears against a light map tile in either theme. Glass keeps
+            // its edge over whatever the map happens to be showing, and the
+            // Reduce Transparency fallback inside `skylineGlass` gives it an opaque
+            // themed disc rather than nothing at all.
+            Image(systemName: "plus")
+                .font(AppTypography.mono(.callout, weight: .bold))
+                .foregroundStyle(theme.colors.primary)
+                .frame(width: crosshairSize, height: crosshairSize)
+                .skylineGlass(.control, in: Circle(), theme: theme)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    // MARK: - Search
+
+    private var searchBar: some View {
+        let theme = themeManager.currentTheme
+
+        return SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(AppTypography.mono(.callout, weight: .medium))
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityHidden(true)
+
+                TextField("Search destinations…", text: $searchText)
+                    .appFont(.body, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.text)
+                    .tint(theme.colors.primary)
+                    .focused($isSearchFocused)
+                    .submitLabel(.search)
+                    .onChange(of: searchText) { _, newValue in
+                        destinationSearchManager.search(for: newValue)
+                        showingSearch = !newValue.isEmpty
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if showingSearch {
+                    Button("Cancel") {
+                        searchText = ""
+                        showingSearch = false
+                        isSearchFocused = false
+                        destinationSearchManager.clearSearch()
+                    }
+                    .appFont(.verdictLabel, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.primary)
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm + 4)
+            .skylineGlass(
+                .chrome,
+                in: RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous),
+                theme: theme
+            )
+        }
+    }
+
+    private var searchResults: some View {
+        let theme = themeManager.currentTheme
+
+        return VStack(spacing: 0) {
+            ForEach(Array(destinationSearchManager.searchResults.prefix(5).enumerated()), id: \.element.title) { index, result in
+                Button {
+                    selectSearchResult(result)
+                } label: {
+                    DestinationResultRow(title: result.title, subtitle: result.subtitle)
+                }
+                .buttonStyle(.plain)
+
+                if index < min(destinationSearchManager.searchResults.count - 1, 4) {
+                    Rectangle()
+                        .fill(theme.colors.border)
+                        .frame(height: 1)
+                        .padding(.leading, AppSpacing.md)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        // Opaque here, not glass: this panel sits directly on moving map imagery and
+        // holds two lines of small type per row. Glass would let street labels read
+        // straight through the place names.
+        .formFloatingPanel(theme: theme)
+        .accessibilityElement(children: .contain)
+    }
+
+    // MARK: - Bottom Controls
+
+    private var bottomControls: some View {
+        let theme = themeManager.currentTheme
+
+        return SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            VStack(spacing: AppSpacing.sm + 4) {
+                if !selectedLocationName.isEmpty {
+                    VStack(spacing: AppSpacing.xs) {
+                        Text("Selected location".uppercased())
+                            .appFont(.verdictLabel, lineLimit: .exactly(1))
+                            .foregroundStyle(theme.colors.textSecondary)
+
+                        Text(selectedLocationName)
+                            .appFont(.placeName, lineLimit: .exactly(2))
+                            .foregroundStyle(theme.colors.text)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .accessibilityElement(children: .combine)
+                }
+
+                FormPrimaryButton(
+                    title: "Select Location",
+                    systemImage: "checkmark",
+                    busyTitle: "Processing…",
+                    isBusy: isGettingLocationDetails,
+                    isEnabled: selectedCoordinate != nil
+                ) {
+                    confirmSelection()
+                }
+
+                if locationManager.canRequestLocation {
+                    FormSecondaryButton(
+                        title: locationManager.isLoading ? "Locating…" : "Use Current Location",
+                        systemImage: "location.circle.fill"
+                    ) {
+                        useCurrentLocation()
+                    }
+                    .disabled(locationManager.isLoading)
+                }
+            }
+            .padding(AppSpacing.md)
+            .skylineGlass(
+                .chrome,
+                in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous),
+                theme: theme
+            )
+        }
+    }
+
     // MARK: - Helper Functions
-    
+
     private func requestLocationPermissionIfNeeded() {
         if locationManager.authorizationStatus == .notDetermined {
             locationManager.requestPermission()
         }
     }
-    
+
     private func useCurrentLocation() {
         locationManager.requestLocation()
-        
+
         if let currentLocation = locationManager.currentLocation {
             selectedCoordinate = currentLocation.coordinate
             cameraPosition = .region(MKCoordinateRegion(
@@ -249,7 +267,7 @@ struct LocationPickerView: View {
             getLocationName(for: currentLocation.coordinate)
         }
     }
-    
+
     private func selectSearchResult(_ result: MKLocalSearchCompletion) {
         Task {
             if let destination = await destinationSearchManager.getLocationDetails(for: result) {
@@ -266,16 +284,17 @@ struct LocationPickerView: View {
                     ))
                     searchText = ""
                     showingSearch = false
+                    isSearchFocused = false
                     destinationSearchManager.clearSearch()
                 }
             }
         }
     }
-    
+
     private func getLocationName(for coordinate: CLLocationCoordinate2D) {
         let geocoder = CLGeocoder()
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        
+
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             DispatchQueue.main.async {
                 if let placemark = placemarks?.first {
@@ -289,23 +308,23 @@ struct LocationPickerView: View {
             }
         }
     }
-    
+
     private func confirmSelection() {
         guard let coordinate = selectedCoordinate else { return }
-        
+
         isGettingLocationDetails = true
-        
+
         let geocoder = CLGeocoder()
         let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        
+
         geocoder.reverseGeocodeLocation(location) { placemarks, error in
             DispatchQueue.main.async {
                 isGettingLocationDetails = false
-                
+
                 if let placemark = placemarks?.first {
                     let city = placemark.locality ?? "Unknown City"
                     let country = placemark.country ?? "Unknown Country"
-                    
+
                     let destination = DestinationSuggestion(
                         city: city,
                         country: country,
@@ -313,7 +332,7 @@ struct LocationPickerView: View {
                         latitude: coordinate.latitude,
                         longitude: coordinate.longitude
                     )
-                    
+
                     onLocationSelected(destination)
                     dismiss()
                 } else {
@@ -325,7 +344,7 @@ struct LocationPickerView: View {
                         latitude: coordinate.latitude,
                         longitude: coordinate.longitude
                     )
-                    
+
                     onLocationSelected(destination)
                     dismiss()
                 }

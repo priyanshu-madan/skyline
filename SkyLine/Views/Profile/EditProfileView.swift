@@ -2,7 +2,7 @@
 //  EditProfileView.swift
 //  SkyLine
 //
-//  View for editing user profile information
+//  View for editing user profile information.
 //
 
 import SwiftUI
@@ -12,6 +12,7 @@ struct EditProfileView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var authService: AuthenticationService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var displayName: String = ""
     @State private var email: String = ""
@@ -21,170 +22,44 @@ struct EditProfileView: View {
     @State private var imageForCropping: UIImage?
     @State private var isSaving = false
 
+    @ScaledMetric(relativeTo: .largeTitle) private var avatarSize: CGFloat = 104
+    @ScaledMetric(relativeTo: .body) private var badgeSize: CGFloat = 34
+
     var body: some View {
-        ZStack {
-            themeManager.currentTheme.colors.background
+        let theme = themeManager.currentTheme
+
+        return ZStack {
+            theme.colors.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Custom Header
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                            .frame(width: 40, height: 40)
-                            .background(
-                                Circle()
-                                    .fill(themeManager.currentTheme.colors.surface.opacity(0.8))
-                                    .overlay(
-                                        Circle()
-                                            .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
-                                    )
-                            )
-                    }
-                    .disabled(isSaving)
-
-                    Spacer()
-
-                    Text("Edit Profile")
-                        .font(.system(size: 20, weight: .bold, design: .monospaced))
-
-                    Spacer()
-
-                    Button {
-                        saveProfile()
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: themeManager.currentTheme.colors.primary))
-                        } else {
-                            Text("Save")
-                                .font(.system(size: 17, weight: .semibold, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.primary)
-                        }
-                    }
-                    .frame(width: 60)
-                    .disabled(isSaving)
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                FormScreenHeader(
+                    title: "Edit Profile",
+                    trailingTitle: "Save",
+                    isTrailingBusy: isSaving,
+                    onBack: { dismiss() },
+                    onTrailing: { saveProfile() }
+                )
+                .disabled(isSaving)
 
                 ScrollView {
-                    VStack(spacing: 20) {
-                        // Profile Picture with Photo Picker
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            ZStack(alignment: .bottomTrailing) {
-                                if let profileImage = profileImage {
-                                    // Display uploaded image
-                                    Image(uiImage: profileImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 96, height: 96)
-                                        .clipShape(Circle())
-                                } else {
-                                    // Display initials
-                                    Circle()
-                                        .fill(themeManager.currentTheme.colors.primary)
-                                        .frame(width: 96, height: 96)
-                                        .overlay(
-                                            Text(authService.authenticationState.user?.initials ?? "SU")
-                                                .font(.system(size: 40, weight: .medium, design: .monospaced))
-                                                .foregroundColor(.white)
-                                        )
-                                }
-
-                                // Camera icon badge
-                                ZStack {
-                                    Circle()
-                                        .fill(themeManager.currentTheme.colors.primary)
-                                        .frame(width: 32, height: 32)
-
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.white)
-                                }
-                                .offset(x: 2, y: 2)
-                            }
-                        }
-                        .onChange(of: selectedPhoto) { _, newValue in
-                            Task {
-                                if let data = try? await newValue?.loadTransferable(type: Data.self),
-                                   let image = UIImage(data: data) {
-                                    imageForCropping = image
-                                    showingImageCropper = true
-                                }
-                            }
-                        }
-
-                        // Name Field
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Name")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                            TextField("Your name", text: $displayName)
-                                .font(.system(size: 17, design: .monospaced))
-                                .padding(16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .fill(themeManager.currentTheme.colors.surface.opacity(0.6))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
-                                )
-                        }
-
-                        // Email Field (Read-only)
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Email")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                            Text(email.isEmpty ? "No email" : email)
-                                .font(.system(size: 17, design: .monospaced))
-                                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .fill(themeManager.currentTheme.colors.surface.opacity(0.3))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(themeManager.currentTheme.colors.border.opacity(0.3), lineWidth: 1)
-                                )
-                        }
+                    VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                        avatarPicker
+                        identitySection
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.bottom, AppSpacing.xxl)
                 }
+                .scrollDismissesKeyboard(.interactively)
+                .skylineScrollEdges()
             }
 
-            // Loading overlay
             if isSaving {
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea()
-
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.5)
-
-                    Text("Saving...")
-                        .font(.system(size: 16, weight: .medium, design: .monospaced))
-                        .foregroundColor(.white)
-                }
-                .padding(32)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(themeManager.currentTheme.colors.surface.opacity(0.95))
-                )
+                savingOverlay
             }
         }
+        .environment(\.colorScheme, theme.colorScheme)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: isSaving)
         .onAppear {
             if let user = authService.authenticationState.user {
                 displayName = user.displayName
@@ -212,6 +87,123 @@ struct EditProfileView: View {
                 .environmentObject(themeManager)
             }
         }
+    }
+
+    // MARK: - Avatar
+
+    private var avatarPicker: some View {
+        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+            ZStack(alignment: .bottomTrailing) {
+                avatar
+                cameraBadge
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(Text("Profile photo"))
+        .accessibilityHint(Text("Choose a new photo"))
+        .onChange(of: selectedPhoto) { _, newValue in
+            Task {
+                if let data = try? await newValue?.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    imageForCropping = image
+                    showingImageCropper = true
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        let theme = themeManager.currentTheme
+
+        if let profileImage = profileImage {
+            Image(uiImage: profileImage)
+                .resizable()
+                .scaledToFill()
+                .frame(width: avatarSize, height: avatarSize)
+                .clipShape(Circle())
+                .overlay(Circle().stroke(theme.colors.border, lineWidth: 1))
+        } else {
+            // Initials used to be white on a `primary` disc. `primary` is a LIGHT
+            // ink in the dark theme (0x4DA3FF), so that measured 2.62:1 — the worst
+            // contrast in the app. Inverting it — `primary` ink on a `surface` disc
+            // inside a `primary` ring — reads at 5.9:1 in light and 7.3:1 in dark,
+            // and keeps the accent doing the identifying.
+            Circle()
+                .fill(theme.colors.surface)
+                .frame(width: avatarSize, height: avatarSize)
+                .overlay(
+                    Text(authService.authenticationState.user?.initials ?? "SU")
+                        .appFont(.title, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.primary)
+                        .padding(AppSpacing.md)
+                )
+                .overlay(Circle().stroke(theme.colors.primary, lineWidth: 2))
+        }
+    }
+
+    private var cameraBadge: some View {
+        let theme = themeManager.currentTheme
+
+        // Opaque, and ringed in the page colour so it cuts cleanly out of whatever
+        // photo sits behind it — a photograph has no theme to borrow contrast from.
+        return Image(systemName: "camera.fill")
+            .font(AppTypography.mono(.caption, weight: .semibold))
+            .foregroundStyle(theme.colors.primary)
+            .frame(width: badgeSize, height: badgeSize)
+            .background(Circle().fill(theme.colors.surface))
+            .overlay(Circle().stroke(theme.colors.background, lineWidth: 2))
+            .accessibilityHidden(true)
+    }
+
+    // MARK: - Fields
+
+    private var identitySection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            FormSectionHeader(title: "Identity")
+
+            FormField(
+                title: "Name",
+                text: $displayName,
+                placeholder: "Your name",
+                icon: "person"
+            )
+
+            // Read-only, and it says so structurally: a `background` fill instead of
+            // a `surface` one, so the field recedes to the page rather than
+            // pretending to be a slot you could type into.
+            FormReadOnlyRow(
+                title: "Email",
+                value: email.isEmpty ? "No email" : email,
+                icon: "envelope"
+            )
+        }
+    }
+
+    // MARK: - Saving Overlay
+
+    private var savingOverlay: some View {
+        let theme = themeManager.currentTheme
+
+        return ZStack {
+            theme.colors.scrim
+                .ignoresSafeArea()
+
+            VStack(spacing: AppSpacing.md) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(theme.colors.primary)
+
+                Text("Saving…")
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.text)
+            }
+            .padding(AppSpacing.xl)
+            .skylineGlassCard(theme: theme)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Saving your profile"))
     }
 
     private func saveProfile() {

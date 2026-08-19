@@ -40,7 +40,7 @@ struct AuthenticationView: View {
                             
                             Image(systemName: "airplane")
                                 .font(.system(size: 60, weight: .medium, design: .monospaced))
-                                .foregroundColor(.white)
+                                .foregroundColor(themeManager.currentTheme.colors.onAccent)
                         }
                         .shadow(color: themeManager.currentTheme.colors.primary.opacity(0.3), radius: 20, x: 0, y: 10)
                         

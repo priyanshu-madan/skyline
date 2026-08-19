@@ -223,20 +223,25 @@ enum FlightStatus: String, Codable, CaseIterable {
 
 // MARK: - Data Source Enum
 enum DataSource: String, Codable {
-    case opensky = "opensky"
-    case aviationstack = "aviationstack"
     case combined = "combined"
     case pkpass = "pkpass"
     case manual = "manual"
-    
+
     var displayName: String {
         switch self {
-        case .opensky: return "OpenSky Network"
-        case .aviationstack: return "AviationStack"
         case .combined: return "Combined Sources"
         case .pkpass: return "Apple Wallet"
         case .manual: return "Manual Entry"
         }
+    }
+
+    // Backward-compat: old persisted flights may have rawValue
+    // "aviationstack" or "opensky" from removed APIs. Map any unknown
+    // raw value to .manual instead of failing the decode (which would
+    // make the entire Flight unreadable).
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = DataSource(rawValue: raw) ?? .manual
     }
 }
 
@@ -321,7 +326,7 @@ extension Flight {
         currentPosition: nil,
         progress: 0.0,
         flightDate: ISO8601DateFormatter().string(from: Date()),
-        dataSource: .aviationstack,
+        dataSource: .manual,
         date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date(),
         departureDate: Calendar.current.date(byAdding: .day, value: 1, to: Date()),
         arrivalDate: Calendar.current.date(byAdding: .day, value: 1, to: Date()),

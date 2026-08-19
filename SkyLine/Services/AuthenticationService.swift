@@ -65,6 +65,17 @@ class AuthenticationService: NSObject, ObservableObject {
     // MARK: - Authentication Check
     
     private func checkExistingAuthentication() {
+        #if DEBUG
+        if DebugFlags.bypassAuthentication {
+            DebugFlags.announceIfActive()
+            let user = User.debugUser
+            DispatchQueue.main.async {
+                self.authenticationState = .authenticated(user)
+            }
+            return
+        }
+        #endif
+
         print("🔍 AuthService: Checking existing authentication...")
         print("🔍 AuthService: UserDefaults key being checked: '\(userKey)'")
         

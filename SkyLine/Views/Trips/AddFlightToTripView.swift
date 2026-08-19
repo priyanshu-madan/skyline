@@ -387,7 +387,7 @@ struct AddFlightToTripView: View {
                      selectedOption == .existingTrip ? "Add to Trip" : "Create Trip with Flight")
                     .font(.system(size: 16, weight: .bold))
             }
-            .foregroundColor(.white)
+            .foregroundColor(themeManager.currentTheme.colors.onAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 56)
             .background(
