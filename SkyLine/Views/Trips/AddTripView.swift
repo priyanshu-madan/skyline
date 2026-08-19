@@ -29,7 +29,6 @@ struct AddTripView: View {
     
     @State private var isCreating = false
     @State private var error: String?
-    @State private var showingUploadView = false
     @State private var showingMapActions = false
 
     @FocusState private var isDestinationFieldFocused: Bool
@@ -220,12 +219,6 @@ struct AddTripView: View {
                 .padding(.bottom, 40)
             }
         }
-        }
-        .sheet(isPresented: $showingUploadView) {
-            UploadItineraryView { parsedItinerary in
-                handleImportedItinerary(parsedItinerary)
-            }
-            .environmentObject(themeManager)
         }
         .confirmationDialog(
             "View on Maps",
@@ -444,66 +437,6 @@ struct AddTripView: View {
                 case .success:
                     dismiss()
                 case .failure(let tripError):
-                    error = tripError.localizedDescription
-                }
-            }
-        }
-    }
-    
-    private func handleImportedItinerary(_ parsedItinerary: ParsedItinerary) {
-        // Pre-fill form with imported data
-        if let tripTitle = parsedItinerary.metadata.tripTitle {
-            title = tripTitle
-        }
-        
-        if let destination = parsedItinerary.metadata.destination {
-            self.destination = destination
-        }
-        
-        if let startDate = parsedItinerary.metadata.estimatedStartDate {
-            self.startDate = startDate
-        }
-        
-        if let endDate = parsedItinerary.metadata.estimatedEndDate {
-            self.endDate = endDate
-        }
-        
-        // Set description to indicate import
-        description = "Itinerary imported with \(parsedItinerary.items.count) activities"
-        
-        // Create the trip with imported data
-        createTripFromItinerary(parsedItinerary)
-    }
-    
-    private func createTripFromItinerary(_ parsedItinerary: ParsedItinerary) {
-        guard let suggestedTrip = parsedItinerary.suggestTrip() else {
-            error = "Unable to create trip from imported data"
-            return
-        }
-        
-        isCreating = true
-        error = nil
-        
-        Task {
-            let result = await tripStore.addTrip(suggestedTrip)
-            
-            switch result {
-            case .success:
-                // Add all itinerary items as trip entries
-                let tripEntries = parsedItinerary.toTripEntries(tripId: suggestedTrip.id)
-                
-                for entry in tripEntries {
-                    await tripStore.addEntry(entry)
-                }
-                
-                await MainActor.run {
-                    isCreating = false
-                    dismiss()
-                }
-                
-            case .failure(let tripError):
-                await MainActor.run {
-                    isCreating = false
                     error = tripError.localizedDescription
                 }
             }

@@ -81,3 +81,5 @@ SkyLine/Info-Private.plist
 
 # Local API key files (add your specific filename here if different)
 # SkyLine/Info-Local.plist
+# Claude Code local state
+.claude/

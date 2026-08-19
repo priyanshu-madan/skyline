@@ -11,9 +11,6 @@ import MapKit
 enum PresentedSheet: Identifiable {
     case addEntry
     case editEntry(TripEntry)
-    case uploadItinerary
-    case addEntryMenu
-    case askAI
     case moveToRegion(TripEntry)
 
     var id: String {
@@ -22,12 +19,6 @@ enum PresentedSheet: Identifiable {
             return "addEntry"
         case .editEntry(let entry):
             return "editEntry_\(entry.id)"
-        case .uploadItinerary:
-            return "uploadItinerary"
-        case .addEntryMenu:
-            return "addEntryMenu"
-        case .askAI:
-            return "askAI"
         case .moveToRegion(let entry):
             return "moveToRegion_\(entry.id)"
         }
@@ -38,7 +29,6 @@ struct TripDetailView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
     @EnvironmentObject var flightStore: FlightStore
-    @StateObject private var aiService = AIItineraryService.shared
     @Environment(\.dismiss) private var dismiss
 
     let trip: Trip
@@ -136,7 +126,7 @@ struct TripDetailView: View {
 
                             // Timeline content
                             if entries.isEmpty {
-                                EmptyTimelineView(onAddEntry: { presentedSheet = .addEntryMenu })
+                                EmptyTimelineView(onAddEntry: { presentedSheet = .addEntry })
                             } else {
                                 if hasRegions {
                                     // Region-based timeline
@@ -189,7 +179,7 @@ struct TripDetailView: View {
                             Spacer()
 
                             Button {
-                                presentedSheet = .addEntryMenu
+                                presentedSheet = .addEntry
                             } label: {
                                 Image(systemName: "plus")
                                     .font(.system(.title2, design: .monospaced))
@@ -267,33 +257,6 @@ struct TripDetailView: View {
                 EditEntryView(entry: entry)
                     .environmentObject(themeManager)
                     .environmentObject(tripStore)
-            case .uploadItinerary:
-                UploadItineraryView { parsedItinerary in
-                    handleProcessedItinerary(parsedItinerary)
-                }
-                .environmentObject(themeManager)
-            case .addEntryMenu:
-                AddEntryMenuView(trip: trip) { option in
-                    presentedSheet = nil
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        switch option {
-                        case .manual:
-                            presentedSheet = .addEntry
-                        case .importFiles:
-                            presentedSheet = .uploadItinerary
-                        case .askAI:
-                            presentedSheet = .askAI
-                        }
-                    }
-                }
-                .environmentObject(themeManager)
-            case .askAI:
-                AskAIPlannerView(trip: trip) { activity in
-                    handleStreamingActivity(activity)
-                }
-                .environmentObject(themeManager)
-                .environmentObject(tripStore)
             case .moveToRegion(let entry):
                 RegionPickerView(
                     entry: entry,
@@ -337,45 +300,6 @@ struct TripDetailView: View {
     }
     
     // MARK: - Helper Methods
-    
-    private func handleStreamingActivity(_ activity: ItineraryItem) {
-        Task {
-            // Convert single activity to preview trip entry
-            let entry = activity.toTripEntry(tripId: trip.id, isPreview: true)
-
-            // Add to trip store - TripStore is @ObservableObject so view will update automatically
-            let result = await tripStore.addEntry(entry)
-
-            if case .failure(let error) = result {
-                print("Failed to add streaming activity: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func handleProcessedItinerary(_ parsedItinerary: ParsedItinerary) {
-        Task {
-            do {
-                // Convert all items to PREVIEW trip entries
-                let tripEntries = parsedItinerary.toTripEntries(tripId: trip.id, isPreview: true)
-
-                // Add each preview entry to the trip
-                for entry in tripEntries {
-                    let result = await tripStore.addEntry(entry)
-                    if case .failure(let error) = result {
-                        print("Failed to add preview entry: \(error.localizedDescription)")
-                        return
-                    }
-                }
-
-                await MainActor.run {
-                    presentedSheet = nil
-                }
-
-            } catch {
-                print("Failed to add entries: \(error.localizedDescription)")
-            }
-        }
-    }
     
     // MARK: - Preview Action Bar
 
@@ -427,67 +351,6 @@ struct TripDetailView: View {
     }
 
     // MARK: - AI Generation Loading Overlay
-
-    private var aiGenerationLoadingOverlay: some View {
-        ZStack {
-            // Semi-transparent background
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-
-            // Loading card
-            VStack(spacing: 24) {
-                // Animated sparkles
-                ZStack {
-                    ForEach(0..<3, id: \.self) { index in
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 40))
-                            .foregroundColor(themeManager.currentTheme.colors.primary.opacity(0.8))
-                            .rotationEffect(.degrees(Double(index) * 120))
-                            .scaleEffect(1.0 + Double(index) * 0.1)
-                    }
-                }
-                .frame(height: 60)
-
-                VStack(spacing: 12) {
-                    Text("Creating Your Itinerary")
-                        .font(.system(.title3, design: .rounded, weight: .bold))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-
-                    Text(aiService.currentStatus)
-                        .font(.system(.body, design: .rounded))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
-
-                    // Progress bar
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(themeManager.currentTheme.colors.surface)
-                                .frame(height: 8)
-
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(themeManager.currentTheme.colors.primary)
-                                .frame(width: geometry.size.width * aiService.processingProgress, height: 8)
-                                .animation(.easeInOut, value: aiService.processingProgress)
-                        }
-                    }
-                    .frame(height: 8)
-                }
-            }
-            .padding(32)
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(themeManager.currentTheme.colors.background)
-            )
-            .shadow(
-                color: Color.black.opacity(0.2),
-                radius: 20,
-                x: 0,
-                y: 10
-            )
-            .padding(.horizontal, 40)
-        }
-    }
 
     private func acceptPreviews() {
         Task {
@@ -2003,158 +1866,6 @@ struct EntryDetailView: View {
 
 // MARK: - Add Entry Menu View
 
-enum AddEntryOption {
-    case manual
-    case importFiles
-    case askAI
-    
-    var title: String {
-        switch self {
-        case .manual: return "Manual Entry"
-        case .importFiles: return "Import from Files"
-        case .askAI: return "Ask AI to Plan"
-        }
-    }
-    
-    var subtitle: String {
-        switch self {
-        case .manual: return "Add activities manually"
-        case .importFiles: return "Upload images or documents"
-        case .askAI: return "Let AI create your itinerary"
-        }
-    }
-    
-    var icon: String {
-        switch self {
-        case .manual: return "pencil"
-        case .importFiles: return "doc.text.magnifyingglass"
-        case .askAI: return "wand.and.stars"
-        }
-    }
-    
-    var isEnabled: Bool {
-        switch self {
-        case .manual, .importFiles, .askAI: return true
-        }
-    }
-}
-
-struct AddEntryMenuView: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    @Environment(\.dismiss) private var dismiss
-    
-    let trip: Trip
-    let onSelection: (AddEntryOption) -> Void
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(themeManager.currentTheme.colors.primary)
-                    
-                    Text("Add to Trip")
-                        .font(.system(.title2, design: .rounded, weight: .bold))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                    
-                    Text("Choose how you'd like to add activities to \"\(trip.title)\"")
-                        .font(.system(.body, design: .rounded))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 20)
-                
-                // Options
-                VStack(spacing: 16) {
-                    ForEach([AddEntryOption.manual, .importFiles, .askAI], id: \.title) { option in
-                        AddEntryOptionButton(
-                            option: option,
-                            onTap: {
-                                if option.isEnabled {
-                                    onSelection(option)
-                                }
-                            }
-                        )
-                    }
-                }
-                
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-            .navigationTitle("Add Entry")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-struct AddEntryOptionButton: View {
-    @EnvironmentObject var themeManager: ThemeManager
-    
-    let option: AddEntryOption
-    let onTap: () -> Void
-    
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 16) {
-                Image(systemName: option.icon)
-                    .font(.system(size: 24))
-                    .foregroundColor(option.isEnabled ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
-                    .frame(width: 40)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(option.title)
-                            .font(.system(.headline, design: .rounded, weight: .semibold))
-                            .foregroundColor(option.isEnabled ? themeManager.currentTheme.colors.text : themeManager.currentTheme.colors.textSecondary)
-                        
-                        if !option.isEnabled {
-                            Text("Coming Soon")
-                                .font(.system(.caption, design: .rounded, weight: .medium))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(themeManager.currentTheme.colors.primary)
-                                .cornerRadius(4)
-                        }
-                    }
-                    
-                    Text(option.subtitle)
-                        .font(.system(.body, design: .rounded))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.leading)
-                }
-                
-                Spacer()
-                
-                if option.isEnabled {
-                    Image(systemName: "chevron.right")
-                        .font(.system(.body, design: .rounded, weight: .medium))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                }
-            }
-            .padding()
-            .background(option.isEnabled ? themeManager.currentTheme.colors.surface : themeManager.currentTheme.colors.surface.opacity(0.5))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(option.isEnabled ? themeManager.currentTheme.colors.border : themeManager.currentTheme.colors.border.opacity(0.5), lineWidth: 1)
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(!option.isEnabled)
-    }
-}
-
-// MARK: - Numbered Marker View
 struct NumberedMarkerView: View {
     let number: Int
     let color: Color
