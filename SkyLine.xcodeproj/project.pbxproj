@@ -56,6 +56,8 @@
 		FF03AC0B3E7B48D8BBFCCFFD /* RouteCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46212D90C2D741E181908E6A /* RouteCache.swift */; };
 		2C4B658A05472E807D5BBD73 /* DebugFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */; };
 		0BBFA302FEB3EA724561A581 /* CompactFlightRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */; };
+		D3FCEB91414EF56038AA6595 /* HarnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 696E3BC857B56B570F717948 /* HarnessTests.swift */; };
+		6364701C562554954E5DBF3E /* LaunchSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A01E9C11979D88055E2188C /* LaunchSmokeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -130,6 +132,8 @@
 		CCE42A62B909487098B269AA /* countries.geojson */ = {isa = PBXFileReference; lastKnownFileType = text; path = countries.geojson; sourceTree = "<group>"; };
 		115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugFlags.swift; path = "SkyLine/Configuration/DebugFlags.swift"; sourceTree = SOURCE_ROOT; };
 		792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompactFlightRowView.swift; path = "SkyLine/Views/Components/CompactFlightRowView.swift"; sourceTree = SOURCE_ROOT; };
+		696E3BC857B56B570F717948 /* HarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HarnessTests.swift; path = "SkyLineTests/HarnessTests.swift"; sourceTree = SOURCE_ROOT; };
+		2A01E9C11979D88055E2188C /* LaunchSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LaunchSmokeTests.swift; path = "SkyLineUITests/LaunchSmokeTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -183,6 +187,8 @@
 				A93C59A82E5B9C5200266D7E /* SkyLineUITests.xctest */,
 				EF630F429EC7EBB00A16BAF8 /* Configuration */,
 				3AF6B2E58B902204FB07E839 /* Views */,
+				62D01A1F133368092DBE53D9 /* SkyLineTests */,
+				430B7DDE90948AD3731BFA05 /* SkyLineUITests */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -207,6 +213,8 @@
 				A93C59972E5B9C5200266D7E /* Preview Content */,
 				115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */,
 				5263CB55E875E7AD4C3C72E6 /* Components */,
+				696E3BC857B56B570F717948 /* HarnessTests.swift */,
+				2A01E9C11979D88055E2188C /* LaunchSmokeTests.swift */,
 			);
 			path = SkyLine;
 			sourceTree = "<group>";
@@ -351,6 +359,20 @@
 			children = (
 			);
 			path = Components;
+			sourceTree = "<group>";
+		};
+		62D01A1F133368092DBE53D9 /* SkyLineTests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = SkyLineTests;
+			sourceTree = "<group>";
+		};
+		430B7DDE90948AD3731BFA05 /* SkyLineUITests */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = SkyLineUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -541,6 +563,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D3FCEB91414EF56038AA6595 /* HarnessTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -548,6 +571,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6364701C562554954E5DBF3E /* LaunchSmokeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
