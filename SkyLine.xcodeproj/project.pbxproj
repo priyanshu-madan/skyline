@@ -61,6 +61,8 @@
 		A99F90F12E651D2B00BE96FE /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90F02E651D2B00BE96FE /* User.swift */; };
 		A99F90F32E662B0700BE96FE /* SharedAirportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99F90F22E662B0700BE96FE /* SharedAirportService.swift */; };
 		FF03AC0B3E7B48D8BBFCCFFD /* RouteCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46212D90C2D741E181908E6A /* RouteCache.swift */; };
+		2C4B658A05472E807D5BBD73 /* DebugFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = 115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */; };
+		0BBFA302FEB3EA724561A581 /* CompactFlightRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -140,6 +142,8 @@
 		A99F90F02E651D2B00BE96FE /* User.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		A99F90F22E662B0700BE96FE /* SharedAirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SharedAirportService.swift; sourceTree = "<group>"; };
 		CCE42A62B909487098B269AA /* countries.geojson */ = {isa = PBXFileReference; lastKnownFileType = text; path = countries.geojson; sourceTree = "<group>"; };
+		115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugFlags.swift; path = "SkyLine/Configuration/DebugFlags.swift"; sourceTree = SOURCE_ROOT; };
+		792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompactFlightRowView.swift; path = "SkyLine/Views/Components/CompactFlightRowView.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +195,8 @@
 				A93C598E2E5B9C4F00266D7E /* SkyLine.app */,
 				A93C599E2E5B9C5200266D7E /* SkyLineTests.xctest */,
 				A93C59A82E5B9C5200266D7E /* SkyLineUITests.xctest */,
+				EF630F429EC7EBB00A16BAF8 /* Configuration */,
+				3AF6B2E58B902204FB07E839 /* Views */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -213,6 +219,8 @@
 				A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */,
 				A93C59932E5B9C4F00266D7E /* ContentView.swift */,
 				A93C59972E5B9C5200266D7E /* Preview Content */,
+				115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */,
+				5263CB55E875E7AD4C3C72E6 /* Components */,
 			);
 			path = SkyLine;
 			sourceTree = "<group>";
@@ -221,6 +229,7 @@
 			isa = PBXGroup;
 			children = (
 				A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */,
+				792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */,
 			);
 			path = "Preview Content";
 			sourceTree = "<group>";
@@ -342,6 +351,27 @@
 			children = (
 			);
 			path = Fonts;
+			sourceTree = "<group>";
+		};
+		EF630F429EC7EBB00A16BAF8 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		3AF6B2E58B902204FB07E839 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		5263CB55E875E7AD4C3C72E6 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Components;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -530,6 +560,8 @@
 				A94165E02ED375700050BE19 /* ConfigurationService.swift in Sources */,
 				A94165F72EF8C2730050BE19 /* AddFlightToTripView.swift in Sources */,
 				A99F90D22E5BAE8B00BE96FE /* Flight.swift in Sources */,
+				2C4B658A05472E807D5BBD73 /* DebugFlags.swift in Sources */,
+				0BBFA302FEB3EA724561A581 /* CompactFlightRowView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
