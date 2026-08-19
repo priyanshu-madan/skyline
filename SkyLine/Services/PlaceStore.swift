@@ -370,7 +370,15 @@ class PlaceStore: ObservableObject {
                 .filter { $0.name != PlaceSchemaService.schemaInitName }
 
             // Keep anything still queued locally - it is not on the server yet.
-            let unsynced = places.filter { pendingPlaceIds.contains($0.id) && !fetched.contains($0) }
+            //
+            // Matched by ID, not by `contains` on the value. `Place` is
+            // Hashable, so `fetched.contains(local)` compares WHOLE structs: a
+            // place edited offline differs from the server's older copy by name
+            // or updatedAt, so both survived and `places` ended up holding two
+            // entries with the same id. `ForEach` over Identifiable then renders
+            // the row twice.
+            let fetchedIds = Set(fetched.map(\.id))
+            let unsynced = places.filter { pendingPlaceIds.contains($0.id) && !fetchedIds.contains($0.id) }
             places = (fetched + unsynced).sortedByName()
 
             cacheData()
@@ -395,7 +403,9 @@ class PlaceStore: ObservableObject {
                 .compactMap { Visit.fromCKRecord($0) }
                 .filter { $0.placeId != PlaceSchemaService.schemaInitName }
 
-            let unsynced = visits.filter { pendingVisitIds.contains($0.id) && !fetched.contains($0) }
+            // Same ID-based match as fetchPlaces - see the note there.
+            let fetchedIds = Set(fetched.map(\.id))
+            let unsynced = visits.filter { pendingVisitIds.contains($0.id) && !fetchedIds.contains($0.id) }
             visits = (fetched + unsynced).sortedByDateDescending()
 
             cacheData()

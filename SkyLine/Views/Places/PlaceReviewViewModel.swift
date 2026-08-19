@@ -129,6 +129,11 @@ final class PlaceReviewViewModel: ObservableObject {
 
     @Published private(set) var isWriting: Bool = false
 
+    /// Number of persists currently in flight. `isWriting` mirrors `> 0`.
+    private var inFlightWrites: Int = 0 {
+        didSet { isWriting = inFlightWrites > 0 }
+    }
+
     /// Places recorded locally that had no coordinate to pin.
     @Published private(set) var needsLocation: Set<String> = []
 
@@ -397,8 +402,12 @@ final class PlaceReviewViewModel: ObservableObject {
             return
         }
 
-        isWriting = true
-        defer { isWriting = false }
+        // Counted, not boolean. Flicking through the deck starts overlapping
+        // persists, and a plain `defer { isWriting = false }` let the FIRST to
+        // finish clear the flag while later writes were still in flight - so
+        // the indicator claimed the work was done when it was not.
+        inFlightWrites += 1
+        defer { inFlightWrites -= 1 }
 
         let existingBefore = store.existingPlace(matching: candidate)
         let didCreatePlace = existingBefore == nil
