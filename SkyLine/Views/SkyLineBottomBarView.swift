@@ -41,19 +41,40 @@ extension DateFormatter {
 }
 
 /// Tab Enum for SkyLine
+///
+/// Places is the product, so it is first and it is the launch tab. Trips stay
+/// because they group places and hold the dates that drive photo clustering.
+///
+/// Flights folded into Trips: they are metadata about how you got somewhere, not
+/// a thing you keep a log of, and a fourth slot spent on them would have pushed
+/// Places into a corner of the bar. The case survives — the flight detail screen,
+/// the boarding-pass import and `handleFlightSelectedFromTrip` all route through
+/// it — but it no longer owns a slot. It is reached from the Trips header and
+/// from a trip's flight list, and it lights up the Trips slot while showing.
 enum SkyLineTab: String, CaseIterable {
+    case places = "Places"
     case trips = "Trips"
     case flights = "Flights"
     case profile = "Profile"
 
+    /// The tabs that get a slot in the bar. `flights` is deliberately absent.
+    static let barTabs: [SkyLineTab] = [.places, .trips, .profile]
+
+    /// The bar slot that should read as selected while this surface is showing.
+    var barRepresentative: SkyLineTab {
+        self == .flights ? .trips : self
+    }
+
     var symbolImage: String {
         switch self {
+        case .places:
+            return "mappin.and.ellipse"
         case .trips:
             return "suitcase"
         case .flights:
             return "airplane"
         case .profile:
-            return "location.slash"
+            return "person.crop.circle"
         }
     }
 }
@@ -63,7 +84,9 @@ struct SkyLineBottomBarView: View {
     @EnvironmentObject var flightStore: FlightStore
     @EnvironmentObject var authService: AuthenticationService
     @StateObject private var tripStore = TripStore.shared
-    @State private var activeTab: SkyLineTab = .trips
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var tabSelectionNamespace
+    @State private var activeTab: SkyLineTab = .places
     @State private var addTripView: Bool = false
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
@@ -98,12 +121,15 @@ struct SkyLineBottomBarView: View {
             
             VStack(spacing: 0) {
                 TabView(selection: $activeTab) {
+                    IndividualTabView(.places)
+                        .tag(SkyLineTab.places)
+
                     IndividualTabView(.trips)
                         .tag(SkyLineTab.trips)
-                    
+
                     IndividualTabView(.flights)
                         .tag(SkyLineTab.flights)
-                    
+
                     IndividualTabView(.profile)
                         .tag(SkyLineTab.profile)
                 }
@@ -112,6 +138,22 @@ struct SkyLineBottomBarView: View {
                     TabViewHelper()
                 }
                 .compositingGroup()
+                // The bar is hand-rolled (see `CustomTabBar`), but declare the
+                // system behaviour too so chrome gets out of the way of a scroll
+                // and so this comes for free if the bar ever moves to `Tab`.
+                .tabBarMinimizeBehavior(.onScrollDown)
+                // The content slab. It used to run to the bottom of the sheet with
+                // the tab bar bolted onto it; now the bar floats below it over the
+                // globe, so the slab needs a bottom edge of its own. Its top corners
+                // are square because the sheet's own 40pt corner radius rounds them.
+                .background {
+                    UnevenRoundedRectangle(
+                        bottomLeadingRadius: AppRadius.sheet,
+                        bottomTrailingRadius: AppRadius.sheet,
+                        style: .continuous
+                    )
+                    .fill(themeManager.currentTheme.colors.background)
+                }
                 .onChange(of: activeTab) { newTab in
                     print("🔄 Tab changed in onChange: \(newTab.rawValue)")
                     onTabChanged?(newTab)
@@ -130,7 +172,6 @@ struct SkyLineBottomBarView: View {
                 CustomTabBar()
                     .padding(.bottom, bottomPadding)
             }
-            .background(themeManager.currentTheme.colors.background)
             .ignoresSafeArea(.all, edges: .bottom)
         }
         .interactiveDismissDisabled()
@@ -179,73 +220,37 @@ struct SkyLineBottomBarView: View {
     /// Individual Tab View
     @ViewBuilder
     func IndividualTabView(_ tab: SkyLineTab) -> some View {
+        if tab == .places {
+            // PlaceLogView owns its own NavigationStack, large title, search field
+            // and scroll view. Wrapping it in the shared ScrollView + header below
+            // would give it two titles and two scroll views, so it is hosted bare.
+            PlaceLogView(onAddTrip: { addTripView = true })
+                .environmentObject(themeManager)
+                .background(.clear)
+                .toolbarVisibility(.hidden, for: .tabBar)
+                .toolbarBackgroundVisibility(.hidden, for: .tabBar)
+        } else {
+            LegacyTabScroll(tab)
+        }
+    }
+
+    /// The Trips / Flights / Profile surfaces, which still share one scroll view
+    /// and one hand-rolled header.
+    @ViewBuilder
+    private func LegacyTabScroll(_ tab: SkyLineTab) -> some View {
         ScrollView(.vertical) {
             VStack {
                 // Remove the header section when viewing flight details
                 if !(tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large)) {
-                    HStack {
-                        if tab == .trips {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Trips")
-                                    .font(.system(.largeTitle, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .foregroundColor(themeManager.currentTheme.colors.text)
-                                
-                                Text("\(tripStore.trips.count) trips documented")
-                                    .font(.system(.body, design: .monospaced))
-                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            }
-                        } else {
-                            Text(tab.rawValue)
-                                .font(.system(.largeTitle, design: .monospaced))
-                                .fontWeight(.bold)
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-                        }
-                        
-                        Spacer(minLength: 0)
-                        
-                        if tab == .flights {
-                            CustomMenuView(style: .glass) {
-                                Image(systemName: "plus")
-                                    .font(.system(.title3, design: .monospaced))
-                                    .fontWeight(.semibold)
-                                    .frame(width: 30, height: 30)
-                            } content: {
-                                BoardingPassMenuContent()
-                                    .environmentObject(themeManager)
-                            }
-                        } else if tab == .trips {
-                            Button {
-                                addTripView.toggle()
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(.title3, design: .monospaced))
-                                    .fontWeight(.semibold)
-                                    .frame(width: 30, height: 30)
-                            }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
-                        } else if tab == .profile {
-                            Button {
-                                showingSettings = true
-                            } label: {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.system(.title3, design: .monospaced))
-                                    .fontWeight(.semibold)
-                                    .frame(width: 30, height: 30)
-                            }
-                            .buttonStyle(.glass)
-                            .buttonBorderShape(.circle)
-                        }
-                    }
-                    .padding(.top, 15)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 15)
+                    TabHeader(tab)
                 }
             }
-            
+
             // Tab-specific content
             switch tab {
+            case .places:
+                // Unreachable: `.places` is routed to PlaceLogView above.
+                EmptyView()
             case .trips:
                 TripsTabContent()
             case .flights:
@@ -272,63 +277,215 @@ struct SkyLineBottomBarView: View {
             }
         }
         .background(.clear)
+        // Softens the fade where content passes under the glass bar. `.soft`
+        // rather than `.hard`: a hairline over the globe reads as a seam.
+        .skylineScrollEdges()
         .toolbarVisibility(.hidden, for: .tabBar)
         .toolbarBackgroundVisibility(.hidden, for: .tabBar)
     }
-    
-    /// Custom Tab Bar with Liquid Glass Effect
+
+    // MARK: - Tab Header
+
+    /// The large-title row for the legacy surfaces. Its trailing controls sit in a
+    /// single `GlassEffectContainer` so adjacent glass circles sample one backdrop
+    /// and merge instead of stacking blurs.
     @ViewBuilder
-    func CustomTabBar() -> some View {
-        HStack(spacing: 0) {
-            ForEach(SkyLineTab.allCases, id: \.rawValue) { tab in
-                VStack(spacing: 6) {
-                    Image(systemName: tab.symbolImage)
-                        .font(.system(.title3, design: .monospaced))
-                        .symbolVariant(.fill)
+    private func TabHeader(_ tab: SkyLineTab) -> some View {
+        let theme = themeManager.currentTheme
 
-                    Text(tab.rawValue)
-                        .font(.system(.caption2, design: .monospaced))
-                        .fontWeight(.semibold)
-                }
-                .foregroundStyle(activeTab == tab ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
-                .frame(maxWidth: .infinity)
-                .contentShape(.rect)
-                .onTapGesture {
-                    print("🎯 Tab tapped: \(tab.rawValue)")
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        activeTab = tab
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            // Flights is a sub-surface of Trips now, so it needs a way back.
+            if tab == .flights {
+                Button {
+                    returnToTrips()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Trips")
                     }
+                    .font(AppTypography.mono(.subheadline, weight: .semibold))
+                    .foregroundStyle(theme.colors.primary)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Back to Trips"))
+            }
 
-                    // Immediately notify the globe of tab change
-                    print("🔄 Immediately calling onTabChanged with: \(tab.rawValue)")
-                    onTabChanged?(tab)
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(tab.rawValue)
+                        .font(AppTypography.titleLarge)
+                        .foregroundColor(theme.colors.text)
 
-                    // Trigger sheet expansion when tab is tapped
-                    onTabSelected?()
+                    if let subtitle = headerSubtitle(for: tab) {
+                        Text(subtitle)
+                            .font(AppTypography.body)
+                            .foregroundColor(theme.colors.textSecondary)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                SkyLineGlassPanel(spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        if tab == .trips {
+                            // Flights lost their tab slot; this is how you reach them.
+                            SkyLineGlassIconButton(
+                                systemImage: "airplane",
+                                accessibilityLabel: "Flights"
+                            ) {
+                                openFlights()
+                            }
+
+                            SkyLineGlassIconButton(
+                                systemImage: "plus",
+                                accessibilityLabel: "Add a trip"
+                            ) {
+                                addTripView.toggle()
+                            }
+                        } else if tab == .flights {
+                            CustomMenuView(style: .glass) {
+                                Image(systemName: "plus")
+                                    .font(AppTypography.mono(.title3, weight: .semibold))
+                                    .frame(width: 30, height: 30)
+                            } content: {
+                                BoardingPassMenuContent()
+                                    .environmentObject(themeManager)
+                            }
+                        } else if tab == .profile {
+                            SkyLineGlassIconButton(
+                                systemImage: "gearshape.fill",
+                                accessibilityLabel: "Settings"
+                            ) {
+                                showingSettings = true
+                            }
+                        }
+                    }
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(themeManager.currentTheme == .light ? .white : themeManager.currentTheme.colors.surface)
-                .shadow(
-                    color: themeManager.currentTheme == .light ? .black.opacity(0.1) : .white.opacity(0.05),
-                    radius: 10,
-                    x: 0,
-                    y: -2
-                )
-        )
+        .padding(.top, 15)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 15)
+    }
+
+    private func headerSubtitle(for tab: SkyLineTab) -> String? {
+        switch tab {
+        case .trips:
+            let count = tripStore.trips.count
+            return "\(count) trip\(count == 1 ? "" : "s") documented"
+        case .flights:
+            return "How you got there"
+        default:
+            return nil
+        }
+    }
+
+    private var chromeAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.3)
+    }
+
+    /// Trips -> Flights, the only entry point now that the bar has no flights slot.
+    private func openFlights() {
+        withAnimation(chromeAnimation) {
+            flightNavigationContext = .flights
+            selectedFlightForDetails = nil
+            activeTab = .flights
+        }
+        onTabChanged?(.flights)
+        onTabSelected?()
+    }
+
+    /// Flights -> Trips, the matching way back out.
+    private func returnToTrips() {
+        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+        impactFeedback.impactOccurred()
+
+        onGlobeReset?()
+        withAnimation(chromeAnimation) {
+            selectedFlightForDetails = nil
+            flightNavigationContext = .flights
+            activeTab = .trips
+        }
+        onTabChanged?(.trips)
+    }
+
+    // MARK: - Tab Bar
+
+    /// Custom Tab Bar with Liquid Glass Effect
+    ///
+    /// A floating glass bar rather than an opaque slab bolted to the bottom: it
+    /// hovers clear of the safe area with the globe visible around it. That is
+    /// also why `ContentView` lays `SkyLineGlobeScrim` under the sheet — glass
+    /// needs predictable luminance behind it, and a live 3D globe is not that.
+    @ViewBuilder
+    func CustomTabBar() -> some View {
+        SkyLineGlassBar(
+            cornerRadius: 28,
+            horizontalPadding: AppSpacing.xs,
+            verticalPadding: AppSpacing.xs
+        ) {
+            HStack(spacing: 0) {
+                ForEach(SkyLineTab.barTabs, id: \.rawValue) { tab in
+                    TabBarItem(tab)
+                }
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.top, AppSpacing.sm)
         .id(refreshID)
         .onReceive(themeManager.$currentTheme) { _ in
             refreshID = UUID()
         }
     }
-    
+
+    /// One slot in the bar. Flights has no slot of its own, so while it is showing
+    /// the Trips slot stays lit — that is what `barRepresentative` encodes.
+    @ViewBuilder
+    private func TabBarItem(_ tab: SkyLineTab) -> some View {
+        let theme = themeManager.currentTheme
+        let isActive = activeTab.barRepresentative == tab
+
+        Button {
+            print("🎯 Tab tapped: \(tab.rawValue)")
+            withAnimation(chromeAnimation) {
+                activeTab = tab
+            }
+
+            // Immediately notify the globe of tab change
+            print("🔄 Immediately calling onTabChanged with: \(tab.rawValue)")
+            onTabChanged?(tab)
+
+            // Trigger sheet expansion when tab is tapped
+            onTabSelected?()
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: tab.symbolImage)
+                    .font(AppTypography.mono(.title3, weight: .semibold))
+                    .symbolVariant(isActive ? .fill : .none)
+
+                Text(tab.rawValue)
+                    .font(AppTypography.mono(.caption2, weight: .semibold))
+            }
+            .foregroundStyle(isActive ? theme.colors.primary : theme.colors.textSecondary)
+            .padding(.vertical, AppSpacing.sm)
+            .frame(maxWidth: .infinity)
+            .background {
+                if isActive {
+                    Capsule(style: .continuous)
+                        .fill(theme.colors.primary.opacity(theme == .light ? 0.12 : 0.20))
+                        .matchedGeometryEffect(id: "SkyLineTabSelection", in: tabSelectionNamespace)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tab.rawValue))
+        // VoiceOver has no other way to tell which slot is lit — the tint and the
+        // capsule are visual only.
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+
     // MARK: - Flight Selection Handler
     
     private func handleFlightSelectedFromTrip(_ flight: Flight, _ trip: Trip) {

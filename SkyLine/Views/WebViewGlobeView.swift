@@ -13,7 +13,10 @@ struct WebViewGlobeView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var flightStore: FlightStore
     @StateObject private var tripStore = TripStore.shared
+    @StateObject private var placeStore = PlaceStore.shared
     
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @ObservedObject var coordinator: WebViewCoordinator
     let currentTab: SkyLineTab?
     @State private var isGlobeReady = false
@@ -22,6 +25,7 @@ struct WebViewGlobeView: View {
     @State private var lastVisitedCitiesHash: String = ""
     @State private var lastTripLocationsHash: String = ""
     @State private var lastTabHash: String = ""
+    @State private var lastPlacePointsHash: String = ""
     
     
     // Globe background color matching the WebGL globe theme
@@ -77,6 +81,15 @@ struct WebViewGlobeView: View {
                         }
                     }
                 }
+                .onChange(of: reduceMotion) {
+                    applyMotionPreference()
+                }
+                .onChange(of: placeStore.places) {
+                    schedulePlaceGlobeUpdate()
+                }
+                .onChange(of: placeStore.visits) {
+                    schedulePlaceGlobeUpdate()
+                }
                 .onChange(of: currentTab) { newTab in
                     print("🌍 WebViewGlobeView onChange triggered with: \(newTab?.rawValue ?? "nil")")
                     let newTabHash = newTab?.rawValue ?? "none"
@@ -89,8 +102,6 @@ struct WebViewGlobeView: View {
                         let capturedTab = newTab
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                             print("🌍 WebViewGlobeView executing delayed update for captured tab: \(capturedTab?.rawValue ?? "nil")")
-                            // Temporarily override currentTab for this update
-                            let originalTab = self.currentTab
                             self.updateGlobeDataWithTab(capturedTab)
                         }
                     }
@@ -195,6 +206,21 @@ struct WebViewGlobeView: View {
         return cityIds
     }
 
+    /// Places run through the same hash-then-debounce guard as flights,
+    /// cities and trip locations. `PlaceStore.globePointsHash` already reduces
+    /// the log to the only three things the globe draws - id, verdict, visit
+    /// count - so a note edit or a rename never repaints the globe.
+    private func schedulePlaceGlobeUpdate() {
+        let newHash = placeStore.globePointsHash
+
+        if newHash != lastPlacePointsHash {
+            lastPlacePointsHash = newHash
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                updateGlobeData()
+            }
+        }
+    }
+
     private func createTripLocationsHash(locations: [TripLocation]) -> String {
         let locationIds = locations.map { location in
             "\(location.tripId)-\(location.name)-\(location.status)-\(location.latitude)-\(location.longitude)"
@@ -246,6 +272,8 @@ struct WebViewGlobeView: View {
                 self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
                 self.lastVisitedCitiesHash = self.createVisitedCitiesHash(cities: self.tripStore.visitedCities)
                 self.lastTripLocationsHash = self.createTripLocationsHash(locations: self.tripStore.tripLocations)
+                self.lastPlacePointsHash = self.placeStore.globePointsHash
+                self.applyMotionPreference()
 
                 // Notify app that globe is fully ready
                 NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
@@ -267,6 +295,8 @@ struct WebViewGlobeView: View {
                     self.lastFlightDataHash = self.createFlightDataHash(flights: self.flightStore.flights)
                     self.lastVisitedCitiesHash = self.createVisitedCitiesHash(cities: self.tripStore.visitedCities)
                     self.lastTripLocationsHash = self.createTripLocationsHash(locations: self.tripStore.tripLocations)
+                    self.lastPlacePointsHash = self.placeStore.globePointsHash
+                    self.applyMotionPreference()
 
                     // Notify app that globe is fully ready
                     NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
@@ -281,6 +311,7 @@ struct WebViewGlobeView: View {
                     self.isGlobeReady = true
                     self.updateGlobeTheme()
                     self.updateGlobeData()
+                    self.applyMotionPreference()
 
                     // Notify app that globe is fully ready
                     NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
@@ -354,6 +385,12 @@ struct WebViewGlobeView: View {
                 }
             }
             
+        case "PLACE_SELECTED":
+            if let placeId = json["placeId"] as? String {
+                let name = json["name"] as? String ?? "Unknown"
+                print("📍 Place selected from globe: \(name) (\(placeId))")
+            }
+
         case "FLIGHT_SELECTED":
             if let flight = json["flight"] as? [String: Any],
                let flightNumber = flight["flightNumber"] as? String {
@@ -383,10 +420,12 @@ struct WebViewGlobeView: View {
     private func updateGlobeDataWithTab(_ tab: SkyLineTab?) {
         guard isGlobeReady else { return }
         
-        // Determine what data to show based on provided tab
+        // Determine what data to show based on provided tab.
+        // Flights and trip countries are context and stay tab-scoped. Places
+        // are not: the log the user built is on the globe on every tab.
         let shouldShowFlights = tab == .flights || tab == .profile || tab == nil  // Show flights on Flights tab
         let shouldShowCities = tab == .trips || tab == .profile || tab == nil    // Show cities on Trips tab
-        
+
         print("🎯 Globe data update - Tab: \(tab?.rawValue ?? "none"), Show flights: \(shouldShowFlights), Show cities: \(shouldShowCities)")
         
         // Prepare flight data
@@ -411,24 +450,25 @@ struct WebViewGlobeView: View {
             ]
         } : []
         
-        // Collect departure and arrival airports (only when showing flights)
+        // Collect departure and arrival airports (only when showing flights).
+        // No colour is sent: every colour on the globe now comes from either
+        // the desaturated palette in the JS or Verdict.globeHexColor, never
+        // from a hex literal wired in over here.
         let departureAirports = shouldShowFlights ? flightStore.flights.compactMap { flight -> [String: Any]? in
             guard let coordinate = flight.departure.coordinate else { return nil }
             return [
                 "lat": coordinate.latitude,
                 "lng": coordinate.longitude,
-                "name": flight.departure.code,
-                "color": "#007AFF"
+                "name": flight.departure.code
             ]
         } : []
-        
+
         let arrivalAirports = shouldShowFlights ? flightStore.flights.compactMap { flight -> [String: Any]? in
             guard let coordinate = flight.arrival.coordinate else { return nil }
             return [
                 "lat": coordinate.latitude,
                 "lng": coordinate.longitude,
-                "name": flight.arrival.code,
-                "color": "#007AFF"
+                "name": flight.arrival.code
             ]
         } : []
         
@@ -447,7 +487,6 @@ struct WebViewGlobeView: View {
                 "lat": city.latitude,
                 "lng": city.longitude,
                 "name": city.name,
-                "color": "#00C851", // Green color for visited cities
                 "isVisited": true,
                 "tripCount": city.tripCount,
                 "lastVisited": city.lastVisited.timeIntervalSince1970
@@ -456,22 +495,9 @@ struct WebViewGlobeView: View {
 
         // Add all trip locations with status (only when showing cities)
         let tripLocations = shouldShowCities ? tripStore.tripLocations.map { location -> [String: Any] in
-            // Color based on trip status:
-            // Completed: #006bff (blue, same as flight paths)
-            // Upcoming: #FFA500 (orange)
-            // Active: #00C851 (green)
-            let color: String
-            switch location.status {
-            case "completed":
-                color = "#006bff"
-            case "upcoming":
-                color = "#FFA500"
-            case "active":
-                color = "#00C851"
-            default:
-                color = "#006bff"
-            }
-
+            // `status` travels; the colour does not. The globe picks the tint
+            // for a trip country out of its own palette, which is the only
+            // place the country colours are defined.
             return [
                 "lat": location.latitude,
                 "lng": location.longitude,
@@ -480,12 +506,17 @@ struct WebViewGlobeView: View {
                 "country": location.country ?? "",
                 "tripId": location.tripId,
                 "status": location.status,
-                "color": color,
                 "startDate": location.startDate.timeIntervalSince1970,
                 "endDate": location.endDate.timeIntervalSince1970
             ]
         } : []
         
+        // Places: one dot per logged place, coloured by verdict. The payload
+        // shape and the JSON encoding both live in PlaceQueries so the globe
+        // and any future map share exactly one definition of a place point.
+        let placePoints = placeStore.globePoints
+        let placesJson = PlaceGlobePoint.jsonString(from: placePoints)
+
         guard let flightPathsData = try? JSONSerialization.data(withJSONObject: flightPaths),
               let airportsData = try? JSONSerialization.data(withJSONObject: airports),
               let visitedCitiesData = try? JSONSerialization.data(withJSONObject: visitedCities),
@@ -497,39 +528,62 @@ struct WebViewGlobeView: View {
             return
         }
         
-        // Use the updated function call with visited cities and trip locations
+        // One update path into the WebView. `places` is appended on the end of
+        // the existing argument list so the five-argument fallback below keeps
+        // working. Wrapped in an IIFE because `evaluateJavaScript` runs each
+        // script in the page's global scope, where a repeated top-level `const`
+        // would throw on the second update.
         let tabMode = tab?.rawValue ?? "all"
         let jsCode = """
-            console.log('🎯 Globe update for tab mode: \(tabMode)');
-            console.log('About to call updateGlobeData with:', {
-                flightPaths: \(flightPathsJson),
-                airports: \(airportsJson),
-                visitedCities: \(visitedCitiesJson),
-                tripLocations: \(tripLocationsJson),
-                tabMode: '\(tabMode)'
-            });
+            (function() {
+                var flights = \(flightPathsJson);
+                var airports = \(airportsJson);
+                var visitedCities = \(visitedCitiesJson);
+                var tripLocations = \(tripLocationsJson);
+                var places = \(placesJson);
 
-            if (window.updateGlobeData) {
-                console.log('Calling updateGlobeData function...');
-                window.updateGlobeData(\(flightPathsJson), \(airportsJson), \(visitedCitiesJson), \(tripLocationsJson), '\(tabMode)');
-                console.log('updateGlobeData called successfully');
-            } else if (window.updateFlightData) {
-                console.log('Falling back to updateFlightData function...');
-                window.updateFlightData(\(flightPathsJson), \(airportsJson));
-                console.log('updateFlightData called successfully (fallback)');
-            } else {
-                console.error('Neither window.updateGlobeData nor window.updateFlightData found!');
-            }
+                console.log('🎯 Globe update for tab mode: \(tabMode)', {
+                    flights: flights.length,
+                    places: places.length,
+                    tripLocations: tripLocations.length
+                });
+
+                if (window.updateGlobeData) {
+                    window.updateGlobeData(flights, airports, visitedCities, tripLocations, '\(tabMode)', places);
+                } else if (window.updateFlightData) {
+                    console.log('Falling back to updateFlightData function...');
+                    window.updateFlightData(flights, airports);
+                } else {
+                    console.error('Neither window.updateGlobeData nor window.updateFlightData found!');
+                }
+            })();
         """
-        
+
         coordinator.evaluateJavaScript(jsCode)
     }
     
     // MARK: - Control Actions
     
     private func toggleAutoRotation() {
+        // Drive the state from Swift so the play/pause icon is the truth
+        // rather than a guess: the WebView only reports back on tap-to-focus.
+        isAutoRotating.toggle()
+        setGlobeAutoRotate(isAutoRotating)
+    }
+
+    /// Reduce Motion stops the idle spin. The globe stays draggable - the
+    /// setting is about movement the user did not ask for, not interaction.
+    private func applyMotionPreference() {
+        guard isGlobeReady else { return }
+        isAutoRotating = !reduceMotion
+        setGlobeAutoRotate(isAutoRotating)
+    }
+
+    private func setGlobeAutoRotate(_ enabled: Bool) {
         coordinator.evaluateJavaScript("""
-            if (window.toggleAutoRotate) {
+            if (window.setAutoRotate) {
+                window.setAutoRotate(\(enabled));
+            } else if (window.toggleAutoRotate) {
                 window.toggleAutoRotate();
             }
         """)
@@ -603,45 +657,48 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     window.COUNTRIES_DATA = \(countriesJSON);
   </script>
   <style>
-    body { 
-      margin: 0; 
+    body {
+      margin: 0;
       padding: 0;
       background: #000011;
       overflow: hidden;
       width: 100vw;
       height: 100vh;
-      font-family: Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
     }
     #globeViz {
       width: 100vw;
       height: 100vh;
     }
+    /* Boot status: bare type, no pill. It is hidden the moment the globe is
+       ready, and anything with a border fights the glass the app lays on top. */
     .status {
       position: absolute;
       top: 20px;
       left: 20px;
-      color: white;
-      background: rgba(0,0,0,0.7);
-      padding: 10px;
-      border-radius: 5px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      text-shadow: 0 0 3px rgba(0, 0, 0, 0.95), 0 1px 4px rgba(0, 0, 0, 0.8);
       z-index: 1000;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
   <div class="status" id="status">Starting...</div>
   <div id="globeViz"></div>
-  
+
   <script>
     console.log('🚀 HTML loaded');
     document.getElementById('status').innerHTML = 'HTML loaded, testing basic JS...';
-    
+
     // Test basic functionality
     setTimeout(() => {
       document.getElementById('status').innerHTML = 'Basic JS working, loading Globe.gl...';
       console.log('✅ Basic JavaScript working');
     }, 1000);
-    
+
     setTimeout(() => {
       document.getElementById('status').innerHTML = 'Loading Globe.gl library...';
       const script = document.createElement('script');
@@ -649,26 +706,145 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
       script.onload = function() {
         console.log('✅ Globe.gl loaded successfully');
         document.getElementById('status').innerHTML = 'Globe.gl loaded, creating globe...';
-        
+
         try {
+          // ────────────────────────────────────────────────────────────────
+          // Palette
+          //
+          // The globe is context; the verdicts are the content. Every
+          // structural colour below is the app palette pulled down to roughly
+          // 60% saturation, so the three verdict colours Swift pushes in
+          // (Verdict.globeHexColor) are the only saturated things on screen.
+          // The old #006bff arcs and country fills were the exact blue of the
+          // UI accent and turned to mush under tinted glass.
+          // ────────────────────────────────────────────────────────────────
+          const TILE_BLACK = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=';
+          const TILE_WHITE = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=';
+
+          const PALETTE = {
+            dark: {
+              globeImage: TILE_BLACK,
+              background: '#000011',
+              space: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)',
+              atmosphere: '#4F94CD',
+              country: 'rgba(255, 255, 255, 0.60)',
+              tripActive: 'rgba(40, 160, 89, 0.85)',      // #28A059, 60% sat
+              tripUpcoming: 'rgba(204, 150, 51, 0.85)',   // #CC9633, 60% sat
+              tripCompleted: 'rgba(51, 115, 204, 0.85)',  // #3373CC, 60% sat
+              arc: ['rgba(51, 115, 204, 0.55)', 'rgba(51, 115, 204, 0.20)'],
+              arcMuted: ['rgba(128, 128, 128, 0.16)', 'rgba(128, 128, 128, 0.08)'],
+              label: 'rgba(255, 255, 255, 0.82)',
+              labelShadow: '0 0 3px rgba(0, 0, 0, 0.95), 0 1px 4px rgba(0, 0, 0, 0.8)'
+            },
+            light: {
+              globeImage: TILE_WHITE,
+              background: '#FFFFFF',
+              space: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)',
+              atmosphere: '#CCE7FF',
+              country: 'rgba(0, 0, 0, 0.60)',
+              tripActive: 'rgba(31, 122, 68, 0.85)',
+              tripUpcoming: 'rgba(154, 113, 38, 0.85)',
+              tripCompleted: 'rgba(38, 87, 153, 0.85)',
+              arc: ['rgba(38, 87, 153, 0.50)', 'rgba(38, 87, 153, 0.18)'],
+              arcMuted: ['rgba(90, 90, 96, 0.16)', 'rgba(90, 90, 96, 0.08)'],
+              label: 'rgba(18, 18, 24, 0.88)',
+              labelShadow: '0 0 3px rgba(255, 255, 255, 0.95), 0 1px 4px rgba(255, 255, 255, 0.85)'
+            }
+          };
+
+          window.currentTheme = (window.initialTheme === 'light') ? 'light' : 'dark';
+          function palette() { return PALETTE[window.currentTheme] || PALETTE.dark; }
+
           const world = new Globe(document.getElementById('globeViz'))
-            .globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=')
-            .backgroundColor('#000011')
+            .globeImageUrl(palette().globeImage)
+            .backgroundColor(palette().background)
             .showAtmosphere(true)
-            .atmosphereColor('#4F94CD')
+            .atmosphereColor(palette().atmosphere)
             .enablePointerInteraction(true);
-            
+
+          document.body.style.background = palette().space;
+
           world.controls().autoRotate = true;
           world.controls().autoRotateSpeed = 0.3;
-          
+          // Close enough to pull a city apart into its individual places
+          // (three spots 8km apart separate at roughly this altitude), far
+          // enough out that the whole log fits on one sphere.
+          world.controls().minDistance = 115;  // altitude 0.15
+          world.controls().maxDistance = 800;  // altitude 7.00
+
           // Set initial zoom level (higher = more zoomed out)
           world.pointOfView({ altitude: 4.0 });
-          
-          // Initialize empty flight data
-          let arcsData = [];
-          let pointsData = [];
-          
-          // Setup flight paths
+
+          // ── State ──────────────────────────────────────────────────────
+          let arcsData = [];        // flight arcs: trip metadata, quiet context
+          let placesData = [];      // PlaceGlobePoint payloads: the actual log
+          let focusedFlightId = null;
+          let autoRotateAllowed = true;   // false while Reduce Motion is on
+          window.currentTripLocations = [];
+
+          const MAX_PLACES = 400;
+          const MAX_ARCS = 20;
+          const MAX_LABELS = 40;
+
+          function post(payload) {
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+              window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify(payload));
+            }
+          }
+
+          function currentAltitude() {
+            const pov = world.pointOfView() || {};
+            return pov.altitude || 4.0;
+          }
+
+          // globe.gl sizes points and arcs in angular degrees on a sphere of
+          // fixed radius, while on-screen size scales as 1/altitude. So every
+          // number below is proportional to altitude, which holds a marker at
+          // a constant pixel size instead of letting it swell into a blob as
+          // you zoom in. The 1.2 exponent on the radius makes places shrink
+          // slightly faster than that, so a dozen dots in one city separate as
+          // you come down: ~4.8px across the whole globe, ~2.8px over a region.
+          function placeRadiusFor(altitude) {
+            return Math.max(0.02, Math.min(3.0, 0.9 * Math.pow(altitude / 3.0, 1.2)));
+          }
+          function arcStrokeFor(altitude) {
+            // Holds ~2.4px. The flight tracker drew these at 2.0deg, three
+            // times heavier than this, in the same blue as the UI accent.
+            return Math.max(0.03, Math.min(1.2, altitude * 0.16));
+          }
+          function labelSpacingFor(altitude) {
+            // Roughly 45px of clear space between two labels at any zoom.
+            return Math.max(0.05, Math.min(14.0, altitude * 3.0));
+          }
+
+          // ── Places: the one saturated layer ────────────────────────────
+          world
+            .pointsData([])
+            .pointLat(d => d.lat)
+            .pointLng(d => d.lng)
+            .pointColor(d => d.color || '#8E8E93')
+            // Fixed lift, just clear of the hex dots at 0.01, so a place never
+            // z-fights the land under it and never grows into a tower when you
+            // zoom in. Places live in the same shell as the country dots.
+            .pointAltitude(0.014)
+            .pointRadius(placeRadiusFor(4.0))
+            .pointResolution(8)
+            .pointLabel(d => d.name || '')
+            .onPointClick(place => {
+              if (!place) return;
+              world.controls().autoRotate = false;
+              world.pointOfView({ lat: place.lat, lng: place.lng, altitude: 0.8 }, 1200);
+              post({
+                type: 'PLACE_SELECTED',
+                placeId: place.placeId || '',
+                name: place.name || '',
+                verdict: place.verdict || 'unrated'
+              });
+              post({ type: 'AUTO_ROTATE_TOGGLED', autoRotate: false });
+              setTimeout(applyZoomDependentVisuals, 1400);
+            });
+
+          // ── Flights: context, not content ──────────────────────────────
           world
             .arcsData(arcsData)
             .arcStartLat(d => d.startLat)
@@ -676,14 +852,130 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             .arcEndLat(d => d.endLat)
             .arcEndLng(d => d.endLng)
             .arcLabel(d => d.flightNumber + ': ' + (d.status || 'Unknown'))
-            .arcColor(() => ['#006bff', 'rgba(0, 107, 255, 0.8)'])
-            .arcStroke(2.0)
-            .arcDashLength(0.4)
-            .arcDashGap(0.05)
-            .arcDashAnimateTime(3000);
-          
-          // Store current theme globally
-          window.currentTheme = 'dark';
+            .arcColor(() => palette().arc)
+            .arcStroke(arcStrokeFor(4.0))
+            .arcAltitudeAutoScale(0.35)  // hug the surface: arcs sit behind places
+            .arcDashLength(0.35)
+            .arcDashGap(0.35)
+            .arcDashAnimateTime(6000)
+            .arcCircularResolution(24);
+
+          // ── Labels: bare type, no chrome ───────────────────────────────
+          // Pills with a blue border were 2019 chrome fighting 2026 glass. A
+          // text-shadow carries the same legibility over both hemispheres and
+          // disappears into the composite.
+          function makeGlobeLabel(d) {
+            const el = document.createElement('div');
+            el.textContent = d.text;  // user-entered place names: never innerHTML
+            const isPlace = d.kind === 'place';
+            el.style.cssText = `
+              color: ${isPlace ? (d.color || palette().label) : palette().label};
+              font-family: 'GeistMono-Regular', ui-monospace, 'Monaco', 'Menlo', 'Consolas', monospace;
+              font-size: ${isPlace ? '10px' : '9px'};
+              font-weight: ${isPlace ? '600' : '500'};
+              letter-spacing: 0.06em;
+              text-shadow: ${palette().labelShadow};
+              opacity: ${isPlace ? '1' : '0.72'};
+              text-align: center;
+              pointer-events: none;
+              white-space: nowrap;
+              transform: translate(-50%, -50%);
+            `;
+            return el;
+          }
+
+          function dedupeByDistance(candidates, threshold) {
+            const kept = [];
+            for (let i = 0; i < candidates.length; i++) {
+              const candidate = candidates[i];
+              let clear = true;
+              for (let j = 0; j < kept.length; j++) {
+                const distance = Math.sqrt(
+                  Math.pow(candidate.lat - kept[j].lat, 2) +
+                  Math.pow(candidate.lng - kept[j].lng, 2)
+                );
+                if (distance < threshold) { clear = false; break; }
+              }
+              if (clear) kept.push(candidate);
+            }
+            return kept;
+          }
+
+          function buildLabels(altitude) {
+            const candidates = [];
+
+            // Places claim the label budget first; airport codes get whatever
+            // room is left. Names only appear once you have zoomed in far
+            // enough for them to mean something.
+            if (altitude < 2.6) {
+              placesData.forEach(place => {
+                if (!place.name) return;
+                candidates.push({
+                  lat: place.lat,
+                  lng: place.lng,
+                  text: place.name,
+                  color: place.color,
+                  kind: 'place'
+                });
+              });
+            }
+
+            const labelledArcs = focusedFlightId
+              ? arcsData.filter(arc => arc.flightId === focusedFlightId)
+              : arcsData;
+
+            labelledArcs.forEach(flight => {
+              candidates.push({ lat: flight.startLat, lng: flight.startLng, text: flight.departureCode || 'DEP', kind: 'airport' });
+              candidates.push({ lat: flight.endLat, lng: flight.endLng, text: flight.arrivalCode || 'ARR', kind: 'airport' });
+            });
+
+            return dedupeByDistance(candidates, labelSpacingFor(altitude)).slice(0, MAX_LABELS);
+          }
+
+          world
+            .htmlElementsData([])
+            .htmlLat(d => d.lat)
+            .htmlLng(d => d.lng)
+            .htmlAltitude(0.05)  // clears the tallest place pillar (0.04)
+            .htmlElement(makeGlobeLabel);
+
+          // ── One place where zoom-dependent visuals get applied ──────────
+          function applyArcColor() {
+            const theme = palette();
+            if (focusedFlightId) {
+              world.arcColor(arc => (arc.flightId === focusedFlightId ? theme.arc : theme.arcMuted));
+            } else {
+              world.arcColor(() => theme.arc);
+            }
+          }
+
+          function applyArcStroke(altitude) {
+            const base = arcStrokeFor(altitude);
+            if (focusedFlightId) {
+              world.arcStroke(arc => (arc.flightId === focusedFlightId ? base * 2.2 : 0.0001));
+            } else {
+              world.arcStroke(base);
+            }
+          }
+
+          function applyZoomDependentVisuals() {
+            const altitude = currentAltitude();
+            const base = placeRadiusFor(altitude);
+            // Somewhere you keep going back to reads a little heavier - up to
+            // 28% wider at five visits. Colour still carries the verdict.
+            world.pointRadius(d => base * (1 + Math.min((d.visitCount || 1) - 1, 4) * 0.07));
+            applyArcColor();
+            applyArcStroke(altitude);
+            world.htmlElementsData(buildLabels(altitude));
+          }
+
+          // Debounced so a pinch does not rebuild every label mid-gesture.
+          let visualsTimeout;
+          function updateVisualsDebounced() {
+            clearTimeout(visualsTimeout);
+            visualsTimeout = setTimeout(applyZoomDependentVisuals, 200);
+          }
+          world.controls().addEventListener('end', updateVisualsDebounced);
 
           // Helper function to check if a trip is in a country (using point-in-polygon)
           function isPointInCountry(lat, lng, countryFeature) {
@@ -740,59 +1032,49 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             return false;
           }
 
-          // Helper function to apply trip-aware hexagon coloring
+          function tripsInCountry(countryFeature) {
+            return (window.currentTripLocations || []).filter(trip => {
+              return isPointInCountry(trip.lat, trip.lng, countryFeature);
+            });
+          }
+
+          // Trip-aware hexagon colouring, in the desaturated palette.
           window.applyHexagonColors = function() {
-            const defaultColor = window.currentTheme === 'light' ? '#000000' : '#ffffff';
+            const theme = palette();
 
             world
               .hexPolygonColor(d => {
-                // Check if this country contains any trip location
-                const countryTrips = (window.currentTripLocations || []).filter(trip => {
-                  return isPointInCountry(trip.lat, trip.lng, d);
-                });
-
+                const countryTrips = tripsInCountry(d);
                 if (countryTrips.length > 0) {
                   // Prioritize: active > upcoming > completed
-                  const activeTrip = countryTrips.find(t => t.status === 'active');
-                  const upcomingTrip = countryTrips.find(t => t.status === 'upcoming');
-                  const completedTrip = countryTrips.find(t => t.status === 'completed');
-
-                  if (activeTrip) return '#00C851'; // Green
-                  if (upcomingTrip) return '#FFA500'; // Orange
-                  if (completedTrip) return '#006bff'; // Blue
+                  if (countryTrips.some(trip => trip.status === 'active')) return theme.tripActive;
+                  if (countryTrips.some(trip => trip.status === 'upcoming')) return theme.tripUpcoming;
+                  return theme.tripCompleted;
                 }
-
-                return defaultColor;
+                return theme.country;
               })
               .hexPolygonAltitude(() => 0.01)
-              .hexPolygonUseDots(d => {
-                const countryTrips = (window.currentTripLocations || []).filter(trip => {
-                  return isPointInCountry(trip.lat, trip.lng, d);
-                });
-                return countryTrips.length === 0;
-              });
+              .hexPolygonUseDots(d => tripsInCountry(d).length === 0);
           };
 
           // Add theme switching function
           window.setTheme = function(theme) {
             console.log('🎨 Setting theme to:', theme);
-            window.currentTheme = theme; // Store theme for later use
-            if (theme === 'light') {
-              world.globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=');
-              world.backgroundColor('#FFFFFF');
-              world.atmosphereColor('#CCE7FF');
-              document.body.style.background = 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)';
-            } else {
-              world.globeImageUrl('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=');
-              world.backgroundColor('#000011');
-              world.atmosphereColor('#4F94CD');
-              document.body.style.background = 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)';
-            }
+            window.currentTheme = (theme === 'light') ? 'light' : 'dark';
+            const next = palette();
 
-            // Reapply trip-aware hexagon colors after theme change
+            world
+              .globeImageUrl(next.globeImage)
+              .backgroundColor(next.background)
+              .atmosphereColor(next.atmosphere);
+
+            document.body.style.background = next.space;
+
             window.applyHexagonColors();
+            // Arc colours and label colours both come out of the palette.
+            applyZoomDependentVisuals();
           };
-          
+
           // Add performance monitoring
           window.monitorPerformance = function() {
             const startTime = performance.now();
@@ -803,324 +1085,156 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               }
             }, 0);
           };
-          
-          // Enhanced globe data update function with visited cities, trip locations, and tab filtering
-          window.updateGlobeData = function(flightPaths, airports, visitedCities, tripLocations, tabMode) {
-            console.log('🎯 updateGlobeData called with:', flightPaths?.length, 'flights,', visitedCities?.length, 'visited cities,', tripLocations?.length, 'trip locations, tab mode:', tabMode);
-            
-            // Clear existing data first
-            world.arcsData([]);
-            world.pointsData([]);
-            world.htmlElementsData([]);
-            
-            // Update flight paths - Swift already filtered the data, just display what we received
-            if (flightPaths && flightPaths.length > 0) {
-              arcsData = flightPaths.slice(0, 20); // Limit to 20 flights for performance
-              world.arcsData(arcsData);
-              console.log('✅ Flight paths updated:', arcsData.length, 'for tab:', tabMode);
-            } else {
-              arcsData = [];
-              world.arcsData([]);
-              console.log('🚫 No flight paths for tab:', tabMode);
+
+          // ── The single update path from Swift ──────────────────────────
+          // Argument list is append-only: `places` was added on the end, so a
+          // five-argument caller still works. `airports` and `visitedCities`
+          // are kept for that compatibility - airport labels are derived from
+          // the arcs themselves, and visited cities are superseded by places.
+          window.updateGlobeData = function(flightPaths, airports, visitedCities, tripLocations, tabMode, places) {
+            console.log('🎯 updateGlobeData called with:', flightPaths?.length, 'flights,', places?.length, 'places,', tripLocations?.length, 'trip locations, tab mode:', tabMode);
+
+            // Places: the log the user built. Drawn on every tab - this is the
+            // product, not a per-screen decoration.
+            placesData = (places || [])
+              .filter(place => typeof place.lat === 'number' && typeof place.lng === 'number')
+              .slice(0, MAX_PLACES);
+            world.pointsData(placesData);
+
+            // Flights: Swift already tab-filtered these, just draw what arrived.
+            const validFlights = (flightPaths || []).filter(flight =>
+              flight.startLat && flight.startLng && flight.endLat && flight.endLng
+            );
+            arcsData = validFlights.slice(0, MAX_ARCS);
+            world.arcsData(arcsData);
+            if (focusedFlightId && !arcsData.some(arc => arc.flightId === focusedFlightId)) {
+              focusedFlightId = null;
             }
-            
-            // Combine airports and visited cities for display
-            let allLocations = [];
-            
-            // Add airports - Swift already filtered the data, just display what we received
-            if (flightPaths && flightPaths.length > 0) {
-              // Create airport code overlays from flight paths
-              const airportLabels = [];
-              flightPaths.forEach(flight => {
-                // Add departure airport
-                airportLabels.push({
-                  lat: flight.startLat,
-                  lng: flight.startLng,
-                  code: flight.departureCode || 'DEP',
-                  type: 'airport',
-                  color: '#007AFF'
-                });
-                // Add arrival airport  
-                airportLabels.push({
-                  lat: flight.endLat,
-                  lng: flight.endLng,
-                  code: flight.arrivalCode || 'ARR',
-                  type: 'airport',
-                  color: '#007AFF'
-                });
-              });
-              allLocations = allLocations.concat(airportLabels);
-            }
-            
-            // Store trip locations globally for country coloring
+
+            // Store trip locations globally for country colouring
             window.currentTripLocations = tripLocations || [];
+            window.applyHexagonColors();
 
-            // Apply trip-aware hexagon colors
-            if (window.applyHexagonColors) {
-              window.applyHexagonColors();
-            }
+            applyZoomDependentVisuals();
 
-            // Clear point markers (we're using hexagons instead)
-            world.pointsData([]);
-
-            // Keep only airport labels (no trip/city labels)
-            const uniqueLabels = [];
-            allLocations.forEach(location => {
-              // Skip trip and visited city labels - we're using country colors instead
-              if (location.type === 'trip' || location.type === 'visited') {
-                return;
-              }
-
-              const exists = uniqueLabels.find(existing =>
-                Math.abs(existing.lat - location.lat) < 0.5 &&
-                Math.abs(existing.lng - location.lng) < 0.5
-              );
-              if (!exists) {
-                uniqueLabels.push(location);
-              }
-            });
-            
-            // Add location labels as HTML elements
-            if (uniqueLabels.length > 0) {
-              world.htmlElementsData(uniqueLabels.slice(0, 40))
-                .htmlLat(d => d.lat)
-                .htmlLng(d => d.lng)
-                .htmlAltitude(0.01)
-                .htmlElement(d => {
-                  const el = document.createElement('div');
-                  el.innerHTML = d.code;
-
-                  // Only show airport labels (simple styling)
-                  el.style.cssText = `
-                    color: #007AFF;
-                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                    font-size: 9px;
-                    font-weight: bold;
-                    background: rgba(255, 255, 255, 0.9);
-                    padding: 2px 4px;
-                    border-radius: 3px;
-                    border: 1px solid #007AFF;
-                    text-align: center;
-                    pointer-events: none;
-                    white-space: nowrap;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                    transform: translate(-50%, -50%);
-                  `;
-                  return el;
-                });
-              
-              console.log('✅ Location labels updated:', uniqueLabels.length, 'for tab:', tabMode);
-            }
+            console.log('✅ Globe updated:', placesData.length, 'places,', arcsData.length, 'arcs for tab:', tabMode);
           };
-          
+
           // Backward compatibility function
           window.updateFlightData = function(flightPaths, airports) {
             console.log('🎯 updateFlightData called (fallback mode)');
-            window.updateGlobeData(flightPaths, airports, [], [], 'all');
+            window.updateGlobeData(flightPaths, airports, [], [], 'all', placesData);
           };
-          
-          // Add auto-rotation toggle
+
+          // Auto-rotation. `setAutoRotate` is the one the app drives from the
+          // Reduce Motion setting; `toggleAutoRotate` is the on-screen button.
+          window.setAutoRotate = function(enabled) {
+            autoRotateAllowed = !!enabled;
+            world.controls().autoRotate = autoRotateAllowed;
+            return autoRotateAllowed;
+          };
+
           window.toggleAutoRotate = function() {
-            const controls = world.controls();
-            controls.autoRotate = !controls.autoRotate;
-            return controls.autoRotate;
+            return window.setAutoRotate(!world.controls().autoRotate);
           };
-          
+
           // Add reset function
           window.resetRotation = function() {
+            focusedFlightId = null;
             world.pointOfView({ lat: 0, lng: 0, altitude: 4.0 }, 1000);
-            world.controls().autoRotate = true;
+            world.controls().autoRotate = autoRotateAllowed;
+            setTimeout(applyZoomDependentVisuals, 1200);
           };
-          
+
+          window.focusOnPlace = function(placeId) {
+            const place = placesData.find(candidate => candidate.placeId === placeId);
+            if (!place) {
+              console.warn('⚠️ Place not found on globe:', placeId);
+              return false;
+            }
+            world.controls().autoRotate = false;
+            world.pointOfView({ lat: place.lat, lng: place.lng, altitude: 0.8 }, 1200);
+            setTimeout(applyZoomDependentVisuals, 1400);
+            return true;
+          };
+
           // Enhanced flight focusing with ID-based matching and visual highlighting
-          let selectedFlightId = null;
-          
           window.focusOnFlightById = function(flightId, flightNumber) {
             console.log("🎯 Attempting to focus on flight:", flightNumber, "ID:", flightId);
-            console.log("📊 Available arcsData:", arcsData?.length || 0, "flights");
-            
+
             if (!arcsData || arcsData.length === 0) {
               console.warn("⚠️ No flight data available in arcsData");
               return false;
             }
-            
-            // Find flight by ID first, then by flight number as fallback
+
             let flight = null;
-            let flightIndex = -1;
-            
             for (let i = 0; i < arcsData.length; i++) {
               const arc = arcsData[i];
-              if (arc.flightId === flightId || 
+              if (arc.flightId === flightId ||
                   (arc.flightNumber && arc.flightNumber === flightNumber)) {
                 flight = arc;
-                flightIndex = i;
                 break;
               }
             }
-            
+
             if (!flight) {
               console.warn("⚠️ Flight not found in arcsData:", flightNumber, "ID:", flightId);
               return false;
             }
-            
-            console.log("✅ Flight found at index:", flightIndex);
-            
-            // Calculate center point and focus
+
+            focusedFlightId = flight.flightId || flightId;
+
             const lat = (flight.startLat + flight.endLat) / 2;
             const lng = (flight.startLng + flight.endLng) / 2;
-            
-            // Set the point of view
             world.pointOfView({ lat, lng, altitude: 2.5 }, 1500);
-            
-            // Highlight the selected flight
-            selectedFlightId = flightId;
-            
-            // Update arc colors to highlight selected flight
-            world.arcColor((arc, index) => {
-              console.log("🎨 Checking arc:", arc.flightNumber, "ID:", arc.flightId, "index:", index);
-              console.log("🎯 Looking for:", flightNumber, "ID:", flightId);
-              
-              // Use ONLY flight ID for exact matching (no flight number fallback)
-              if (arc.flightId === flightId) {
-                console.log("🔵 EXACT MATCH! Setting BLUE for:", arc.flightNumber, "ID:", arc.flightId);
-                return ["#006BFF", "rgba(0, 107, 255, 0.8)"]; // Highlighted flight - blue (same as default)
-              } else {
-                console.log("📏 No exact match, setting VERY THIN for:", arc.flightNumber, "ID:", arc.flightId);
-                return ["rgba(0, 107, 255, 0.4)", "rgba(0, 107, 255, 0.3)"]; // Light blue for thin lines
-              }
-            });
-            
-            // Update stroke width for emphasis
-            world.arcStroke((arc, index) => {
-              if (arc.flightId === flightId) {
-                return 4.0; // Thick stroke for selected flight
-              } else {
-                return 0.0001; // Nearly invisible stroke for background flights
-              }
-            });
-            
-            // Filter airport labels to show only selected flight's airports
-            console.log("🏷️ Filtering airport labels for selected flight");
-            const selectedFlightLabels = [
-              {
-                lat: flight.startLat,
-                lng: flight.startLng,
-                code: flight.departureCode || 'DEP'
-              },
-              {
-                lat: flight.endLat,
-                lng: flight.endLng,
-                code: flight.arrivalCode || 'ARR'
-              }
-            ];
-            
-            world.htmlElementsData(selectedFlightLabels)
-              .htmlLat(d => d.lat)
-              .htmlLng(d => d.lng)
-              .htmlAltitude(0.01)
-              .htmlElement(d => {
-                const el = document.createElement('div');
-                el.innerHTML = d.code;
-                el.style.cssText = `
-                  color: #007AFF;
-                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                  font-size: 10px;
-                  font-weight: bold;
-                  background: rgba(255, 255, 255, 0.9);
-                  padding: 2px 4px;
-                  border-radius: 3px;
-                  border: 1px solid #007AFF;
-                  text-align: center;
-                  pointer-events: none;
-                  white-space: nowrap;
-                  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                  transform: translate(-50%, -50%);
-                `;
-                return el;
-              });
-            
-            console.log("🎨 Applied visual highlighting to flight:", flightId);
+
+            // Highlighting and label filtering both fall out of the one
+            // apply pass, keyed off focusedFlightId.
+            applyZoomDependentVisuals();
+            setTimeout(applyZoomDependentVisuals, 1700);
+
             console.log("🎯 Successfully focused on flight:", flightNumber);
             return true;
           };
-          
+
           // Clear highlighting function
           window.clearFlightHighlight = function() {
-            selectedFlightId = null;
-            world.arcColor(() => ["#006bff", "rgba(0, 107, 255, 0.8)"]);
-            world.arcStroke(2.0);
-            
-            // Restore all airport labels
-            console.log("🏷️ Restoring all airport labels");
-            if (arcsData && arcsData.length > 0) {
-              const airportLabels = [];
-              arcsData.forEach(flight => {
-                // Add departure airport
-                airportLabels.push({
-                  lat: flight.startLat,
-                  lng: flight.startLng,
-                  code: flight.departureCode || 'DEP'
-                });
-                // Add arrival airport  
-                airportLabels.push({
-                  lat: flight.endLat,
-                  lng: flight.endLng,
-                  code: flight.arrivalCode || 'ARR'
-                });
-              });
-              
-              // Remove duplicates based on location
-              const uniqueLabels = [];
-              airportLabels.forEach(label => {
-                const exists = uniqueLabels.find(existing => 
-                  Math.abs(existing.lat - label.lat) < 0.1 && 
-                  Math.abs(existing.lng - label.lng) < 0.1
-                );
-                if (!exists) {
-                  uniqueLabels.push(label);
-                }
-              });
-              
-              // Restore airport code labels as HTML elements
-              world.htmlElementsData(uniqueLabels.slice(0, 30))
-                .htmlLat(d => d.lat)
-                .htmlLng(d => d.lng)
-                .htmlAltitude(0.01)
-                .htmlElement(d => {
-                  const el = document.createElement('div');
-                  el.innerHTML = d.code;
-                  el.style.cssText = `
-                    color: #007AFF;
-                    font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                    font-size: 10px;
-                    font-weight: bold;
-                    background: rgba(255, 255, 255, 0.9);
-                    padding: 2px 4px;
-                    border-radius: 3px;
-                    border: 1px solid #007AFF;
-                    text-align: center;
-                    pointer-events: none;
-                    white-space: nowrap;
-                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                    transform: translate(-50%, -50%);
-                  `;
-                  return el;
-                });
-            }
-            
-            console.log("🎨 Cleared flight highlighting and restored all airport labels");
+            focusedFlightId = null;
+            applyZoomDependentVisuals();
+            console.log("🎨 Cleared flight highlighting");
           };
-          
+
+          window.focusOnFlight = function(flightIndex) {
+            const flight = arcsData[flightIndex];
+            if (!flight) return;
+            world.pointOfView({
+              lat: (flight.startLat + flight.endLat) / 2,
+              lng: (flight.startLng + flight.endLng) / 2,
+              altitude: 2.5
+            }, 1000);
+            setTimeout(applyZoomDependentVisuals, 1200);
+          };
+
+          window.clearFlightPaths = function() {
+            arcsData = [];
+            focusedFlightId = null;
+            world.arcsData(arcsData);
+            applyZoomDependentVisuals();
+          };
+
+          window.getCurrentFlights = function() { return arcsData; };
+          window.getCurrentPlaces = function() { return placesData; };
+
           document.getElementById('status').innerHTML = 'Globe ready, loading countries...';
-          console.log('🌍 Globe with flight support created successfully');
-          console.log('📋 Available functions:', typeof window.updateFlightData, typeof window.setTheme);
-          
+          console.log('🌍 Globe with place + flight support created successfully');
+          console.log('📋 Available functions:', typeof window.updateGlobeData, typeof window.updateFlightData, typeof window.setTheme);
+
           // Try to load countries data with timeout and error handling
           const loadCountries = () => {
             const timeoutId = setTimeout(() => {
               console.log('⚠️ Countries data fetch timeout, using basic globe');
               document.getElementById('status').innerHTML = 'Globe ready (basic mode)';
-              
+
               // Signal ready even on timeout
               setTimeout(() => {
                 console.log('✅ Globe ready (timeout), signaling to Swift');
@@ -1130,7 +1244,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                 document.getElementById('status').style.display = 'none';
               }, 1000);
             }, 10000); // 10 second timeout
-            
+
             // Load country-level data from preloaded bundle data (offline support)
             Promise.resolve(window.COUNTRIES_DATA)
               .then(countries => {
@@ -1143,31 +1257,31 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                   world
                     .hexPolygonsData(countries.features)
                     .hexPolygonResolution(3) // Medium resolution for hexagons
-                    .hexPolygonMargin(0.5) // Even larger margin for very small hexagons
-                    .hexPolygonUseDots(true) // Use dots instead of solid polygons
-                    .hexPolygonColor(() => '#ffffff')
+                    .hexPolygonMargin(0.5)
+                    .hexPolygonUseDots(true)
                     .hexPolygonAltitude(0.01) // Elevated from globe surface
                     .hexPolygonLabel(() => null);
                 } catch (error) {
                   console.log('⚠️ Full dataset failed, trying reduced set:', error.message);
                   // Fallback to reduced dataset if full one causes issues
                   world
-                    .hexPolygonsData(regions.features.slice(0, 500))
+                    .hexPolygonsData(countries.features.slice(0, 500))
                     .hexPolygonResolution(3)
                     .hexPolygonMargin(0.5)
                     .hexPolygonUseDots(true)
-                    .hexPolygonColor(() => '#ffffff')
                     .hexPolygonAltitude(0.01)
                     .hexPolygonLabel(() => null);
                 }
 
-                console.log('🗺️ States/provinces added successfully');
+                window.applyHexagonColors();
+
+                console.log('🗺️ Countries added successfully');
                 document.getElementById('status').innerHTML = 'Globe with countries ready!';
-                
+
                 // Monitor performance after adding countries
                 window.monitorPerformance();
-                
-                // Signal that globe is fully ready for flight data
+
+                // Signal that globe is fully ready for data
                 setTimeout(() => {
                   console.log('✅ Globe fully ready, signaling to Swift');
                   if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
@@ -1180,7 +1294,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                 clearTimeout(timeoutId);
                 console.log('⚠️ Failed to load countries:', error.message);
                 document.getElementById('status').innerHTML = 'Globe ready (basic mode)';
-                
+
                 // Signal ready even in fallback mode
                 setTimeout(() => {
                   console.log('✅ Globe ready (fallback), signaling to Swift');
@@ -1191,20 +1305,20 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
                 }, 1000);
               });
           };
-          
+
           // Load countries after a brief delay to ensure globe is stable
           setTimeout(loadCountries, 1000);
-          
+
         } catch (error) {
           console.error('❌ Error creating globe:', error);
           document.getElementById('status').innerHTML = 'Error: ' + error.message;
-          document.getElementById('status').style.color = 'red';
+          document.getElementById('status').style.color = '#FF7A6B';
         }
       };
       script.onerror = function() {
         console.error('❌ Failed to load Globe.gl');
         document.getElementById('status').innerHTML = 'Failed to load Globe.gl library';
-        document.getElementById('status').style.color = 'red';
+        document.getElementById('status').style.color = '#FF7A6B';
       };
       document.head.appendChild(script);
     }, 2000);
@@ -1214,641 +1328,6 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
 """
     }
     
-    private func getGlobeHTML() -> String {
-        // Load countries GeoJSON from bundle
-        var countriesJSON = "{}"
-        if let path = Bundle.main.path(forResource: "countries", ofType: "geojson"),
-           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-           let jsonString = String(data: data, encoding: .utf8) {
-            countriesJSON = jsonString
-        } else {
-            print("⚠️ Failed to load countries.geojson from bundle")
-        }
-
-        return """
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <script type="text/javascript">
-    // Preload countries data from bundle (offline support)
-    window.COUNTRIES_DATA = \(countriesJSON);
-  </script>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { 
-      margin: 0; 
-      padding: 0;
-      background: #000;
-      overflow: hidden;
-      width: 100vw;
-      height: 100vh;
-    }
-    #globeViz {
-      width: 100vw;
-      height: 100vh;
-    }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/globe.gl"></script>
-</head>
-<body>
-  <div id="globeViz"></div>
-  <script>
-    console.log('🌍 Globe script started');
-    window.INITIAL_ZOOM = 15.0;
-
-    // Load country-level data from preloaded bundle data (offline support)
-    console.log('📡 Loading countries data from bundle...');
-    Promise.resolve(window.COUNTRIES_DATA)
-      .then(countries => {
-        console.log('✅ Countries data loaded from bundle:', countries.features.length);
-
-        const initialTheme = window.initialTheme || 'dark';
-        console.log('🎨 Initial theme:', initialTheme);
-        
-        let currentTheme;
-        if (initialTheme === 'light') {
-          currentTheme = {
-            globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=',
-            backgroundColor: '#F0F0F0',
-            atmosphereColor: '#CCE7FF',
-            countryColor: '#000000',
-            flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
-            spaceBackground: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)'
-          };
-        } else {
-          currentTheme = {
-            globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=',
-            backgroundColor: '#000011',
-            atmosphereColor: '#4F94CD',
-            countryColor: '#ffffff',
-            flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
-            spaceBackground: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)'
-          };
-        }
-
-        document.body.style.background = currentTheme.spaceBackground;
-        
-        console.log('🌍 Creating Globe instance...');
-        const world = new Globe(document.getElementById('globeViz'))
-          .globeImageUrl(currentTheme.globeImage)
-          .backgroundColor(currentTheme.backgroundColor)
-          .showAtmosphere(false)
-          .atmosphereColor(currentTheme.atmosphereColor)
-          .atmosphereAltitude(0.15)
-          .hexPolygonsData(countries.features)
-          .hexPolygonResolution(3)
-          .hexPolygonMargin(0.5)
-          .hexPolygonUseDots(true)
-          .hexPolygonColor(() => currentTheme.countryColor)
-          .hexPolygonAltitude(0.01) // Elevated from globe surface
-          .hexPolygonLabel(() => null)
-          .enablePointerInteraction(true);
-          
-        // Set auto-rotation
-        world.controls().autoRotate = true;
-        world.controls().autoRotateSpeed = 0.3;
-        world.controls().enableDamping = true;
-        world.controls().dampingFactor = 0.05;
-        
-        let updateTimeout;
-        function updateVisualsDebounced() {
-          clearTimeout(updateTimeout);
-          updateTimeout = setTimeout(() => {
-            const pov = world.pointOfView();
-            const altitude = pov.altitude || 4.0;
-            const strokeWidth = Math.max(0.3, Math.min(3.0, altitude * 0.4));
-            world.arcStroke(strokeWidth);
-            
-            if (pointsData && pointsData.length > 0) {
-              const processedAirports = processAirportLabels(pointsData);
-              world.htmlElementsData(processedAirports);
-            }
-          }, 200);
-        }
-        
-        // Add debounced listener - only fires when interaction ends
-        world.controls().addEventListener('end', updateVisualsDebounced);
-        
-        world.pointOfView({ altitude: window.INITIAL_ZOOM || 15.0 });
-        
-        const highlightedCities = [
-          { lat: 40.7128, lng: -74.0060, name: 'NYC' },
-          { lat: 51.5074, lng: -0.1278, name: 'LON' },
-          { lat: 35.6762, lng: 139.6503, name: 'TYO' },
-          { lat: -33.8688, lng: 151.2093, name: 'SYD' },
-          { lat: 34.0522, lng: -118.2437, name: 'LAX' }
-        ];
-        
-        // Add highlighted cities as small points with labels  
-        world
-          .pointsData(highlightedCities)
-          .pointColor(() => 'orange')
-          .pointAltitude(0)
-          .pointRadius(0.04)
-          .pointLabel(d => d.name)
-          .pointsMerge(true);
-        
-        // Function to process airport labels with zoom-based visibility
-        function processAirportLabels(airports) {
-          if (!airports || airports.length === 0) return [];
-          
-          const pov = world.pointOfView();
-          const altitude = pov.altitude || 4.0;
-          
-          // Dynamic distance threshold based on zoom level
-          // Zoomed out: larger threshold (fewer airports), Zoomed in: smaller threshold (more airports)
-          let DISTANCE_THRESHOLD;
-          if (altitude > 5.0) {
-            DISTANCE_THRESHOLD = 8.0; // Very far: only show well-spaced airports
-          } else if (altitude > 3.0) {
-            DISTANCE_THRESHOLD = 4.0; // Medium: show more airports
-          } else if (altitude > 2.0) {
-            DISTANCE_THRESHOLD = 2.0; // Close: show most airports
-          } else {
-            DISTANCE_THRESHOLD = 1.0; // Very close: show nearly all airports
-          }
-          
-          const processed = [];
-          
-          // Sort airports by some priority (could be by importance or just keep original order)
-          const sortedAirports = [...airports];
-          
-          for (let i = 0; i < sortedAirports.length; i++) {
-            const airport = sortedAirports[i];
-            let shouldShow = true;
-            
-            // Check if this airport is too close to any already processed airport
-            for (let j = 0; j < processed.length; j++) {
-              const existingAirport = processed[j];
-              const distance = Math.sqrt(
-                Math.pow(airport.lat - existingAirport.lat, 2) + 
-                Math.pow(airport.lng - existingAirport.lng, 2)
-              );
-              
-              if (distance < DISTANCE_THRESHOLD) {
-                shouldShow = false;
-                break;
-              }
-            }
-            
-            if (shouldShow) {
-              processed.push(airport);
-            }
-          }
-          
-          return processed;
-        }
-        
-        
-        // Initialize flight data
-        let arcsData = [];
-        let pointsData = highlightedCities;
-        
-        world
-          .arcsData(arcsData)
-          .arcStartLat(d => d.startLat)
-          .arcStartLng(d => d.startLng)
-          .arcEndLat(d => d.endLat)
-          .arcEndLng(d => d.endLng)
-          .arcLabel(d => d.flightNumber + ': ' + (d.status || 'Unknown'))
-          .arcColor(() => currentTheme.flightPathColors)
-          .arcStroke(2.0) // Initial stroke, will be updated by debounced function
-          .arcDashLength(0.4)
-          .arcDashGap(0.05)
-          .arcDashAnimateTime(3000)
-          .arcCircularResolution(64)
-          .onArcClick(arc => {
-            world.controls().autoRotate = false;
-            
-            const midLat = (arc.startLat + arc.endLat) / 2;
-            const midLng = (arc.startLng + arc.endLng) / 2;
-            const latDiff = Math.abs(arc.endLat - arc.startLat);
-            const lngDiff = Math.abs(arc.endLng - arc.startLng);
-            const maxDiff = Math.max(latDiff, lngDiff);
-            
-            let altitude = 15.0;
-            if (maxDiff > 50) altitude = 18.0;
-            else if (maxDiff < 20) altitude = 12.0;
-            
-            world.pointOfView({ lat: midLat, lng: midLng, altitude: altitude }, 1500);
-            setTimeout(updateVisualsDebounced, 1700);
-            
-            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
-              window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
-                type: 'FLIGHT_SELECTED',
-                flight: arc
-              }));
-            }
-            
-            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
-              window.webkit.messageHandlers.reactNativeWebView.postMessage(JSON.stringify({
-                type: 'AUTO_ROTATE_TOGGLED',
-                autoRotate: false
-              }));
-            }
-          });
-
-        // Enhanced globe data update function with visited cities, trip locations, and tab filtering
-        window.updateGlobeData = function(newFlightData, newAirportData, visitedCities, tripLocations, tabMode) {
-          console.log('🎯 updateGlobeData called with:', newFlightData?.length, 'flights,', visitedCities?.length, 'visited cities,', tripLocations?.length, 'trip locations, tab mode:', tabMode);
-          
-          // Clear existing data first
-          world.arcsData([]);
-          world.pointsData([]);
-          world.htmlElementsData([]);
-          
-          // Update flight paths - Swift already filtered the data, just display what we received
-          if (newFlightData && newFlightData.length > 0) {
-            const validFlights = newFlightData.filter(flight => 
-              flight.startLat && flight.startLng && flight.endLat && flight.endLng
-            );
-            
-            arcsData = validFlights.slice(0, 50);
-            world.arcsData(arcsData);
-            
-            setTimeout(() => {
-              world.arcStroke(world.arcStroke());
-            }, 100);
-            
-            console.log('✅ Flight paths updated:', arcsData.length, 'for tab:', tabMode);
-          } else {
-            arcsData = [];
-            world.arcsData([]);
-            console.log('🚫 No flight paths for tab:', tabMode);
-          }
-          
-          // Combine airports and visited cities
-          let allLocations = [];
-          
-          // Add airports - Swift already filtered the data, just display what we received
-          if (newAirportData && newAirportData.length > 0) {
-            const airportLabels = newAirportData.map(airport => ({
-              ...airport,
-              type: 'airport'
-            }));
-            allLocations = allLocations.concat(airportLabels);
-          }
-          
-          // Store trip locations globally for country coloring
-          window.currentTripLocations = tripLocations || [];
-
-          // Helper function to check if a point is in a country's boundaries
-          function isPointInCountry(lat, lng, countryFeature) {
-            if (!countryFeature || !countryFeature.geometry) return false;
-
-            const geometry = countryFeature.geometry;
-            const coords = geometry.coordinates;
-
-            // Simple bounding box check for performance
-            function isInBoundingBox(lat, lng, polygonCoords) {
-              let minLat = Infinity, maxLat = -Infinity;
-              let minLng = Infinity, maxLng = -Infinity;
-
-              function processPoly(poly) {
-                poly.forEach(point => {
-                  const [pLng, pLat] = point;
-                  if (pLat < minLat) minLat = pLat;
-                  if (pLat > maxLat) maxLat = pLat;
-                  if (pLng < minLng) minLng = pLng;
-                  if (pLng > maxLng) maxLng = pLng;
-                });
-              }
-
-              if (geometry.type === 'Polygon') {
-                polygonCoords.forEach(processPoly);
-              } else if (geometry.type === 'MultiPolygon') {
-                polygonCoords.forEach(polygon => {
-                  polygon.forEach(processPoly);
-                });
-              }
-
-              // Use very tight margin to avoid overlapping neighboring countries
-              const margin = 0.05; // Very small margin (~5.5km) for precise matching
-              return lat >= (minLat - margin) && lat <= (maxLat + margin) &&
-                     lng >= (minLng - margin) && lng <= (maxLng + margin);
-            }
-
-            return isInBoundingBox(lat, lng, coords);
-          }
-
-          // Update hexagon colors based on trips
-          if (tripLocations && tripLocations.length > 0) {
-            // Force refresh hexagon colors
-            world.hexPolygonColor(d => {
-              // Check if this country contains any trip location
-              const countryTrips = window.currentTripLocations.filter(trip => {
-                return isPointInCountry(trip.lat, trip.lng, d);
-              });
-
-              if (countryTrips.length > 0) {
-                // Prioritize: active > upcoming > completed
-                const activeTrip = countryTrips.find(t => t.status === 'active');
-                const upcomingTrip = countryTrips.find(t => t.status === 'upcoming');
-                const completedTrip = countryTrips.find(t => t.status === 'completed');
-
-                if (activeTrip) return '#00C851'; // Green
-                if (upcomingTrip) return '#FFA500'; // Orange
-                if (completedTrip) return '#006bff'; // Blue
-              }
-
-              // Default color
-              return currentTheme.countryColor;
-            });
-          } else {
-            // Reset to default colors when no trips
-            world.hexPolygonColor(() => currentTheme.countryColor);
-          }
-
-          // Clear point markers (we're using hexagons instead)
-          world.pointsData([]);
-
-          // Filter out trip/city labels - keep only airports
-          const airportOnlyLocations = allLocations.filter(loc => loc.type !== 'trip' && loc.type !== 'visited');
-
-          if (airportOnlyLocations.length > 0) {
-            const processedLocations = processAirportLabels(airportOnlyLocations);
-            
-            world
-              .htmlElementsData(processedLocations)
-              .htmlLat(d => d.lat)
-              .htmlLng(d => d.lng)
-              .htmlAltitude(0.01)
-              .htmlElement(d => {
-                const el = document.createElement('div');
-                el.innerHTML = d.name;
-
-                // Only show airport labels (theme-aware styling)
-                const isDark = currentTheme.backgroundColor === '#000011';
-                const labelStyles = isDark ? {
-                  color: 'rgba(255, 255, 255, 0.95)',
-                  background: 'rgba(0, 0, 0, 0.7)',
-                  border: '0.5px solid rgba(255, 255, 255, 0.3)',
-                  shadow: '0 1px 3px rgba(0, 0, 0, 0.4)'
-                } : {
-                  color: 'rgba(0, 0, 0, 0.9)',
-                  background: 'rgba(255, 255, 255, 0.8)',
-                  border: '0.5px solid rgba(0, 0, 0, 0.2)',
-                  shadow: '0 1px 3px rgba(0, 0, 0, 0.3)'
-                };
-
-                el.style.cssText = `
-                  color: ${labelStyles.color};
-                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                  font-size: 9px;
-                  font-weight: 500;
-                  background: ${labelStyles.background};
-                  padding: 1px 4px;
-                  border-radius: 2px;
-                  border: ${labelStyles.border};
-                  text-align: center;
-                  pointer-events: none;
-                  white-space: nowrap;
-                  box-shadow: ${labelStyles.shadow};
-                  transform: translate(-50%, -50%);
-                `;
-                return el;
-              });
-            
-            console.log('✅ Location labels updated:', processedLocations.length, 'for tab:', tabMode);
-          }
-        };
-        
-        // Backward compatibility function
-        window.updateFlightData = function(newFlightData, newAirportData) {
-          console.log('🎯 updateFlightData called (fallback mode)');
-          window.updateGlobeData(newFlightData, newAirportData, [], [], 'all');
-        };
-
-        // Control functions
-        window.setTheme = function(theme) {
-          if (theme === 'light') {
-            currentTheme = {
-              globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNGRkZGRkYiLz48L3N2Zz4=',
-              backgroundColor: '#F0F0F0',
-              atmosphereColor: '#CCE7FF',
-              countryColor: '#000000',
-              flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
-              spaceBackground: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)'
-            };
-          } else {
-            currentTheme = {
-              globeImage: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiMwMDAwMDAiLz48L3N2Zz4=',
-              backgroundColor: '#000011',
-              atmosphereColor: '#4F94CD',
-              countryColor: '#ffffff',
-              flightPathColors: ['#006bff', 'rgba(0, 107, 255, 0.8)'],
-              spaceBackground: 'radial-gradient(ellipse at center, #1a1a2e 0%, #16213e 25%, #0f0f23 50%, #0a0a0a 100%)'
-            };
-          }
-          
-          document.body.style.background = currentTheme.spaceBackground;
-          world
-            .globeImageUrl(currentTheme.globeImage)
-            .backgroundColor(currentTheme.backgroundColor)
-            .atmosphereColor(currentTheme.atmosphereColor)
-            .hexPolygonColor(() => currentTheme.countryColor)
-            .arcColor(() => currentTheme.flightPathColors);
-          
-          if (pointsData && pointsData.length > 0) {
-            const processedAirports = processAirportLabels(pointsData);
-            world.htmlElementsData(processedAirports);
-          }
-        };
-        
-        window.toggleAutoRotate = function() {
-          const controls = world.controls();
-          controls.autoRotate = !controls.autoRotate;
-          return controls.autoRotate;
-        };
-        
-        
-        window.resetRotation = function() {
-          world.pointOfView({ lat: 0, lng: 0, altitude: 15.0 }, 1000);
-          world.controls().autoRotate = true;
-          setTimeout(updateVisualsDebounced, 1200);
-        };
-        
-        
-        // Enhanced flight focusing with ID-based matching and visual highlighting
-        let selectedFlightId = null;
-        
-        window.focusOnFlightById = function(flightId, flightNumber) {
-          console.log("🎯 Attempting to focus on flight:", flightNumber, "ID:", flightId);
-          console.log("📊 Available arcsData:", arcsData?.length || 0, "flights");
-          
-          if (!arcsData || arcsData.length === 0) {
-            console.warn("⚠️ No flight data available in arcsData");
-            return false;
-          }
-          
-          // Find flight by ID first, then by flight number as fallback
-          let flight = null;
-          let flightIndex = -1;
-          
-          for (let i = 0; i < arcsData.length; i++) {
-            const arc = arcsData[i];
-            if (arc.flightId === flightId || 
-                (arc.flightNumber && arc.flightNumber === flightNumber)) {
-              flight = arc;
-              flightIndex = i;
-              break;
-            }
-          }
-          
-          if (!flight) {
-            console.warn("⚠️ Flight not found in arcsData:", flightNumber, "ID:", flightId);
-            return false;
-          }
-          
-          console.log("✅ Flight found at index:", flightIndex);
-          
-          // Calculate center point and focus
-          const lat = (flight.startLat + flight.endLat) / 2;
-          const lng = (flight.startLng + flight.endLng) / 2;
-          
-          // Set the point of view
-          world.pointOfView({ lat, lng, altitude: 12.0 }, 1500);
-          
-          // Highlight the selected flight
-          highlightFlight(flightId, flightIndex);
-          
-          setTimeout(updateVisualsDebounced, 1800);
-          
-          console.log("🎯 Successfully focused on flight:", flightNumber);
-          return true;
-        };
-        
-        // Visual highlighting function
-        function highlightFlight(flightId, flightIndex) {
-          selectedFlightId = flightId;
-          
-          // Update arc colors to highlight selected flight
-          world.arcColor((arc, index) => {
-            if (index === flightIndex) {
-              return ["#FF6B35", "#FF8C42"]; // Highlighted flight - bright orange
-            } else {
-              return ["rgba(0, 107, 255, 0.3)", "rgba(0, 107, 255, 0.2)"]; // Dimmed
-            }
-          });
-          
-          // Update stroke width for emphasis
-          world.arcStroke((arc, index) => {
-            return index === flightIndex ? 3.5 : 1.5;
-          });
-          
-          console.log("🎨 Applied visual highlighting to flight:", flightId);
-        }
-        
-        // Clear highlighting function
-        window.clearFlightHighlight = function() {
-          selectedFlightId = null;
-          world.arcColor(() => currentTheme.flightPathColors);
-          world.arcStroke(2.0);
-          
-          // Restore all airport labels
-          console.log("🏷️ Restoring all airport labels");
-          if (arcsData && arcsData.length > 0) {
-            const airportLabels = [];
-            arcsData.forEach(flight => {
-              // Add departure airport
-              airportLabels.push({
-                lat: flight.startLat,
-                lng: flight.startLng,
-                code: flight.departureCode || 'DEP'
-              });
-              // Add arrival airport  
-              airportLabels.push({
-                lat: flight.endLat,
-                lng: flight.endLng,
-                code: flight.arrivalCode || 'ARR'
-              });
-            });
-            
-            // Remove duplicates based on location
-            const uniqueLabels = [];
-            airportLabels.forEach(label => {
-              const exists = uniqueLabels.find(existing => 
-                Math.abs(existing.lat - label.lat) < 0.1 && 
-                Math.abs(existing.lng - label.lng) < 0.1
-              );
-              if (!exists) {
-                uniqueLabels.push(label);
-              }
-            });
-            
-            // Restore airport code labels as HTML elements
-            world.htmlElementsData(uniqueLabels.slice(0, 30))
-              .htmlLat(d => d.lat)
-              .htmlLng(d => d.lng)
-              .htmlAltitude(0.01)
-              .htmlElement(d => {
-                const el = document.createElement('div');
-                el.innerHTML = d.code;
-                el.style.cssText = `
-                  color: #007AFF;
-                  font-family: 'GeistMono-Regular', 'Monaco', 'Menlo', 'Consolas', monospace;
-                  font-size: 10px;
-                  font-weight: bold;
-                  background: rgba(255, 255, 255, 0.9);
-                  padding: 2px 4px;
-                  border-radius: 3px;
-                  border: 1px solid #007AFF;
-                  text-align: center;
-                  pointer-events: none;
-                  white-space: nowrap;
-                  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-                  transform: translate(-50%, -50%);
-                `;
-                return el;
-              });
-          }
-          
-          console.log("🎨 Cleared flight highlighting and restored all airport labels");
-        };
-
-        window.focusOnFlight = function(flightIndex) {
-          if (arcsData[flightIndex]) {
-            const flight = arcsData[flightIndex];
-            const lat = (flight.startLat + flight.endLat) / 2;
-            const lng = (flight.startLng + flight.endLng) / 2;
-            world.pointOfView({ lat, lng, altitude: 15.0 }, 1000);
-            setTimeout(updateVisualsDebounced, 1200);
-          }
-        };
-        
-        window.clearFlightPaths = function() {
-          arcsData = [];
-          world.arcsData(arcsData);
-          world.htmlElementsData([]);
-        };
-        
-        setTimeout(() => {
-          updateVisualsDebounced();
-        }, 300);
-        
-        // Globe initialization complete
-        console.log('🎉 Globe initialized successfully');
-        console.log('📋 Available functions:', typeof window.updateFlightData, typeof window.setTheme);
-      })
-      .catch(error => {
-        const world = new Globe(document.getElementById('globeViz'))
-          .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-night.jpg')
-          .backgroundColor('#000011')
-          .showAtmosphere(false)
-          .atmosphereColor('#4F94CD')
-          .enablePointerInteraction(true);
-          
-        world.controls().autoRotate = true;
-        
-        console.log('Globe fallback initialized');
-      });</an_parameter>
-</invoke>
-  </script>
-</body>
-</html>
-"""
-    }
     
     func evaluateJavaScript(_ script: String) {
         webView?.evaluateJavaScript(script, completionHandler: nil)

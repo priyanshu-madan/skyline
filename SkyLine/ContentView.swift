@@ -11,11 +11,24 @@ struct ContentView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var flightStore: FlightStore
     @EnvironmentObject var authService: AuthenticationService
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var isGlobeReady: Bool
     @State private var selectedDetent: PresentationDetent = .height(80)
     @StateObject private var webViewCoordinator = WebViewCoordinator()
     @State private var retryFlightSelection: (() -> Void)? = nil
     @State private var currentActiveTab: SkyLineTab? = nil
+
+    /// How much of the screen the sheet currently covers. Drives `SkyLineGlobeScrim`
+    /// so the veil under the chrome deepens in step with the sheet instead of
+    /// snapping. The values mirror the detent set below; `.height(80)` is expressed
+    /// as a rough fraction because the scrim only needs the gradient stop, not points.
+    private var sheetFraction: CGFloat {
+        if selectedDetent == .large { return 0.94 }
+        if selectedDetent == .fraction(0.6) { return 0.60 }
+        if selectedDetent == .fraction(0.3) { return 0.30 }
+        if selectedDetent == .fraction(0.2) { return 0.20 }
+        return 0.10 // .height(80), the resting state
+    }
 
     var body: some View {
         ZStack {
@@ -26,11 +39,13 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea(.all)
 
-            Rectangle()
-                .foregroundStyle(.clear)
-                .frame(height: 60)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .ignoresSafeArea(.all)
+            // Glass needs predictable luminance under it, and a live 3D globe on a
+            // black field is not that — unscrimmed glass over it reads as muddy grey.
+            // This sits between the globe and the sheet so the floating tab bar and
+            // any other chrome stay legible as the globe rotates underneath.
+            SkyLineGlobeScrim(sheetFraction: sheetFraction)
+                .environmentObject(themeManager)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: sheetFraction)
 
             // Bottom sheet with tabs
             Color.clear
@@ -49,16 +64,16 @@ struct ContentView: View {
                     .environmentObject(themeManager)
                     .environmentObject(flightStore)
                     .environmentObject(authService)
-                    .presentationDetents([.height(80), .fraction(0.2), .fraction(0.3), .fraction(0.6), .large], selection: $selectedDetent)
-                    .presentationBackgroundInteraction(.enabled)
-                    .presentationBackground(.clear)
-                    .presentationCornerRadius(40)
+                    // Same detent set as before, moved into SkyLineGlass so the
+                    // sheet's presentation config lives with the rest of the chrome.
+                    // Existing `selectedDetent == .fraction(0.3)` checks still hold.
+                    .skylineGlobeSheetChrome(selectedDetent: $selectedDetent)
             }
             .preferredColorScheme(themeManager.currentTheme.colorScheme)
             .accentColor(themeManager.currentTheme.colors.primary)
         }
     }
-    
+
     // MARK: - Flight Selection Handler
     
     private func handleFlightSelection(_ flight: Flight) {
@@ -136,18 +151,23 @@ struct ContentView: View {
         webViewCoordinator.evaluateJavaScript(flightSelectionScript)
         
         // Expand sheet to show flight details
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.5)) {
             selectedDetent = .fraction(0.3)
         }
     }
-    
+
     // MARK: - Tab Selection Handler
-    
+
     private func handleTabSelection() {
-        // Expand sheet to 20% height when tab buttons are tapped
-        withAnimation(.easeInOut(duration: 0.3)) {
+        // Expand the sheet when a tab button is tapped. Places opens further than
+        // the rest: it is the product surface, and a large title plus a search
+        // field plus a row of places does not fit in 20% of the screen.
+        // `onTabChanged` fires before this, so `currentActiveTab` is already correct.
+        let target: PresentationDetent = currentActiveTab == .places ? .fraction(0.6) : .fraction(0.2)
+
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
             if selectedDetent == .height(80) {
-                selectedDetent = .fraction(0.2)
+                selectedDetent = target
             }
         }
     }
