@@ -732,23 +732,45 @@ class FlightStore: ObservableObject {
     }
     
     private func setupCloudKitSync() {
-        // Check CloudKit availability on app launch
-        Task {
-            let available = await cloudKitService.checkAccountStatus()
-            await MainActor.run {
-                cloudKitAvailable = available
-                if available {
-                    // CloudKit available - auto-sync enabled
-                } else {
-                    // CloudKit not available - using local storage only
-                }
+        // iCloud is often not ready at launch - the user may sign in afterwards,
+        // or switch accounts while the app is running. Availability must be
+        // re-checked on every account change rather than latched at init, or the
+        // flight list stays empty for the whole session.
+        NotificationCenter.default.publisher(for: .CKAccountChanged)
+            .sink { [weak self] _ in
+                Task { await self?.refreshCloudKitAvailability() }
             }
-            
-            // Perform initial sync if CloudKit is available
-            if available {
-                await performInitialSync()
-            }
+            .store(in: &cancellables)
+
+        Task { await refreshCloudKitAvailability() }
+    }
+
+    /// Re-checks iCloud availability, merging cloud flights the first time the
+    /// account becomes usable. Safe to call repeatedly - the merge only runs on
+    /// the unavailable -> available transition.
+    func refreshCloudKitAvailability() async {
+        let available = await cloudKitService.checkAccountStatus()
+
+        let becameAvailable = await MainActor.run { () -> Bool in
+            let wasAvailable = cloudKitAvailable
+            cloudKitAvailable = available
+            return available && !wasAvailable
         }
+
+        if becameAvailable {
+            await performInitialSync()
+        }
+    }
+
+    /// Called when the app returns to the foreground. Picks up flights added on
+    /// another device, and recovers the case where iCloud was unavailable at
+    /// launch and the account has since become usable.
+    func syncIfNeeded() async {
+        let available = await cloudKitService.checkAccountStatus()
+        await MainActor.run { cloudKitAvailable = available }
+
+        guard available else { return }
+        await performInitialSync()
     }
     
     // MARK: - CloudKit Sync Methods

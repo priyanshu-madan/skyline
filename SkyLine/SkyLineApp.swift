@@ -39,6 +39,7 @@ struct SkyLineApp: App {
                                 // Sync when app comes to foreground
                                 Task {
                                     await TripStore.shared.syncIfNeeded()
+                                    await flightStore.syncIfNeeded()
                                 }
                             }
                             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("GlobeReady"))) { _ in
