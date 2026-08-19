@@ -72,7 +72,7 @@ struct PhotoPoint: Codable, Identifiable, Hashable, Sendable {
 // MARK: - Place Visit
 
 /// One continuous stay at a place. A place visited on three days has three visits.
-struct PlaceVisit: Codable, Identifiable, Hashable, Sendable {
+struct PhotoVisitSession: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let startDate: Date
     let endDate: Date
@@ -113,41 +113,6 @@ struct PlaceVisit: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
-// MARK: - Verdict
-
-/// The one thing the user actually supplies. Raw values are stable — they are
-/// persisted to CloudKit and must never be renamed.
-enum PlaceVerdict: String, Codable, CaseIterable, Hashable, Sendable {
-    case worthIt = "worth_it"
-    case fine = "fine"
-    case skip = "skip"
-
-    var displayName: String {
-        switch self {
-        case .worthIt: return "Worth it"
-        case .fine:    return "Fine"
-        case .skip:    return "Skip"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .worthIt: return "star.fill"
-        case .fine:    return "hand.thumbsup"
-        case .skip:    return "xmark"
-        }
-    }
-
-    /// Maps onto existing `ThemeColors` tokens — no new palette needed.
-    /// success / warning / error already exist in Theme.swift.
-    var themeColorToken: String {
-        switch self {
-        case .worthIt: return "success"
-        case .fine:    return "warning"
-        case .skip:    return "error"
-        }
-    }
-}
 
 // MARK: - Detection Source
 
@@ -176,7 +141,7 @@ enum PlaceDetectionSource: String, Codable, CaseIterable, Hashable, Sendable {
 ///
 /// DESIGN DECISION — one place, many visits:
 /// A place visited on multiple days is ONE `DetectedPlace` with multiple
-/// `PlaceVisit`s, never two places. Rationale:
+/// `PhotoVisitSession`s, never two places. Rationale:
 ///   1. The verdict is an opinion about the place, not about an afternoon.
 ///      "Worth it" said twice about the same ramen shop is one fact.
 ///   2. Showing the same restaurant twice in the swipe deck is the single most
@@ -192,13 +157,13 @@ struct DetectedPlace: Codable, Identifiable, Hashable, Sendable {
     let latitude: Double?
     let longitude: Double?
     let category: String?            // MKPointOfInterestCategory.rawValue when known
-    let visits: [PlaceVisit]
+    let visits: [PhotoVisitSession]
     let representativeAssetIdentifier: String?
     let allAssetIdentifiers: [String]
     let source: PlaceDetectionSource
     let significance: Double
     let isNameUserEdited: Bool
-    let verdict: PlaceVerdict?
+    let verdict: Verdict?
     let note: String?
     let createdAt: Date
     let updatedAt: Date
@@ -210,13 +175,13 @@ struct DetectedPlace: Codable, Identifiable, Hashable, Sendable {
         latitude: Double? = nil,
         longitude: Double? = nil,
         category: String? = nil,
-        visits: [PlaceVisit] = [],
+        visits: [PhotoVisitSession] = [],
         representativeAssetIdentifier: String? = nil,
         allAssetIdentifiers: [String] = [],
         source: PlaceDetectionSource,
         significance: Double = 0,
         isNameUserEdited: Bool = false,
-        verdict: PlaceVerdict? = nil,
+        verdict: Verdict? = nil,
         note: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -282,7 +247,7 @@ struct DetectedPlace: Codable, Identifiable, Hashable, Sendable {
         category: String?? = nil,
         source: PlaceDetectionSource? = nil,
         isNameUserEdited: Bool? = nil,
-        verdict: PlaceVerdict?? = nil,
+        verdict: Verdict?? = nil,
         note: String?? = nil
     ) -> DetectedPlace {
         DetectedPlace(
@@ -356,10 +321,10 @@ extension DetectedPlace {
             return nil
         }
 
-        var visits: [PlaceVisit] = []
+        var visits: [PhotoVisitSession] = []
         if let json = record["visitsJSON"] as? String,
            let data = json.data(using: .utf8) {
-            visits = (try? JSONDecoder().decode([PlaceVisit].self, from: data)) ?? []
+            visits = (try? JSONDecoder().decode([PhotoVisitSession].self, from: data)) ?? []
         }
 
         // Backward-compat: unknown/removed raw values decode to a usable default
@@ -368,9 +333,9 @@ extension DetectedPlace {
         let sourceRaw = record["source"] as? String ?? PlaceDetectionSource.manual.rawValue
         let source = PlaceDetectionSource(rawValue: sourceRaw) ?? .manual
 
-        var verdict: PlaceVerdict?
+        var verdict: Verdict?
         if let verdictRaw = record["verdict"] as? String {
-            verdict = PlaceVerdict(rawValue: verdictRaw)
+            verdict = Verdict(rawValue: verdictRaw)
         }
 
         return DetectedPlace(
@@ -451,7 +416,7 @@ extension DetectedPlace {
         longitude: 139.6975,
         category: "MKPOICategoryCafe",
         visits: [
-            PlaceVisit(
+            PhotoVisitSession(
                 startDate: Date(timeIntervalSince1970: 1_700_000_000),
                 endDate: Date(timeIntervalSince1970: 1_700_004_200),
                 assetIdentifiers: ["A1", "A2", "A3"],

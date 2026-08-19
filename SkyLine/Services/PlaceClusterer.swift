@@ -17,7 +17,7 @@ struct PlaceCluster: Identifiable, Hashable, Sendable {
     let id: String
     let latitude: Double
     let longitude: Double
-    let visits: [PlaceVisit]
+    let visits: [PhotoVisitSession]
     let representativeAssetIdentifier: String?
     let significance: Double
 
@@ -199,8 +199,8 @@ struct PlaceClusterer {
     /// chain indefinitely — every step is under 150 m, so a two-kilometre stroll
     /// becomes one "place". Measuring against the centroid caps the true
     /// diameter of a visit at roughly 2 × the radius.
-    private func segmentIntoVisits(_ points: [PhotoPoint]) -> [PlaceVisit] {
-        var visits: [PlaceVisit] = []
+    private func segmentIntoVisits(_ points: [PhotoPoint]) -> [PhotoVisitSession] {
+        var visits: [PhotoVisitSession] = []
         var current: [PhotoPoint] = []
         var centroidLat = 0.0
         var centroidLng = 0.0
@@ -217,7 +217,7 @@ struct PlaceClusterer {
                 return GeoMath.distance(lat1: meanLat, lng1: meanLng, lat2: lat, lng2: lng)
             }.max() ?? 0
             visits.append(
-                PlaceVisit(
+                PhotoVisitSession(
                     startDate: current.first!.timestamp,
                     endDate: current.last!.timestamp,
                     assetIdentifiers: current.map(\.id),
@@ -268,7 +268,7 @@ struct PlaceClusterer {
     /// incidental photos attach to real places instead of dragging the centroid
     /// around. It also makes the output deterministic for a given input, which
     /// matters because the user can leave the swipe deck and come back to it.
-    private func mergeVisitsIntoPlaces(_ visits: [PlaceVisit], points: [PhotoPoint]) -> [PlaceCluster] {
+    private func mergeVisitsIntoPlaces(_ visits: [PhotoVisitSession], points: [PhotoPoint]) -> [PlaceCluster] {
         guard !visits.isEmpty else { return [] }
         let pointsByID = Dictionary(uniqueKeysWithValues: points.map { ($0.id, $0) })
 
@@ -279,7 +279,7 @@ struct PlaceClusterer {
             return $0.startDate < $1.startDate
         }
 
-        var groups: [[PlaceVisit]] = []
+        var groups: [[PhotoVisitSession]] = []
         var centroids: [(lat: Double, lng: Double, weight: Double, spread: Double)] = []
 
         for visit in ordered {
@@ -396,7 +396,7 @@ struct PlaceClusterer {
     ///   2 × visitCount    — you went BACK, which is the strongest signal there is
     ///   dwell, capped     — capped at 4 h so one long lazy afternoon cannot
     ///                       outrank three deliberate stops
-    func significance(for visits: [PlaceVisit]) -> Double {
+    func significance(for visits: [PhotoVisitSession]) -> Double {
         let photos = Double(visits.reduce(0) { $0 + $1.photoCount })
         let returns = 2.0 * Double(visits.count)
         let dwellHours = visits.reduce(0.0) { $0 + $1.dwell } / 3600.0
@@ -453,20 +453,20 @@ struct PlaceClusterer {
     /// Produces the shape of the trip: "23 photos on Tue afternoon".
     /// Every returned visit has a representative photo but no coordinate —
     /// the caller turns each into a `.photoTimeOnly` place awaiting user input.
-    func segmentByTimeOnly(points: [PhotoPoint]) -> [PlaceVisit] {
+    func segmentByTimeOnly(points: [PhotoPoint]) -> [PhotoVisitSession] {
         let usable = points
             .filter { !$0.isScreenshot }
             .sorted { $0.timestamp < $1.timestamp }
         guard !usable.isEmpty else { return [] }
 
-        var visits: [PlaceVisit] = []
+        var visits: [PhotoVisitSession] = []
         var current: [PhotoPoint] = [usable[0]]
 
         for point in usable.dropFirst() {
             let gap = point.timestamp.timeIntervalSince(current.last!.timestamp)
             if gap > configuration.visitGapSeconds {
                 visits.append(
-                    PlaceVisit(
+                    PhotoVisitSession(
                         startDate: current.first!.timestamp,
                         endDate: current.last!.timestamp,
                         assetIdentifiers: current.map(\.id),
@@ -480,7 +480,7 @@ struct PlaceClusterer {
             }
         }
         visits.append(
-            PlaceVisit(
+            PhotoVisitSession(
                 startDate: current.first!.timestamp,
                 endDate: current.last!.timestamp,
                 assetIdentifiers: current.map(\.id),

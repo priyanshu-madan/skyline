@@ -299,7 +299,7 @@ final class PhotoPlaceDetectionService: ObservableObject {
 
     /// "Tuesday afternoon" — a time label, never a fake place name. The card
     /// must not imply the app knows something it does not.
-    private static func sessionPlaceholderName(for visit: PlaceVisit, in timeZone: TimeZone) -> String {
+    private static func sessionPlaceholderName(for visit: PhotoVisitSession, in timeZone: TimeZone) -> String {
         var calendar = Calendar.current
         calendar.timeZone = timeZone
 
