@@ -12,6 +12,7 @@ enum PresentedSheet: Identifiable {
     case addEntry
     case editEntry(TripEntry)
     case moveToRegion(TripEntry)
+    case findPlaces
 
     var id: String {
         switch self {
@@ -21,6 +22,8 @@ enum PresentedSheet: Identifiable {
             return "editEntry_\(entry.id)"
         case .moveToRegion(let entry):
             return "moveToRegion_\(entry.id)"
+        case .findPlaces:
+            return "findPlaces"
         }
     }
 }
@@ -221,6 +224,14 @@ struct TripDetailView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
+                            presentedSheet = .findPlaces
+                        } label: {
+                            Label("Find Places from Photos", systemImage: "sparkles.rectangle.stack")
+                        }
+
+                        Divider()
+
+                        Button {
                             // Edit trip
                         } label: {
                             Label("Edit Trip", systemImage: "pencil")
@@ -257,6 +268,9 @@ struct TripDetailView: View {
                 EditEntryView(entry: entry)
                     .environmentObject(themeManager)
                     .environmentObject(tripStore)
+            case .findPlaces:
+                TripPlaceDetectionView(trip: trip)
+                    .environmentObject(themeManager)
             case .moveToRegion(let entry):
                 RegionPickerView(
                     entry: entry,
