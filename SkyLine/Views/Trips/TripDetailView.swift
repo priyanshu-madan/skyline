@@ -32,6 +32,7 @@ struct TripDetailView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
     @EnvironmentObject var flightStore: FlightStore
+    @EnvironmentObject var placeStore: PlaceStore
     @Environment(\.dismiss) private var dismiss
 
     let trip: Trip
@@ -126,6 +127,15 @@ struct TripDetailView: View {
                                 .padding(.top, 16)
                                 .padding(.bottom, 4)
                             }
+
+                            // Places logged for this trip. Without this the
+                            // trip screen says nothing after the verdict deck,
+                            // because places are not TripEntry rows.
+                            TripPlacesSection(trip: trip) {
+                                presentedSheet = .findPlaces
+                            }
+                            .environmentObject(themeManager)
+                            .environmentObject(placeStore)
 
                             // Timeline content
                             if entries.isEmpty {
