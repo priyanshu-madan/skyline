@@ -43,7 +43,18 @@ struct SkyLineApp: App {
                                     // Trip/TripEntry/Flight records the user
                                     // already has - so a returning user does not
                                     // open the new app to an empty map.
+                                    CountryLocator.shared.preload()
                                     await PlaceSchemaService.shared.initializePlaceSchema()
+
+                                    // The import must not start before the
+                                    // flights it reads have loaded. FlightStore
+                                    // fetches asynchronously, so calling this
+                                    // with flightStore.flights straight away is
+                                    // a race: on a cold cache the flight half
+                                    // of the backfill silently imports nothing,
+                                    // and whether it works depends on whether
+                                    // the local cache happened to be warm.
+                                    await flightStore.syncIfNeeded()
                                     await PlaceImportService.shared.runIfNeeded(
                                         flights: flightStore.flights)
                                 }

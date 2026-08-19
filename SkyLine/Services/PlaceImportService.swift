@@ -54,7 +54,14 @@ class PlaceImportService: ObservableObject {
 
     private let importVersionKey = "PlaceImportVersion"
     /// Bump to re-run the import after changing the mapping rules.
-    private let currentImportVersion = 1
+    /// Bump when the import produces materially different rows, so existing
+    /// installs re-derive rather than keeping stale data.
+    ///   1: initial import
+    ///   2: country / countryCode resolved from coordinates via CountryLocator
+    ///   3: repair pass - backfills country on places imported before v2
+    ///   4: re-run after fixing the race that imported flights before they loaded
+    ///   5: treat a blank trip.country as absent so the resolved one is used
+    private let currentImportVersion = 5
 
     private init() {}
 
@@ -135,6 +142,7 @@ class PlaceImportService: ObservableObject {
                 }
 
                 let rawName = (entry.locationName?.isEmpty == false) ? entry.locationName! : entry.title
+                let resolved = CountryLocator.shared.country(latitude: latitude, longitude: longitude)
                 let candidate = Place(
                     id: "place-entry-\(PlaceImportService.sanitizedRecordName(entry.id))",
                     name: rawName,
@@ -144,8 +152,8 @@ class PlaceImportService: ObservableObject {
                     address: nil,
                     city: entry.regionName ?? trip.destination,
                     state: trip.state,
-                    country: trip.country,
-                    countryCode: nil,
+                    country: trip.country?.nilIfBlank ?? resolved?.name,
+                    countryCode: resolved?.code,
                     // No stable external id exists for legacy rows; dedup falls
                     // back to name + proximity inside PlaceStore.
                     externalIdentifier: nil,
@@ -184,6 +192,7 @@ class PlaceImportService: ObservableObject {
             }
 
             let tripKey = PlaceImportService.sanitizedRecordName(trip.id)
+            let resolved = CountryLocator.shared.country(latitude: latitude, longitude: longitude)
             let candidate = Place(
                 id: "place-trip-\(tripKey)",
                 name: trip.destination,
@@ -193,8 +202,8 @@ class PlaceImportService: ObservableObject {
                 address: nil,
                 city: trip.destination,
                 state: trip.state,
-                country: trip.country,
-                countryCode: nil,
+                country: trip.country?.nilIfBlank ?? resolved?.name,
+                countryCode: resolved?.code,
                 externalIdentifier: "skyline-trip:\(trip.id)",
                 externalIdentifierSource: .skylineTrip,
                 timeZoneIdentifier: trip.timeZoneIdentifier
@@ -277,6 +286,7 @@ class PlaceImportService: ObservableObject {
             name = "\(code) Airport"
         }
 
+        let resolvedCountry = CountryLocator.shared.country(at: coordinate)
         let candidate = Place(
             id: "place-iata-\(code)",
             name: name,
@@ -286,8 +296,8 @@ class PlaceImportService: ObservableObject {
             address: nil,
             city: airport.city.isEmpty ? nil : airport.city,
             state: nil,
-            country: nil,
-            countryCode: nil,
+            country: resolvedCountry?.name,
+            countryCode: resolvedCountry?.code,
             externalIdentifier: "iata:\(code)",
             externalIdentifierSource: .airportCode,
             timeZoneIdentifier: AirportService.shared.getTimezone(for: code)?.identifier

@@ -85,6 +85,8 @@
 		EC647D96E118920DFBE80A24 /* TripPlaceDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE153EB0E633A4FF65620EB9 /* TripPlaceDetectionView.swift */; };
 		EF8A01FFA7B2F72339762F88 /* PhotoAccessGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11792F075ED09A11988F5932 /* PhotoAccessGateView.swift */; };
 		E83F4F887D997482CD797C56 /* PlaceReviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDCA7F5DD435E506DF47936 /* PlaceReviewViewModelTests.swift */; };
+		00A7BE41F53D7608D37E74DF /* CountryLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDF2BBF94DC982F63A40207 /* CountryLocator.swift */; };
+		BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1BA39554BEC67B5972698F /* CountryLocatorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -188,6 +190,8 @@
 		AE153EB0E633A4FF65620EB9 /* TripPlaceDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripPlaceDetectionView.swift; path = "SkyLine/Views/Places/TripPlaceDetectionView.swift"; sourceTree = SOURCE_ROOT; };
 		11792F075ED09A11988F5932 /* PhotoAccessGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhotoAccessGateView.swift; path = "SkyLine/Views/Places/PhotoAccessGateView.swift"; sourceTree = SOURCE_ROOT; };
 		4DDCA7F5DD435E506DF47936 /* PlaceReviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaceReviewViewModelTests.swift; path = "SkyLineTests/PlaceReviewViewModelTests.swift"; sourceTree = SOURCE_ROOT; };
+		FEDF2BBF94DC982F63A40207 /* CountryLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CountryLocator.swift; path = "SkyLine/Services/CountryLocator.swift"; sourceTree = SOURCE_ROOT; };
+		4F1BA39554BEC67B5972698F /* CountryLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CountryLocatorTests.swift; path = "SkyLineTests/CountryLocatorTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -289,6 +293,8 @@
 				21A83ACF10FFCF5643CE751B /* VerdictTests.swift */,
 				011B73E89E934D52562A6C8F /* Places */,
 				4DDCA7F5DD435E506DF47936 /* PlaceReviewViewModelTests.swift */,
+				FEDF2BBF94DC982F63A40207 /* CountryLocator.swift */,
+				4F1BA39554BEC67B5972698F /* CountryLocatorTests.swift */,
 			);
 			path = SkyLine;
 			sourceTree = "<group>";
@@ -685,6 +691,7 @@
 				806BBD9BF4FF6AB424731B11 /* PlaceReviewViewModel.swift in Sources */,
 				EC647D96E118920DFBE80A24 /* TripPlaceDetectionView.swift in Sources */,
 				EF8A01FFA7B2F72339762F88 /* PhotoAccessGateView.swift in Sources */,
+				00A7BE41F53D7608D37E74DF /* CountryLocator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -696,6 +703,7 @@
 				BFD8B5546808CFDF27F1C971 /* PlaceClustererTests.swift in Sources */,
 				F23250AD87DAA47814B99E82 /* VerdictTests.swift in Sources */,
 				E83F4F887D997482CD797C56 /* PlaceReviewViewModelTests.swift in Sources */,
+				BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
