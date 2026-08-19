@@ -155,7 +155,7 @@ struct WebViewGlobeView: View {
             }) {
                 Image(systemName: themeManager.currentTheme == .light ? "moon.fill" : "sun.max.fill")
                     .font(AppTypography.flightNumber)
-                    .foregroundColor(.white)
+                    .foregroundColor(themeManager.currentTheme.colors.onAccent)
                     .frame(width: 44, height: 44)
                     .background(themeManager.currentTheme.colors.primary)
                     .clipShape(Circle())
@@ -166,7 +166,7 @@ struct WebViewGlobeView: View {
             Button(action: toggleAutoRotation) {
                 Image(systemName: isAutoRotating ? "pause.circle.fill" : "play.circle.fill")
                     .font(AppTypography.flightNumber)
-                    .foregroundColor(.white)
+                    .foregroundColor(themeManager.currentTheme.colors.onAccent)
                     .frame(width: 44, height: 44)
                     .background(isAutoRotating ? themeManager.currentTheme.colors.success : themeManager.currentTheme.colors.primary)
                     .clipShape(Circle())
@@ -179,7 +179,7 @@ struct WebViewGlobeView: View {
             Button(action: resetGlobe) {
                 Image(systemName: "globe")
                     .font(AppTypography.flightNumber)
-                    .foregroundColor(.white)
+                    .foregroundColor(themeManager.currentTheme.colors.onAccent)
                     .frame(width: 44, height: 44)
                     .background(themeManager.currentTheme.colors.textSecondary)
                     .clipShape(Circle())

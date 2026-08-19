@@ -2,7 +2,9 @@
 //  EditEntryView.swift
 //  SkyLine
 //
-//  View for editing existing trip entries
+//  View for editing existing trip entries.
+//  Same primitives as AddEntryView, so an edited entry and a new one are the
+//  same form wearing a different title.
 //
 
 import SwiftUI
@@ -12,9 +14,9 @@ struct EditEntryView: View {
     @EnvironmentObject var themeManager: ThemeManager
     @EnvironmentObject var tripStore: TripStore
     @Environment(\.dismiss) private var dismiss
-    
+
     let entry: TripEntry
-    
+
     @State private var selectedEntryType: TripEntryType
     @State private var title: String
     @State private var content: String
@@ -22,14 +24,14 @@ struct EditEntryView: View {
     @State private var useCurrentLocation: Bool
     @State private var currentLocation: CLLocation?
     @State private var locationName: String
-    
+
     @State private var isUpdating = false
     @State private var error: String?
     @State private var showingLocationPicker = false
     @State private var showingDeleteConfirmation = false
-    
+
     @StateObject private var locationManager = SkyLineLocationManager()
-    
+
     init(entry: TripEntry) {
         self.entry = entry
         self._selectedEntryType = State(initialValue: entry.entryType)
@@ -38,81 +40,52 @@ struct EditEntryView: View {
         self._timestamp = State(initialValue: entry.timestamp)
         self._useCurrentLocation = State(initialValue: entry.hasLocation)
         self._locationName = State(initialValue: entry.locationName ?? "")
-        
+
         if let lat = entry.latitude, let lng = entry.longitude {
             self._currentLocation = State(initialValue: CLLocation(latitude: lat, longitude: lng))
         }
     }
-    
+
     private var isValidEntry: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
-    
+
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Text("Edit Entry")
-                            .font(.system(.largeTitle, design: .monospaced))
-                            .fontWeight(.bold)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                        
-                        Text("Update this moment")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+        let theme = themeManager.currentTheme
+
+        return ZStack {
+            // This screen previously set no background at all, so it inherited the
+            // system one — which resolves against the DEVICE appearance, not the
+            // app theme. That is the whole light/dark bug in one line.
+            theme.colors.background
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                FormScreenHeader(title: "Edit Entry") { dismiss() }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                        entryTypeSection
+                        detailsSection
+                        timestampSection
+                        locationSection
+
+                        if let error = error {
+                            FormErrorBanner(message: error)
+                        }
+
+                        actionButtons
                     }
-                    .padding(.top, 20)
-                    
-                    // Entry type picker
-                    entryTypePicker
-                    
-                    // Entry details form
-                    entryDetailsForm
-                    
-                    
-                    // Timestamp section
-                    timestampSection
-                    
-                    // Location section
-                    locationSection
-                    
-                    // Action buttons
-                    actionButtons
-                    
-                    // Error message
-                    if let error = error {
-                        Text(error)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.red)
-                            .padding()
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(8)
-                    }
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.bottom, AppSpacing.xxl)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 40)
+                .scrollDismissesKeyboard(.interactively)
+                .skylineScrollEdges()
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                    .font(.system(.body, design: .monospaced))
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Delete", role: .destructive) {
-                        showingDeleteConfirmation = true
-                    }
-                    .font(.system(.body, design: .monospaced))
-                }
-            }
-            .onAppear {
-                requestLocationIfNeeded()
-            }
+        }
+        .environment(\.colorScheme, theme.colorScheme)
+        .onAppear {
+            requestLocationIfNeeded()
         }
         .confirmationDialog("Delete Entry", isPresented: $showingDeleteConfirmation) {
             Button("Delete Entry", role: .destructive) {
@@ -123,147 +96,135 @@ struct EditEntryView: View {
             Text("Are you sure you want to delete this entry? This action cannot be undone.")
         }
     }
-    
+
     // MARK: - Entry Type Picker
-    
-    private var entryTypePicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Entry Type")
-                .font(.system(.headline, design: .monospaced))
-                .fontWeight(.semibold)
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
-                ForEach(TripEntryType.allCases, id: \.self) { type in
-                    entryTypeCard(for: type)
+
+    private var entryTypeSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            FormSectionHeader(title: "Type")
+
+            // One GlassEffectContainer so the selected cell's material merges with
+            // its neighbours instead of nine blurs stacking.
+            SkyLineGlassPanel(spacing: AppSpacing.sm) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.sm), count: 3),
+                    spacing: AppSpacing.sm
+                ) {
+                    ForEach(TripEntryType.allCases, id: \.self) { type in
+                        entryTypeCard(for: type)
+                    }
                 }
             }
         }
     }
-    
+
     private func entryTypeCard(for type: TripEntryType) -> some View {
-        Button {
-            selectedEntryType = type
+        let theme = themeManager.currentTheme
+        let isSelected = selectedEntryType == type
+        let shape = RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+
+        return Button {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+            withAnimation(.easeInOut(duration: 0.22)) {
+                selectedEntryType = type
+            }
         } label: {
-            VStack(spacing: 8) {
+            VStack(spacing: AppSpacing.sm) {
                 Text(type.emoji)
-                    .font(.system(size: 24))
-                
+                    .appFont(.headline, lineLimit: .exactly(1))
+
                 Text(type.displayName)
-                    .font(.system(.caption, design: .monospaced))
-                    .fontWeight(.medium)
-                    .foregroundColor(selectedEntryType == type ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
+                    .appFont(.verdictLabel, lineLimit: .exactly(2))
+                    .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textSecondary)
                     .multilineTextAlignment(.center)
-                    .lineLimit(2)
             }
-            .frame(height: 80)
+            .padding(.vertical, AppSpacing.sm + 4)
+            .padding(.horizontal, AppSpacing.xs)
             .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(selectedEntryType == type ? themeManager.currentTheme.colors.primary.opacity(0.1) : themeManager.currentTheme.colors.surface)
-                    .stroke(selectedEntryType == type ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.border, lineWidth: selectedEntryType == type ? 2 : 1)
-            )
+            .contentShape(shape)
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.plain)
+        // Selected: glass tinted with `primary` plus a ring. Unselected: the same
+        // recessed well every field uses. Two non-colour signals (the material and
+        // the ring) carry the state, so it survives greyscale.
+        .modifier(EntryTypeCardSurface(isSelected: isSelected, theme: theme, shape: shape))
+        .animation(.easeInOut(duration: 0.22), value: isSelected)
+        .accessibilityLabel(Text(type.displayName))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
-    
+
     // MARK: - Entry Details Form
-    
-    private var entryDetailsForm: some View {
-        VStack(spacing: 20) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Title")
-                    .font(.system(.headline, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                TextField("What happened?", text: $title)
-                    .font(.system(.body, design: .monospaced))
-                    .padding()
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                    )
-            }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Description")
-                    .font(.system(.headline, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                TextField("Tell the story...", text: $content, axis: .vertical)
-                    .font(.system(.body, design: .monospaced))
-                    .lineLimit(4...8)
-                    .padding()
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                    )
-            }
-        }
-    }
-    
-    
-    // MARK: - Timestamp Section
-    
-    private var timestampSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("When")
-                .font(.system(.headline, design: .monospaced))
-                .fontWeight(.semibold)
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
-            DatePicker("Timestamp", selection: $timestamp, displayedComponents: [.date, .hourAndMinute])
-                .datePickerStyle(.compact)
-                .font(.system(.body, design: .monospaced))
-                .padding()
-                .background(themeManager.currentTheme.colors.surface)
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                )
-        }
-    }
-    
-    // MARK: - Location Section
-    
-    private var locationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Where")
-                .font(.system(.headline, design: .monospaced))
-                .fontWeight(.semibold)
-                .foregroundColor(themeManager.currentTheme.colors.text)
-            
-            VStack(spacing: 12) {
-                Toggle("Use current location", isOn: $useCurrentLocation)
-                    .font(.system(.body, design: .monospaced))
-                    .tint(themeManager.currentTheme.colors.primary)
-                
-                if !useCurrentLocation {
-                    TextField("Location name", text: $locationName)
-                        .font(.system(.body, design: .monospaced))
-                        .padding()
-                        .background(themeManager.currentTheme.colors.surface)
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-                        )
-                }
-            }
-            .padding()
-            .background(themeManager.currentTheme.colors.surface)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
+
+    private var detailsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            FormSectionHeader(title: "Details")
+
+            FormField(
+                title: "Title",
+                text: $title,
+                placeholder: "What happened?",
+                isRequired: true,
+                icon: "pencil"
             )
+
+            FormField(
+                title: "Description",
+                text: $content,
+                placeholder: "Tell the story…",
+                isMultiline: true,
+                icon: "note.text"
+            )
+        }
+    }
+
+    // MARK: - Timestamp Section
+
+    private var timestampSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            FormSectionHeader(title: "When")
+
+            FormFieldRow(icon: "clock") {
+                DatePicker(
+                    "Date and time",
+                    selection: $timestamp,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .labelsHidden()
+                .datePickerStyle(.compact)
+                .tint(themeManager.currentTheme.colors.primary)
+                .accessibilityLabel(Text("Date and time"))
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    // MARK: - Location Section
+
+    private var locationSection: some View {
+        let theme = themeManager.currentTheme
+
+        return VStack(alignment: .leading, spacing: AppSpacing.md) {
+            FormSectionHeader(title: "Where")
+
+            FormFieldRow(icon: "location") {
+                Toggle(isOn: $useCurrentLocation) {
+                    Text("Use current location")
+                        .appFont(.body, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.text)
+                }
+                .tint(theme.colors.primary)
+            }
+
+            if !useCurrentLocation {
+                FormField(
+                    title: "Place name",
+                    text: $locationName,
+                    placeholder: "Where were you?",
+                    icon: "mappin"
+                )
+            }
         }
         .onChange(of: useCurrentLocation) { _, newValue in
             if newValue {
@@ -271,52 +232,55 @@ struct EditEntryView: View {
             }
         }
     }
-    
+
     // MARK: - Action Buttons
-    
+
     private var actionButtons: some View {
-        VStack(spacing: 12) {
-            // Update button
-            Button {
-                updateEntry()
-            } label: {
-                HStack {
-                    if isUpdating {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.8)
-                        Text("Updating...")
-                    } else {
-                        Image(systemName: "checkmark")
-                        Text("Update Entry")
-                    }
+        SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            VStack(spacing: AppSpacing.sm) {
+                FormPrimaryButton(
+                    title: "Update Entry",
+                    systemImage: "checkmark",
+                    busyTitle: "Updating…",
+                    isBusy: isUpdating,
+                    isEnabled: isValidEntry
+                ) {
+                    updateEntry()
                 }
-                .font(.system(.body, design: .monospaced))
-                .fontWeight(.medium)
-                .foregroundColor(.white)
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(isValidEntry ? themeManager.currentTheme.colors.primary : Color.gray)
-                .cornerRadius(8)
+
+                FormSecondaryButton(title: "Cancel") {
+                    dismiss()
+                }
+
+                // Destructive, and therefore never a filled block: `error` ink on a
+                // glass capsule, sitting apart from the two constructive actions.
+                FormSecondaryButton(
+                    title: "Delete Entry",
+                    systemImage: "trash",
+                    role: .destructive
+                ) {
+                    showingDeleteConfirmation = true
+                }
+                .padding(.top, AppSpacing.sm)
             }
-            .disabled(!isValidEntry || isUpdating)
         }
+        .padding(.top, AppSpacing.xs)
     }
-    
+
     // MARK: - Helper Functions
-    
+
     private func requestLocationIfNeeded() {
         if useCurrentLocation {
             locationManager.requestLocation()
             currentLocation = locationManager.currentLocation
         }
     }
-    
-    
+
+
     private func updateEntry() {
         isUpdating = true
         error = nil
-        
+
         let updatedEntry = TripEntry(
             id: entry.id,
             tripId: entry.tripId,
@@ -333,13 +297,13 @@ struct EditEntryView: View {
             createdAt: entry.createdAt,
             updatedAt: Date()
         )
-        
+
         Task {
             let result = await tripStore.updateEntry(updatedEntry)
-            
+
             await MainActor.run {
                 isUpdating = false
-                
+
                 switch result {
                 case .success:
                     dismiss()
@@ -349,11 +313,11 @@ struct EditEntryView: View {
             }
         }
     }
-    
+
     private func deleteEntry() {
         Task {
             let result = await tripStore.deleteEntry(entry.id, tripId: entry.tripId)
-            
+
             await MainActor.run {
                 switch result {
                 case .success:
@@ -362,6 +326,34 @@ struct EditEntryView: View {
                     self.error = error.localizedDescription
                 }
             }
+        }
+    }
+}
+
+// MARK: - Entry Type Card Surface
+/// Glass when selected, recessed well when not. Split into a modifier so the
+/// branch does not sit inside the button's view builder, where it would force the
+/// type checker to unify two different opaque result types on every rebuild.
+private struct EntryTypeCardSurface: ViewModifier {
+    let isSelected: Bool
+    let theme: AppTheme
+    let shape: RoundedRectangle
+
+    func body(content: Content) -> some View {
+        if isSelected {
+            content
+                .skylineGlass(
+                    .control,
+                    in: shape,
+                    tint: theme.colors.primary.opacity(0.45),
+                    interactive: true,
+                    theme: theme
+                )
+                .overlay(shape.stroke(theme.colors.primary, lineWidth: 1.5))
+        } else {
+            content
+                .background(shape.fill(theme.colors.surface))
+                .overlay(shape.stroke(theme.colors.border, lineWidth: 1))
         }
     }
 }

@@ -131,6 +131,15 @@ struct ThemeColors {
     let verdictFineSurface: Color
     let verdictSkipSurface: Color
 
+    /// Ink to place ON a filled `primary` / `success` / `accent` surface.
+    ///
+    /// This cannot be white. `primary` deliberately flips polarity between the
+    /// themes - it is a DARK blue on light and a LIGHT blue on dark - so white
+    /// glyphs on a dark-theme fill measure 2.62:1 against #4DA3FF, well under
+    /// the 4.5:1 floor. Every filled button in the app was illegible in dark
+    /// mode for exactly this reason.
+    let onAccent: Color
+
     // MARK: Glass Support
     /// Darkening veil laid between the globe and any glass chrome, so glass has
     /// something with predictable luminance to sample.
@@ -139,73 +148,84 @@ struct ThemeColors {
     let glassFallback: Color
 
     static let light = ThemeColors(
-        background: Color.white,
-        surface: Color(.systemGray6),
-        text: Color.black,
-        textSecondary: Color(.systemGray),
-        border: Color(.systemGray4),
-        primary: Color.blue,
-        secondary: Color.purple,
-        accent: Color.orange,
-        success: Color.green,
-        warning: Color.orange,
-        error: Color.red,
-        info: Color.blue,
-        statusScheduled: Color(.systemGray2),
-        statusBoarding: Color.orange,
-        statusDeparted: Color.blue,
-        statusInAir: Color.green,
-        statusLanded: Color.mint,
-        statusDelayed: Color.red,
-        statusCancelled: Color.pink,
-        globeBackground: Color(.systemGray6),
-        globeAtmosphere: Color.cyan.opacity(0.3),
-        globeCountries: Color.black,
-        flightPathStart: Color.blue,
-        flightPathEnd: Color.blue.opacity(0.8),
+        // Every value here is STATIC. `Color(.systemGray6)` and friends are
+        // dynamic UIColors: they resolve against the DEVICE appearance, not the
+        // theme the user picked in this app. Mixing them with static colours is
+        // what produced a white page with dark cards and black-on-black text
+        // whenever the app's Light theme ran on a dark-appearance device.
+        background: Color.appHex(0xF7F8FC),          // warm paper, not pure white
+        surface: Color.appHex(0xFFFFFF),             // cards lift off the page
+        text: Color.appHex(0x0E1626),
+        textSecondary: Color.appHex(0x5A6480),       // 5.6:1 on background
+        border: Color.appHex(0xDCE2EF),
+        primary: Color.appHex(0x0B63C5),             // 5.9:1 on background
+        secondary: Color.appHex(0x6D4AC7),
+        accent: Color.appHex(0xC2701A),
+        success: Color.appHex(0x17794A),
+        warning: Color.appHex(0x8A6410),
+        error: Color.appHex(0xB3323C),
+        info: Color.appHex(0x0B63C5),
+        statusScheduled: Color.appHex(0x8892A6),
+        statusBoarding: Color.appHex(0xC2701A),
+        statusDeparted: Color.appHex(0x0B63C5),
+        statusInAir: Color.appHex(0x17794A),
+        statusLanded: Color.appHex(0x0F7A6B),
+        statusDelayed: Color.appHex(0xB3323C),
+        statusCancelled: Color.appHex(0xA02A5B),
+        globeBackground: Color.appHex(0xEEF2FA),
+        globeAtmosphere: Color.appHex(0x8FC5F0).opacity(0.35),
+        globeCountries: Color.appHex(0x0E1626),
+        flightPathStart: Color.appHex(0x0B63C5),
+        flightPathEnd: Color.appHex(0x0B63C5).opacity(0.75),
         verdictWorthIt: Color.appHex(0x00727F),          // deep teal      5.66:1 on white
         verdictFine: Color.appHex(0x9A6400),             // bronze/amber   5.00:1 on white
         verdictSkip: Color.appHex(0x8E1B2E),             // deep crimson   8.95:1 on white
         verdictWorthItSurface: Color.appHex(0xDCF0F2),
         verdictFineSurface: Color.appHex(0xF6E9D2),
         verdictSkipSurface: Color.appHex(0xF7DFE4),
+        onAccent: Color.appHex(0xFFFFFF),            // 5.8:1 on primary 0x0B63C5
         scrim: Color.black.opacity(0.18),
-        glassFallback: Color(.systemGray6)
+        glassFallback: Color.appHex(0xF1F4FA)
     )
 
     static let dark = ThemeColors(
-        background: Color(red: 0.145, green: 0.145, blue: 0.145),  // oklch(0.145 0 0)
-        surface: Color(red: 0.145, green: 0.145, blue: 0.145),     // oklch(0.145 0 0) - card background
-        text: Color(red: 0.985, green: 0.985, blue: 0.985),        // oklch(0.985 0 0)
-        textSecondary: Color(red: 0.708, green: 0.708, blue: 0.708), // oklch(0.708 0 0)
-        border: Color(red: 0.269, green: 0.269, blue: 0.269),      // oklch(0.269 0 0)
-        primary: Color.blue,
-        secondary: Color.purple,
-        accent: Color.orange,
-        success: Color.green,
-        warning: Color.orange,
-        error: Color.red,
-        info: Color.blue,
-        statusScheduled: Color(.systemGray2),
-        statusBoarding: Color.orange,
-        statusDeparted: Color.blue,
-        statusInAir: Color.green,
-        statusLanded: Color.mint,
-        statusDelayed: Color.red,
-        statusCancelled: Color.pink,
-        globeBackground: Color(.init(red: 0.0, green: 0.0, blue: 0.067, alpha: 1.0)),
-        globeAtmosphere: Color.blue.opacity(0.4),
-        globeCountries: Color.white,
-        flightPathStart: Color.blue,
-        flightPathEnd: Color.blue.opacity(0.8),
-        verdictWorthIt: Color.appHex(0x2FD1C4),          // bright teal    8.06:1 on #252525
-        verdictFine: Color.appHex(0xF2B33D),             // amber          8.24:1 on #252525
-        verdictSkip: Color.appHex(0xFF7A6B),             // coral red      6.02:1 on #252525
+        // Deep navy rather than neutral grey: the globe's own night sky is the
+        // app's ground, so the chrome sits in the same world as the artefact.
+        // background and surface were previously the SAME value (0.145), which
+        // made every card invisible against the page.
+        background: Color.appHex(0x0A0F1C),
+        surface: Color.appHex(0x151D30),             // now genuinely lifts off
+        text: Color.appHex(0xE9EDF7),
+        textSecondary: Color.appHex(0x99A3BC),       // 6.4:1 on background
+        border: Color.appHex(0x27324B),
+        primary: Color.appHex(0x4DA3FF),             // 7.3:1 on background
+        secondary: Color.appHex(0xA78BFA),
+        accent: Color.appHex(0xFFB454),
+        success: Color.appHex(0x3DDC91),
+        warning: Color.appHex(0xF2B33D),
+        error: Color.appHex(0xFF6B6B),
+        info: Color.appHex(0x4DA3FF),
+        statusScheduled: Color.appHex(0x8892A6),
+        statusBoarding: Color.appHex(0xFFB454),
+        statusDeparted: Color.appHex(0x4DA3FF),
+        statusInAir: Color.appHex(0x3DDC91),
+        statusLanded: Color.appHex(0x5EE0C8),
+        statusDelayed: Color.appHex(0xFF6B6B),
+        statusCancelled: Color.appHex(0xFF7AAE),
+        globeBackground: Color.appHex(0x000011),
+        globeAtmosphere: Color.appHex(0x4DA3FF).opacity(0.4),
+        globeCountries: Color.appHex(0xFFFFFF),
+        flightPathStart: Color.appHex(0x4DA3FF),
+        flightPathEnd: Color.appHex(0x4DA3FF).opacity(0.75),
+        verdictWorthIt: Color.appHex(0x2FD1C4),          // bright teal    8.06:1 on surface
+        verdictFine: Color.appHex(0xF2B33D),             // amber          8.24:1 on surface
+        verdictSkip: Color.appHex(0xFF7A6B),             // coral red      6.02:1 on surface
         verdictWorthItSurface: Color.appHex(0x123B3C),
         verdictFineSurface: Color.appHex(0x3D3018),
         verdictSkipSurface: Color.appHex(0x431F1C),
+        onAccent: Color.appHex(0x08101F),            // 7.1:1 on primary 0x4DA3FF
         scrim: Color.black.opacity(0.35),
-        glassFallback: Color(red: 0.20, green: 0.20, blue: 0.20)
+        glassFallback: Color.appHex(0x1B2438)
     )
 }
 

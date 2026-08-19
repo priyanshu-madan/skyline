@@ -85,9 +85,26 @@ struct TripDetailView: View {
     @State private var showRenameRegionAlert = false
     @State private var newRegionNameInput = ""
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .body) private var fabDiameter: CGFloat = 56
+
+    /// Motion is for orientation, never decoration. `nil` disables the
+    /// animation outright when Reduce Motion is on — the pattern already used
+    /// in ContentView and PlaceLogView.
+    private var listAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.25)
+    }
+
     var body: some View {
-        NavigationView {
+        let theme = themeManager.currentTheme
+
+        return NavigationStack {
             ZStack {
+                // The page slab. Opaque and explicit: a transparent body would
+                // borrow the DEVICE appearance behind the sheet.
+                theme.colors.background
+                    .ignoresSafeArea()
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 0) {
@@ -101,16 +118,14 @@ struct TripDetailView: View {
                                     groupedByRegion: groupedByRegion,
                                     selectedRegionIndex: $selectedRegionIndex,
                                     onRegionSelected: { regionIndex in
-                                        withAnimation {
+                                        withAnimation(listAnimation) {
                                             selectedRegionIndex = regionIndex
-                                            let regionName = groupedByRegion[regionIndex].regionName
                                             proxy.scrollTo("region_\(regionIndex)", anchor: .top)
                                         }
                                     }
                                 )
-                                .padding(.top, 16)
-                                .padding(.bottom, 8)
-                                .background(themeManager.currentTheme.colors.background)
+                                .padding(.top, AppSpacing.md)
+                                .padding(.bottom, AppSpacing.sm)
                             }
 
                             // Region detection banner
@@ -120,12 +135,12 @@ struct TripDetailView: View {
                                     onDetect: { detectRegions() },
                                     onDismiss: {
                                         UserDefaults.standard.set(true, forKey: "regionBannerDismissed_\(trip.id)")
-                                        withAnimation { showRegionDetectionBanner = false }
+                                        withAnimation(listAnimation) { showRegionDetectionBanner = false }
                                     }
                                 )
-                                .padding(.horizontal, 20)
-                                .padding(.top, 16)
-                                .padding(.bottom, 4)
+                                .padding(.horizontal, AppSpacing.md)
+                                .padding(.top, AppSpacing.md)
+                                .padding(.bottom, AppSpacing.xs)
                             }
 
                             // Places logged for this trip. Without this the
@@ -176,6 +191,7 @@ struct TripDetailView: View {
                             }
                         }
                     }
+                    .skylineScrollEdges()
                 }
 
                 // Preview accept/reject bar or floating add button
@@ -192,43 +208,48 @@ struct TripDetailView: View {
                             Spacer()
 
                             Button {
+                                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                                impactFeedback.impactOccurred()
                                 presentedSheet = .addEntry
                             } label: {
                                 Image(systemName: "plus")
-                                    .font(.system(.title2, design: .monospaced))
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
-                                    .frame(width: 56, height: 56)
-                                    .background(themeManager.currentTheme.colors.primary)
-                                    .clipShape(Circle())
-                                    .shadow(
-                                        color: themeManager.currentTheme.colors.primary.opacity(0.3),
-                                        radius: 8,
-                                        x: 0,
-                                        y: 4
-                                    )
+                                    .font(AppTypography.mono(.title3, weight: .semibold))
+                                    .frame(width: fabDiameter, height: fabDiameter)
                             }
-                            .padding(.trailing, 20)
-                            .padding(.bottom, 20)
+                            // Let the system pick the glyph colour against the
+                            // tint. `.white` on `colors.primary` is 2.6:1 in
+                            // dark theme.
+                            .buttonStyle(.glassProminent)
+                            .buttonBorderShape(.circle)
+                            .tint(theme.colors.primary)
+                            .accessibilityLabel(Text("Add activity"))
+                            .padding(.trailing, AppSpacing.md)
+                            .padding(.bottom, AppSpacing.lg)
                         }
                     }
                 }
+                .animation(listAnimation, value: hasPreview)
 
                 // AI Generation Loading Overlay (hidden for streaming)
                 // Activities appear directly in timeline instead
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            // Driven by the APP's theme, not the device appearance: the old
+            // hardcoded `.dark` gave light bar glyphs over a light map.
+            .toolbarColorScheme(theme.colorScheme, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
+                            .font(AppTypography.mono(.body, weight: .semibold))
                     }
+                    // Glass, because these float over a live map.
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel(Text("Close"))
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -262,9 +283,11 @@ struct TripDetailView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
+                            .font(AppTypography.mono(.body, weight: .semibold))
                     }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel(Text("Trip options"))
                 }
             }
         }
@@ -327,51 +350,52 @@ struct TripDetailView: View {
     
     // MARK: - Preview Action Bar
 
+    /// Floating chrome, not a docked toolbar. An `error`-coloured label on a
+    /// glass button rather than a filled `red @ 10%` block — that block read as
+    /// warm mud on dark and a Post-it note on light.
     private var previewActionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
+        let theme = themeManager.currentTheme
 
-            VStack(spacing: 8) {
-                Text("AI Generated \(previewEntries.count) Activities")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+        return VStack(spacing: AppSpacing.sm) {
+            Text("AI suggested \(previewEntries.count) \(previewEntries.count == 1 ? "activity" : "activities")")
+                .appFont(.verdictLabel)
+                .foregroundStyle(theme.colors.textSecondary)
 
-                HStack(spacing: 12) {
-                    Button {
-                        rejectPreviews()
-                    } label: {
-                        HStack {
-                            Image(systemName: "xmark")
-                            Text("Reject")
-                        }
-                    }
-                    .font(.system(.body, design: .rounded, weight: .semibold))
-                    .foregroundColor(.red)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(12)
-
-                    Button {
-                        acceptPreviews()
-                    } label: {
-                        HStack {
-                            Image(systemName: "checkmark")
-                            Text("Accept All")
-                        }
-                    }
-                    .font(.system(.body, design: .rounded, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(themeManager.currentTheme.colors.primary)
-                    .cornerRadius(12)
+            HStack(spacing: AppSpacing.sm) {
+                Button {
+                    rejectPreviews()
+                } label: {
+                    Label("Reject", systemImage: "xmark")
+                        .appFont(.bodyBold)
+                        .foregroundStyle(theme.colors.error)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.xs)
                 }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+
+                Button {
+                    acceptPreviews()
+                } label: {
+                    Label("Accept all", systemImage: "checkmark")
+                        .appFont(.bodyBold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.xs)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(theme.colors.primary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
         }
-        .background(themeManager.currentTheme.colors.background)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm + 2)
+        .skylineGlass(
+            .chrome,
+            in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous),
+            theme: theme
+        )
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.bottom, AppSpacing.md)
     }
 
     // MARK: - AI Generation Loading Overlay
@@ -588,99 +612,108 @@ struct TripDetailView: View {
 }
 
 // MARK: - Trip Header
+/// The trip as an object: a photograph with its name on it, then one panel of
+/// evidence. Not a centred title over three labelled fields.
 struct TripHeaderView: View {
     @EnvironmentObject var themeManager: ThemeManager
     let trip: Trip
     let entries: [TripEntry]
 
-    var body: some View {
-        VStack(spacing: 16) {
-            // Trip image
-            TripHeaderImageView(trip: trip, entries: entries)
-                .frame(height: 200)
-                .clipped()
+    @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 300
+    @ScaledMetric(relativeTo: .body) private var dividerHeight: CGFloat = 28
 
-            // Trip info
-            VStack(spacing: 12) {
-                VStack(spacing: 4) {
+    var body: some View {
+        let theme = themeManager.currentTheme
+
+        return VStack(spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                TripHeaderImageView(trip: trip, entries: entries)
+                    .frame(height: heroHeight)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    // The map dissolves into the page rather than being cut off
+                    // by a hard edge, and the title below can therefore use the
+                    // ordinary text tokens in both themes.
+                    .overlay { TripImageScrim(start: 0.38) }
+
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text(trip.destination.uppercased())
+                        .appFont(.verdictLabel)
+                        .foregroundStyle(theme.colors.textSecondary)
+                        .accessibilityHidden(true)
+
                     Text(trip.title)
-                        .font(.system(.largeTitle, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                        .multilineTextAlignment(.center)
-                    
-                    Text(trip.destination)
-                        .font(.system(.title3, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        .appFont(.titleLarge)
+                        .foregroundStyle(theme.colors.text)
                 }
-                
-                HStack(spacing: 24) {
-                    VStack(spacing: 4) {
-                        Text("Duration")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            .textCase(.uppercase)
-                        
-                        Text(trip.durationText)
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                    }
-                    
-                    VStack(spacing: 4) {
-                        Text("Status")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            .textCase(.uppercase)
-                        
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(statusColor)
-                                .frame(width: 8, height: 8)
-                            
-                            Text(trip.statusText)
-                                .font(.system(.body, design: .monospaced))
-                                .fontWeight(.medium)
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-                        }
-                    }
-                    
-                    VStack(spacing: 4) {
-                        Text("Dates")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            .textCase(.uppercase)
-                        
-                        Text(trip.dateRangeText)
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.medium)
-                            .foregroundColor(themeManager.currentTheme.colors.text)
-                    }
-                }
-                
-                if let description = trip.description, !description.isEmpty {
-                    Text(description)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 8)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.bottom, AppSpacing.md)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text("\(trip.title), \(trip.destination)"))
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
+
+            statPanel
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, AppSpacing.md)
+
+            if let description = trip.description, !description.isEmpty {
+                Text(description)
+                    .appFont(.bodySmall, lineLimit: .unlimited)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.top, AppSpacing.md)
+            }
         }
-        .background(themeManager.currentTheme.colors.background)
+        .padding(.bottom, AppSpacing.lg)
+        .background(theme.colors.background)
     }
-    
-    private var statusColor: Color {
-        switch trip.statusColor {
-        case "green":
-            return .green
-        case "blue":
-            return .blue
-        default:
-            return .gray
+
+    // MARK: Stats
+
+    /// Glass, because this is one liftable object sitting on the page. Status
+    /// is gone: it duplicated the filter the user came through, and its three
+    /// hues were unmanaged system colours that survived neither theme.
+    private var statPanel: some View {
+        let theme = themeManager.currentTheme
+
+        return HStack(spacing: 0) {
+            statColumn(label: "Days", value: trip.durationText)
+            statDivider
+            statColumn(label: "Dates", value: trip.dateRangeText)
+            statDivider
+            statColumn(label: "Logged", value: entries.isEmpty ? "—" : "\(entries.count)")
         }
+        .padding(.vertical, AppSpacing.md)
+        .skylineGlassCard(theme: theme)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func statColumn(label: String, value: String) -> some View {
+        let theme = themeManager.currentTheme
+
+        return VStack(spacing: AppSpacing.xs) {
+            Text(value)
+                .appFont(.bodyBold)
+                .foregroundStyle(theme.colors.text)
+
+            Text(label.uppercased())
+                .appFont(.footnote)
+                .foregroundStyle(theme.colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(label): \(value)"))
+    }
+
+    /// A bare `Divider()` is a semantic separator that follows the DEVICE
+    /// appearance. A token-filled rectangle follows the app's theme.
+    private var statDivider: some View {
+        Rectangle()
+            .fill(themeManager.currentTheme.colors.border)
+            .frame(width: 1, height: dividerHeight)
+            .accessibilityHidden(true)
     }
 }
 
@@ -724,12 +757,13 @@ struct TripHeaderImageView: View {
         return segments
     }
 
-    // Route segment with color information
+    // A polyline between two consecutive entries. It deliberately carries no
+    // colour: the route is stroked in the theme's flight-path tokens at render
+    // time, so it re-colours when the user flips the theme instead of freezing
+    // whatever the theme happened to be when the route was fetched.
     struct RouteSegment: Identifiable {
         let id = UUID()
         let coordinates: [CLLocationCoordinate2D]
-        let startColor: Color
-        let endColor: Color
     }
 
     // Calculate map region to fit all markers
@@ -780,6 +814,8 @@ struct TripHeaderImageView: View {
     }
 
     var body: some View {
+        let theme = themeManager.currentTheme
+
         if trip.latitude != nil && trip.longitude != nil || !entriesWithLocations.isEmpty {
             // Show map with numbered markers and route paths
             Map(initialPosition: .region(mapRegion)) {
@@ -793,9 +829,12 @@ struct TripHeaderImageView: View {
                         let endIdx = min(startIdx + chunkSize + 1, route.coordinates.count)
                         if startIdx < route.coordinates.count && endIdx <= route.coordinates.count && endIdx > startIdx {
                             let progress = Double(index) / Double(max(1, route.coordinates.count / chunkSize))
+                            // The route is one journey, so it gets the one
+                            // journey colour the globe already uses, not a
+                            // blend of two unmanaged per-entry-type hues.
                             let segmentColor = interpolateColor(
-                                from: route.startColor,
-                                to: route.endColor,
+                                from: theme.colors.flightPathStart,
+                                to: theme.colors.flightPathEnd,
                                 progress: progress
                             )
 
@@ -818,7 +857,7 @@ struct TripHeaderImageView: View {
                         Annotation(entry.title, coordinate: coordinate) {
                             NumberedMarkerView(
                                 number: number,
-                                color: entry.entryType.swiftUIColor
+                                color: entry.isPreview ? theme.colors.secondary : theme.colors.primary
                             )
                         }
                     }
@@ -826,6 +865,10 @@ struct TripHeaderImageView: View {
             }
             .mapStyle(.standard)
             .mapControlVisibility(.hidden)
+            // MapKit renders against the trait colour scheme, i.e. the DEVICE
+            // appearance. Pinning it to the app's theme is what stops a
+            // light-theme trip screen showing a black map on a dark phone.
+            .environment(\.colorScheme, theme.colorScheme)
             .task {
                 // Lazy load routes after a short delay to show map first
                 try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 second delay
@@ -843,58 +886,38 @@ struct TripHeaderImageView: View {
             .onTapGesture {
                 showingExpandedMap = true
             }
-            .overlay(
-                // Overlays
-                ZStack {
-                    // Loading indicator
+            .overlay(alignment: .bottom) {
+                // Never bare text over a live map: a glass capsule gives the
+                // label its own backdrop, and Reduce Transparency turns it into
+                // an opaque `glassFallback` chip rather than removing it.
+                VStack(spacing: AppSpacing.sm) {
                     if isLoadingRoutes && routes.isEmpty {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                        .scaleEffect(0.8)
-                                    Text("Loading routes...")
-                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.black.opacity(0.7))
-                                )
-                                Spacer()
-                            }
-                            .padding(.bottom, 60)
+                        HStack(spacing: AppSpacing.sm) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: theme.colors.text))
+                                .scaleEffect(0.8)
+                            Text("Loading routes…")
+                                .appFont(.verdictLabel)
                         }
+                        .foregroundStyle(theme.colors.text)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                        .skylineGlassCapsule(theme: theme)
                     }
 
-                    // Tap indicator overlay
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            HStack(spacing: 6) {
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 12, weight: .medium))
-                                Text("Tap to expand")
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(Color.black.opacity(0.6))
-                            )
-                            .padding(12)
-                        }
+                    HStack(spacing: AppSpacing.xs + 2) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        Text("Tap to expand")
                     }
+                    .appFont(.verdictLabel)
+                    .foregroundStyle(theme.colors.text)
+                    .padding(.horizontal, AppSpacing.sm + 4)
+                    .padding(.vertical, AppSpacing.sm - 2)
+                    .skylineGlassCapsule(theme: theme)
                 }
-            )
+                .padding(.bottom, AppSpacing.xl + AppSpacing.md)
+                .allowsHitTesting(false)
+            }
             .sheet(isPresented: $showingExpandedMap) {
                 ExpandedMapView(
                     trip: trip,
@@ -904,35 +927,21 @@ struct TripHeaderImageView: View {
                 )
             }
         } else {
-            // Fallback for trips without coordinates
+            // Fallback for trips without coordinates. Two theme tokens rather
+            // than four hardcoded RGB triples ternaried on the theme.
             ZStack {
-                // Background gradient
                 LinearGradient(
-                    colors: themeManager.currentTheme == .dark ? [
-                        Color(red: 0.31, green: 0.31, blue: 0.31),
-                        Color(red: 0.11, green: 0.11, blue: 0.15)
-                    ] : [
-                        Color(red: 0.98, green: 0.98, blue: 0.98),
-                        Color.white
-                    ],
+                    colors: [theme.colors.surface, theme.colors.background],
                     startPoint: .top,
                     endPoint: .bottom
                 )
 
-                // Fallback with destination name
-                VStack(spacing: 12) {
-                    Image(systemName: "building.2")
-                        .font(.system(size: 48, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                    Text(trip.destination)
-                        .font(.system(.title2, design: .monospaced))
-                        .fontWeight(.semibold)
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 40)
+                Image(systemName: "map")
+                    .font(AppTypography.mono(.largeTitle))
+                    .foregroundStyle(theme.colors.textSecondary.opacity(0.5))
+                    .symbolRenderingMode(.hierarchical)
             }
+            .accessibilityHidden(true)
         }
     }
 
@@ -990,21 +999,13 @@ struct TripHeaderImageView: View {
 
         guard let startCoord = startEntry.coordinate,
               let endCoord = endEntry.coordinate else {
-            return RouteSegment(
-                coordinates: [],
-                startColor: startEntry.entryType.swiftUIColor,
-                endColor: endEntry.entryType.swiftUIColor
-            )
+            return RouteSegment(coordinates: [])
         }
 
         // Check cache first
         if let cached = await RouteCache.shared.getRoute(from: startEntry.id, to: endEntry.id) {
             print("✅ Using cached route: \(startEntry.title) → \(endEntry.title)")
-            return RouteSegment(
-                coordinates: cached.coordinates.map { $0.coordinate },
-                startColor: startEntry.entryType.swiftUIColor,
-                endColor: endEntry.entryType.swiftUIColor
-            )
+            return RouteSegment(coordinates: cached.coordinates.map { $0.coordinate })
         }
 
         // Not in cache, fetch from Apple Maps
@@ -1046,22 +1047,14 @@ struct TripHeaderImageView: View {
                     endColor: endEntry.entryType.color
                 )
 
-                return RouteSegment(
-                    coordinates: coordinates,
-                    startColor: startEntry.entryType.swiftUIColor,
-                    endColor: endEntry.entryType.swiftUIColor
-                )
+                return RouteSegment(coordinates: coordinates)
             }
         } catch {
             // Silently fall back to straight line
         }
 
         // Fallback to straight line (don't cache this)
-        return RouteSegment(
-            coordinates: [startCoord, endCoord],
-            startColor: startEntry.entryType.swiftUIColor,
-            endColor: endEntry.entryType.swiftUIColor
-        )
+        return RouteSegment(coordinates: [startCoord, endCoord])
     }
 
     // Interpolate between two colors based on progress (0.0 to 1.0)
@@ -1094,72 +1087,78 @@ struct TripHeaderImageView: View {
 // MARK: - Region Selector Banner
 struct RegionSelectorBanner: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let groupedByRegion: [(regionName: String, regionOrder: Int, entryCount: Int)]
     @Binding var selectedRegionIndex: Int?
     let onRegionSelected: (Int) -> Void
 
+    private var scrollAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.25)
+    }
+
     var body: some View {
-        ScrollViewReader { scrollProxy in
+        let theme = themeManager.currentTheme
+
+        return ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(Array(groupedByRegion.enumerated()), id: \.offset) { index, regionGroup in
-                        let isSelected = index == selectedRegionIndex
-                        let (regionName, _, entryCount) = regionGroup
+                // One container: adjacent glass chips share a single backdrop
+                // instead of stacking blurs.
+                SkyLineGlassPanel(spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        ForEach(Array(groupedByRegion.enumerated()), id: \.offset) { index, regionGroup in
+                            let isSelected = index == selectedRegionIndex
+                            let (regionName, _, entryCount) = regionGroup
 
-                        Button {
-                            onRegionSelected(index)
-                        } label: {
-                            HStack(spacing: 12) {
-                                // Location pin icon
-                                Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
-                                    .frame(width: 20)
+                            Button {
+                                onRegionSelected(index)
+                            } label: {
+                                HStack(spacing: AppSpacing.sm) {
+                                    Image(systemName: "mappin.circle.fill")
+                                        .font(AppTypography.mono(.subheadline, weight: .medium))
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textSecondary)
 
-                                // Region info
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(regionName)
-                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(regionName)
+                                            .appFont(.bodyBold, lineLimit: .exactly(1))
+                                            .foregroundStyle(theme.colors.text)
 
-                                    Text("\(entryCount) \(entryCount == 1 ? "activity" : "activities")")
-                                        .font(.system(size: 13, weight: .regular, design: .rounded))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                                        Text("\(entryCount) \(entryCount == 1 ? "activity" : "activities")")
+                                            .appFont(.placeMeta)
+                                            .foregroundStyle(theme.colors.textSecondary)
+                                    }
+
+                                    Spacer(minLength: 0)
                                 }
-
-                                Spacer()
+                                .padding(.horizontal, AppSpacing.md)
+                                .padding(.vertical, AppSpacing.sm + 2)
+                                .frame(minWidth: 180, alignment: .leading)
+                                .contentShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .frame(minWidth: 180)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(
-                                        isSelected
-                                            ? themeManager.currentTheme.colors.primary.opacity(0.12)
-                                            : (themeManager.currentTheme == .dark
-                                                ? Color(white: 0.15)
-                                                : Color(white: 0.96))
-                                    )
+                            .buttonStyle(.plain)
+                            .skylineGlassCard(
+                                cornerRadius: AppRadius.lg,
+                                tint: isSelected ? theme.colors.primary.opacity(0.28) : nil,
+                                theme: theme
                             )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(
-                                        isSelected ? themeManager.currentTheme.colors.primary.opacity(0.3) : Color.clear,
-                                        lineWidth: 1
-                                    )
-                            )
+                            .overlay {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                                        .stroke(theme.colors.primary, lineWidth: 1.5)
+                                }
+                            }
+                            .animation(scrollAnimation, value: isSelected)
+                            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                            .id("region_selector_\(index)")
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .id("region_selector_\(index)")
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, AppSpacing.md)
             }
             .onChange(of: selectedRegionIndex) { _, newValue in
                 if let newValue = newValue {
-                    withAnimation {
+                    withAnimation(scrollAnimation) {
                         scrollProxy.scrollTo("region_selector_\(newValue)", anchor: .center)
                     }
                 }
@@ -1171,10 +1170,15 @@ struct RegionSelectorBanner: View {
 // MARK: - Day Selector Banner
 struct DaySelectorBanner: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let groupedEntries: [(Date, [TripEntry])]
     @Binding var selectedDayIndex: Int
     let onDaySelected: (Int) -> Void
+
+    private var scrollAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.25)
+    }
 
     private func dayTitle(for date: Date) -> String {
         let formatter = DateFormatter()
@@ -1189,74 +1193,67 @@ struct DaySelectorBanner: View {
     }
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
+        let theme = themeManager.currentTheme
+
+        return ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(Array(groupedEntries.enumerated()), id: \.offset) { index, dayGroup in
-                        let (date, entries) = dayGroup
-                        let isSelected = index == selectedDayIndex
+                SkyLineGlassPanel(spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        ForEach(Array(groupedEntries.enumerated()), id: \.offset) { index, dayGroup in
+                            let (date, entries) = dayGroup
+                            let isSelected = index == selectedDayIndex
 
-                        Button {
-                            onDaySelected(index)
-                        } label: {
-                            HStack(spacing: 12) {
-                                // Calendar icon
-                                Image(systemName: "calendar")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
-                                    .frame(width: 20)
+                            Button {
+                                onDaySelected(index)
+                            } label: {
+                                HStack(spacing: AppSpacing.sm) {
+                                    Image(systemName: "calendar")
+                                        .font(AppTypography.mono(.subheadline, weight: .medium))
+                                        .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textSecondary)
 
-                                // Day info
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(dayTitle(for: date))
-                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(dayTitle(for: date))
+                                            .appFont(.bodyBold, lineLimit: .exactly(1))
+                                            .foregroundStyle(theme.colors.text)
 
-                                    Text(dateRange(for: date))
-                                        .font(.system(size: 13, weight: .regular, design: .rounded))
-                                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                                }
+                                        Text(dateRange(for: date))
+                                            .appFont(.placeMeta)
+                                            .foregroundStyle(theme.colors.textSecondary)
+                                    }
 
-                                Spacer()
+                                    Spacer(minLength: AppSpacing.sm)
 
-                                // Activity count badge
-                                HStack(spacing: 4) {
-                                    Image(systemName: "list.bullet")
-                                        .font(.system(size: 10, weight: .medium))
                                     Text("\(entries.count)")
-                                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                        .appFont(.verdictLabel)
+                                        .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textSecondary)
                                 }
-                                .foregroundColor(isSelected ? themeManager.currentTheme.colors.primary : themeManager.currentTheme.colors.textSecondary)
+                                .padding(.horizontal, AppSpacing.md)
+                                .padding(.vertical, AppSpacing.sm + 2)
+                                .frame(minWidth: 200, alignment: .leading)
+                                .contentShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .frame(minWidth: 200)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .fill(
-                                        isSelected
-                                            ? themeManager.currentTheme.colors.primary.opacity(0.12)
-                                            : (themeManager.currentTheme == .dark
-                                                ? Color(white: 0.15)
-                                                : Color(white: 0.96))
-                                    )
+                            .buttonStyle(.plain)
+                            .skylineGlassCard(
+                                cornerRadius: AppRadius.lg,
+                                tint: isSelected ? theme.colors.primary.opacity(0.28) : nil,
+                                theme: theme
                             )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(
-                                        isSelected ? themeManager.currentTheme.colors.primary.opacity(0.3) : Color.clear,
-                                        lineWidth: 1
-                                    )
-                            )
+                            .overlay {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                                        .stroke(theme.colors.primary, lineWidth: 1.5)
+                                }
+                            }
+                            .animation(scrollAnimation, value: isSelected)
+                            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                            .id("day_selector_\(index)")
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .id("day_selector_\(index)")
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, AppSpacing.md)
             }
             .onChange(of: selectedDayIndex) { _, newValue in
-                withAnimation {
+                withAnimation(scrollAnimation) {
                     scrollProxy.scrollTo("day_selector_\(newValue)", anchor: .center)
                 }
             }
@@ -1267,6 +1264,7 @@ struct DaySelectorBanner: View {
 // MARK: - Region Timeline View
 struct RegionTimelineView: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let groupedByRegionAndDay: [(regionName: String, regionOrder: Int, days: [(Date, [TripEntry])])]
     @Binding var collapsedRegions: Set<String>
@@ -1274,6 +1272,10 @@ struct RegionTimelineView: View {
     let onEntryTap: (TripEntry) -> Void
     let onEntryLongPress: (TripEntry) -> Void
     let onRegionLongPress: (String) -> Void
+
+    private var collapseAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.25)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1294,7 +1296,7 @@ struct RegionTimelineView: View {
                     totalEntries: totalEntries,
                     isCollapsed: isCollapsed,
                     onToggle: {
-                        withAnimation {
+                        withAnimation(collapseAnimation) {
                             if isCollapsed {
                                 collapsedRegions.remove(legKey)
                             } else {
@@ -1305,9 +1307,9 @@ struct RegionTimelineView: View {
                     onLongPress: { onRegionLongPress(regionName) }
                 )
                 .id("region_\(regionIndex)")
-                .padding(.horizontal, 20)
-                .padding(.top, regionIndex == 0 ? 20 : 32)
-                .padding(.bottom, 16)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, regionIndex == 0 ? AppSpacing.lg : AppSpacing.xl)
+                .padding(.bottom, AppSpacing.md)
 
                 // Days within region (only if not collapsed)
                 if !isCollapsed {
@@ -1316,9 +1318,9 @@ struct RegionTimelineView: View {
 
                         // Day header
                         TimelineDayHeader(date: date, entryCount: entries.count, timeZone: timeZone)
-                            .padding(.horizontal, 20)
-                            .padding(.top, dayIndex == 0 ? 0 : 24)
-                            .padding(.bottom, 12)
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.top, dayIndex == 0 ? 0 : AppSpacing.lg)
+                            .padding(.bottom, AppSpacing.sm + 4)
 
                         // Entries for this day
                         ForEach(Array(entries.enumerated()), id: \.element.id) { entryIndex, entry in
@@ -1331,7 +1333,7 @@ struct RegionTimelineView: View {
                                 onTap: { onEntryTap(entry) },
                                 onLongPress: { onEntryLongPress(entry) }
                             )
-                            .padding(.horizontal, 20)
+                            .padding(.horizontal, AppSpacing.md)
                             .transition(
                                 entry.isPreview
                                     ? .asymmetric(
@@ -1345,9 +1347,9 @@ struct RegionTimelineView: View {
                 }
             }
 
-            // Bottom padding
+            // Clears the floating add button and the tab bar.
             Color.clear
-                .frame(height: 100)
+                .frame(height: AppSpacing.xxl + AppSpacing.xl)
         }
     }
 
@@ -1383,64 +1385,56 @@ struct RegionHeaderView: View {
     let onToggle: () -> Void
     let onLongPress: () -> Void
 
+    private var metaLine: String {
+        var parts: [String] = []
+        if !dateRange.isEmpty { parts.append(dateRange) }
+        parts.append("\(totalDays) \(totalDays == 1 ? "day" : "days")")
+        parts.append("\(totalEntries) \(totalEntries == 1 ? "activity" : "activities")")
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
-        Button {
+        let theme = themeManager.currentTheme
+
+        return Button {
             onToggle()
         } label: {
-            HStack(spacing: 12) {
-                // Location icon
+            HStack(spacing: AppSpacing.sm + 4) {
                 Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                    .font(AppTypography.mono(.title3, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(theme.colors.primary)
 
-                // Region info
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     Text(regionName)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
+                        .appFont(.placeName, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.text)
 
-                    HStack(spacing: 8) {
-                        Text(dateRange)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                        Text("•")
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                        Text("\(totalDays) \(totalDays == 1 ? "day" : "days")")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                        Text("•")
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-
-                        Text("\(totalEntries) \(totalEntries == 1 ? "activity" : "activities")")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    }
+                    // One meta line, not five Text views separated by bullets.
+                    Text(metaLine)
+                        .appFont(.placeMeta, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.textSecondary)
                 }
 
-                Spacer()
+                Spacer(minLength: AppSpacing.sm)
 
-                // Chevron
                 Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .font(AppTypography.mono(.subheadline, weight: .semibold))
+                    .foregroundStyle(theme.colors.textSecondary)
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(themeManager.currentTheme.colors.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(themeManager.currentTheme.colors.border, lineWidth: 1)
-            )
+            .padding(AppSpacing.md)
+            .contentShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(.plain)
+        // One elevation signal. The material draws its own edge, so there is
+        // no stroke and no shadow stacked on top of it.
+        .skylineGlassCard(theme: theme)
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5).onEnded { _ in onLongPress() }
         )
+        .accessibilityLabel(Text("\(regionName), \(metaLine)"))
+        .accessibilityHint(Text(isCollapsed ? "Expand region" : "Collapse region"))
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -1462,9 +1456,9 @@ struct TimelineView: View {
                 // Day header with ID for scrolling
                 TimelineDayHeader(date: date, entryCount: entries.count, timeZone: timeZone)
                     .id("day_\(dayIndex)")
-                    .padding(.horizontal, 20)
-                    .padding(.top, dayIndex == 0 ? 20 : 32)
-                    .padding(.bottom, 16)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.top, dayIndex == 0 ? AppSpacing.lg : AppSpacing.xl)
+                    .padding(.bottom, AppSpacing.md)
 
                 // Entries for this day
                 ForEach(Array(entries.enumerated()), id: \.element.id) { entryIndex, entry in
@@ -1475,7 +1469,7 @@ struct TimelineView: View {
                         onTap: { onEntryTap(entry) },
                         onLongPress: { onEntryLongPress(entry) }
                     )
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, AppSpacing.md)
                     .transition(
                         entry.isPreview
                             ? .asymmetric(
@@ -1486,10 +1480,10 @@ struct TimelineView: View {
                     )
                 }
             }
-            
-            // Bottom padding
+
+            // Clears the floating add button and the tab bar.
             Color.clear
-                .frame(height: 100)
+                .frame(height: AppSpacing.xxl + AppSpacing.xl)
         }
     }
 }
@@ -1508,22 +1502,26 @@ struct TimelineDayHeader: View {
         formatter.timeZone = timeZone
         return formatter.string(from: date)
     }
-    
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(dateText)
-                    .font(.system(.title3, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Text("\(entryCount) \(entryCount == 1 ? "entry" : "entries")")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-            }
-            
+        let theme = themeManager.currentTheme
+
+        // The section-header convention: small, uppercase, secondary. The
+        // entry titles below are what should carry the weight.
+        return HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
+            Text(dateText.uppercased())
+                .appFont(.verdictLabel)
+                .foregroundStyle(theme.colors.textSecondary)
+
+            Text("\(entryCount)")
+                .appFont(.footnote)
+                .foregroundStyle(theme.colors.textSecondary)
+
             Spacer()
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(dateText), \(entryCount) \(entryCount == 1 ? "entry" : "entries")"))
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -1537,104 +1535,45 @@ struct TimelineEntryView: View {
     let onTap: () -> Void
     let onLongPress: () -> Void
 
+    @ScaledMetric(relativeTo: .body) private var railWidth: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var dotSize: CGFloat = 11
+
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
+        let theme = themeManager.currentTheme
+
+        return HStack(alignment: .top, spacing: AppSpacing.md) {
             // Timeline line and dot
             VStack(spacing: 0) {
-                // Dot
-                ZStack {
-                    Circle()
-                        .fill(themeManager.currentTheme.colors.background)
-                        .frame(width: 16, height: 16)
-                    
-                    Circle()
-                        .fill(entryTypeColor)
-                        .frame(width: 12, height: 12)
-                }
-                
+                Circle()
+                    .fill(railInk)
+                    .frame(width: dotSize, height: dotSize)
+                    .padding(.top, AppSpacing.md)
+
                 // Vertical line (if not last)
                 if !isLast {
                     Rectangle()
-                        .fill(themeManager.currentTheme.colors.border)
+                        .fill(theme.colors.border)
                         .frame(width: 2)
                         .frame(minHeight: 60)
                 }
             }
-            .frame(width: 16)
-            
+            .frame(width: railWidth)
+            .accessibilityHidden(true)
+
             // Entry content
             TimelineEntryCard(entry: entry, timeZone: timeZone, onTap: onTap, onLongPress: onLongPress)
-                .padding(.bottom, isLast ? 0 : 16)
+                .padding(.bottom, isLast ? 0 : AppSpacing.md)
         }
     }
-    
-    private var entryTypeColor: Color {
-        switch entry.entryType.color {
-        case "orange":
-            return .orange
-        case "purple":
-            return .purple
-        case "blue":
-            return .blue
-        case "green":
-            return .green
-        case "red":
-            return .red
-        case "pink":
-            return .pink
-        case "yellow":
-            return .yellow
-        default:
-            return .gray
-        }
-    }
-}
 
-// MARK: - Animated AI Gradient (Arc-style)
-struct AnimatedAIGradient: View {
-    @State private var animationPhase: CGFloat = 0
-
-    let colors: [Color] = [
-        Color(red: 0.4, green: 0.2, blue: 0.8), // Purple
-        Color(red: 0.2, green: 0.4, blue: 0.9), // Blue
-        Color(red: 0.6, green: 0.3, blue: 0.9), // Purple-pink
-        Color(red: 0.3, green: 0.5, blue: 1.0)  // Light blue
-    ]
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Moving gradient
-                LinearGradient(
-                    gradient: Gradient(colors: colors),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .hueRotation(.degrees(animationPhase * 60))
-                .blur(radius: 30)
-                .opacity(0.15)
-
-                // Animated overlay shimmer
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        .clear,
-                        .white.opacity(0.2),
-                        .clear
-                    ]),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .offset(x: -geometry.size.width + (geometry.size.width * 2 * animationPhase))
-            }
-        }
-        .onAppear {
-            withAnimation(
-                .linear(duration: 2.5)
-                .repeatForever(autoreverses: false)
-            ) {
-                animationPhase = 1.0
-            }
-        }
+    /// The rail is a route, not a legend. Nine unmanaged system hues used to
+    /// live here — none theme-aware, none surviving the light/dark polarity
+    /// flip, and all of them competing with the three verdict colours that
+    /// actually carry meaning. The entry type is already stated by its emoji
+    /// and its uppercase label inside the card.
+    private var railInk: Color {
+        let theme = themeManager.currentTheme
+        return entry.isPreview ? theme.colors.secondary : theme.colors.primary
     }
 }
 
@@ -1647,6 +1586,8 @@ struct TimelineEntryCard: View {
     let onTap: () -> Void
     let onLongPress: () -> Void
 
+    @ScaledMetric(relativeTo: .body) private var thumbSize: CGFloat = 60
+
     private var timeText: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
@@ -1655,107 +1596,84 @@ struct TimelineEntryCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let theme = themeManager.currentTheme
+        let cardShape = RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+
+        return VStack(alignment: .leading, spacing: AppSpacing.sm + 4) {
             // Header with type and time
-            HStack {
-                HStack(spacing: 6) {
+            HStack(spacing: AppSpacing.sm) {
+                HStack(spacing: AppSpacing.xs + 2) {
                     Text(entry.entryType.emoji)
-                        .font(.system(.body, design: .monospaced))
+                        .appFont(.placeMeta)
 
-                    Text(entry.entryType.displayName)
-                        .font(.system(.caption, design: .monospaced))
-                        .fontWeight(.medium)
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .textCase(.uppercase)
-
-                    // AI Preview badge with gradient
-                    if entry.isPreview {
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                                .font(.system(.caption2, design: .monospaced))
-                            Text("AI")
-                                .font(.system(.caption2, design: .monospaced))
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundStyle(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color(red: 0.5, green: 0.3, blue: 0.9),
-                                    Color(red: 0.3, green: 0.5, blue: 1.0)
-                                ]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color(red: 0.4, green: 0.2, blue: 0.8).opacity(0.15),
-                                    Color(red: 0.3, green: 0.5, blue: 1.0).opacity(0.15)
-                                ]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(4)
-                    }
+                    Text(entry.entryType.displayName.uppercased())
+                        .appFont(.footnote, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.textSecondary)
                 }
 
-                Spacer()
+                // "Not real yet" is a single semantic, so it gets a single
+                // token: `secondary`. The four-stop purple/blue gradient it
+                // replaces was the loudest colour in the app attached to the
+                // least important content.
+                if entry.isPreview {
+                    HStack(spacing: 3) {
+                        Image(systemName: "sparkles")
+                        Text("AI")
+                    }
+                    .appFont(.footnote)
+                    .foregroundStyle(theme.colors.secondary)
+                    .padding(.horizontal, AppSpacing.sm - 2)
+                    .padding(.vertical, 2)
+                    .skylineGlassCapsule(tint: theme.colors.secondary.opacity(0.30), theme: theme)
+                    .accessibilityLabel(Text("AI suggestion"))
+                }
+
+                Spacer(minLength: AppSpacing.xs)
 
                 Text(timeText)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .appFont(.placeMeta, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.textSecondary)
             }
-            
+
             // Title and content
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 Text(entry.title)
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
+                    .appFont(.bodyBold, lineLimit: .exactly(2))
+                    .foregroundStyle(theme.colors.text)
+
                 if !entry.content.isEmpty {
                     Text(entry.content)
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(3)
+                        .appFont(.bodySmall, lineLimit: .exactly(3))
+                        .foregroundStyle(theme.colors.textSecondary)
                 }
             }
-            
+
             // Location if available
             if !entry.displayLocation.isEmpty {
-                HStack(spacing: 4) {
+                HStack(spacing: AppSpacing.xs) {
                     Image(systemName: "location")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
                     Text(entry.displayLocation)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(1)
                 }
+                .appFont(.placeMeta, lineLimit: .exactly(1))
+                .foregroundStyle(theme.colors.textSecondary)
             }
-            
+
             // Images if available
             if entry.hasImages {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: AppSpacing.sm) {
                         ForEach(entry.imageURLs.prefix(3), id: \.self) { imageURL in
                             if let url = URL(string: imageURL) {
                                 AsyncImage(url: url) { image in
                                     image
                                         .resizable()
                                         .aspectRatio(contentMode: .fill)
-                                        .frame(width: 60, height: 60)
-                                        .cornerRadius(8)
-                                        .clipped()
+                                        .frame(width: thumbSize, height: thumbSize)
+                                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                                 } placeholder: {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(themeManager.currentTheme.colors.surface)
-                                        .frame(width: 60, height: 60)
+                                    RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                                        .fill(theme.colors.surface)
+                                        .frame(width: thumbSize, height: thumbSize)
                                         .overlay(
                                             ProgressView()
                                                 .scaleEffect(0.7)
@@ -1763,66 +1681,37 @@ struct TimelineEntryCard: View {
                                 }
                             }
                         }
-                        
+
                         if entry.imageURLs.count > 3 {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(themeManager.currentTheme.colors.surface)
-                                    .frame(width: 60, height: 60)
-                                
-                                Text("+\(entry.imageURLs.count - 3)")
-                                    .font(.system(.caption, design: .monospaced))
-                                    .fontWeight(.medium)
-                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            }
+                            Text("+\(entry.imageURLs.count - 3)")
+                                .appFont(.verdictLabel)
+                                .foregroundStyle(theme.colors.textSecondary)
+                                .frame(width: thumbSize, height: thumbSize)
+                                .background(
+                                    RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                                        .fill(theme.colors.surface)
+                                )
                         }
                     }
                     .padding(.horizontal, 1)
                 }
+                .accessibilityHidden(true)
             }
         }
-        .padding(16)
-        .background(
-            ZStack {
-                // Base background
-                themeManager.currentTheme.colors.surface
-
-                // Animated gradient for AI preview
-                if entry.isPreview {
-                    AnimatedAIGradient()
-                }
+        .padding(AppSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Glass is the elevation. No stroke and no shadow layered on top —
+        // the old card stacked fill + corner radius + stroke + shadow, four
+        // signals for one edge, and the shadow was invisible on 0x0A0F1C.
+        .skylineGlass(.card, in: cardShape, theme: theme)
+        .containerShape(cardShape)
+        .overlay {
+            // A preview is provisional: one hairline ring, one token.
+            if entry.isPreview {
+                cardShape.stroke(theme.colors.secondary, lineWidth: 1)
             }
-        )
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    entry.isPreview
-                        ? LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color(red: 0.4, green: 0.2, blue: 0.8),
-                                Color(red: 0.3, green: 0.5, blue: 1.0)
-                            ]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        : LinearGradient(
-                            gradient: Gradient(colors: [
-                                themeManager.currentTheme.colors.border,
-                                themeManager.currentTheme.colors.border
-                            ]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                    lineWidth: entry.isPreview ? 2 : 1
-                )
-        )
-        .shadow(
-            color: entry.isPreview ? Color(red: 0.4, green: 0.3, blue: 0.9).opacity(0.2) : .clear,
-            radius: 8,
-            x: 0,
-            y: 2
-        )
+        }
+        .contentShape(cardShape)
         .onTapGesture {
             onTap()
         }
@@ -1834,46 +1723,16 @@ struct TimelineEntryCard: View {
 
 // MARK: - Empty Timeline
 struct EmptyTimelineView: View {
-    @EnvironmentObject var themeManager: ThemeManager
     let onAddEntry: () -> Void
-    
+
     var body: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 16) {
-                Image(systemName: "timeline.selection")
-                    .font(.system(size: 48, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.primary)
-                
-                Text("Start Your Timeline")
-                    .font(.system(.title2, design: .monospaced))
-                    .fontWeight(.semibold)
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                
-                Text("Add your first entry to document this amazing trip")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Button {
-                onAddEntry()
-            } label: {
-                HStack {
-                    Image(systemName: "plus")
-                    Text("Add First Entry")
-                }
-                .font(.system(.body, design: .monospaced))
-                .fontWeight(.medium)
-                .foregroundColor(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(themeManager.currentTheme.colors.primary)
-                .cornerRadius(8)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
-        .padding(.horizontal, 40)
+        TripEmptyStateView(
+            systemImage: "timeline.selection",
+            title: "Nothing logged yet",
+            message: "Add the first activity and this trip gets a timeline you can read back later.",
+            actionTitle: "Add first entry",
+            action: onAddEntry
+        )
     }
 }
 
@@ -1884,66 +1743,38 @@ struct EntryDetailView: View {
     
     var body: some View {
         Text("Entry Detail View - \(entry.title)")
-            .font(.system(.title, design: .monospaced))
+            .appFont(.title)
     }
 }
 
 // MARK: - Add Entry Menu View
 
+/// The one place `background` doubles as an on-colour: it is a near-black in
+/// light theme and a near-white in dark, so it clears AA against `primary` in
+/// both directions. A literal `.white` here is 2.6:1 on the dark palette's
+/// `primary`. A real `onPrimary` token would say this out loud.
 struct NumberedMarkerView: View {
+    @EnvironmentObject var themeManager: ThemeManager
+
     let number: Int
     let color: Color
 
+    @ScaledMetric(relativeTo: .caption) private var diameter: CGFloat = 30
+
     var body: some View {
-        ZStack {
-            // Shadow circle
-            Circle()
-                .fill(Color.black.opacity(0.3))
-                .frame(width: 34, height: 34)
-                .offset(y: 2)
+        let theme = themeManager.currentTheme
 
-            // Main marker circle
-            Circle()
-                .fill(color)
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white, lineWidth: 3)
-                )
-
-            // Number text
-            Text("\(number)")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-        }
+        return Text("\(number)")
+            .appFont(.verdictLabel)
+            .foregroundStyle(theme.colors.background)
+            .frame(width: diameter, height: diameter)
+            .background(Circle().fill(color))
+            .overlay(Circle().stroke(theme.colors.background, lineWidth: 2))
+            .shadow(color: theme.colors.scrim, radius: 3, x: 0, y: 1)
+            .accessibilityLabel(Text("Stop \(number)"))
     }
 }
 
-// MARK: - TripEntryType Color Extension
-extension TripEntryType {
-    var swiftUIColor: Color {
-        switch self {
-        case .food:
-            return .orange
-        case .activity:
-            return .purple
-        case .sightseeing:
-            return .blue
-        case .accommodation:
-            return .green
-        case .transportation:
-            return .red
-        case .flight:
-            return .cyan
-        case .shopping:
-            return .pink
-        case .note:
-            return .gray
-        case .photo:
-            return .yellow
-        }
-    }
-}
 
 // MARK: - Expanded Map View
 struct ExpandedMapView: View {
@@ -2000,7 +1831,9 @@ struct ExpandedMapView: View {
     }
 
     var body: some View {
-        NavigationView {
+        let theme = themeManager.currentTheme
+
+        return NavigationStack {
             // Full screen map
             Map(initialPosition: .region(mapRegion)) {
                 // Draw route paths with gradient colors - OPTIMIZED
@@ -2014,8 +1847,8 @@ struct ExpandedMapView: View {
                         if startIdx < route.coordinates.count && endIdx <= route.coordinates.count && endIdx > startIdx {
                             let progress = Double(index) / Double(max(1, route.coordinates.count / chunkSize))
                             let segmentColor = interpolateColor(
-                                from: route.startColor,
-                                to: route.endColor,
+                                from: theme.colors.flightPathStart,
+                                to: theme.colors.flightPathEnd,
                                 progress: progress
                             )
 
@@ -2038,7 +1871,7 @@ struct ExpandedMapView: View {
                         Annotation(entry.title, coordinate: coordinate) {
                             NumberedMarkerView(
                                 number: number,
-                                color: entry.entryType.swiftUIColor
+                                color: entry.isPreview ? theme.colors.secondary : theme.colors.primary
                             )
                         }
                     }
@@ -2046,6 +1879,8 @@ struct ExpandedMapView: View {
             }
             .mapStyle(.standard)
             .mapControlVisibility(.visible)
+            // Follows the APP's theme, not the device appearance.
+            .environment(\.colorScheme, theme.colorScheme)
             .ignoresSafeArea()
             .safeAreaInset(edge: .bottom) {
                 // Navigate button at bottom center
@@ -2065,43 +1900,40 @@ struct ExpandedMapView: View {
                             Label("Navigate in Google Maps", systemImage: "globe.americas.fill")
                         }
                     } label: {
-                        HStack(spacing: 12) {
+                        HStack(spacing: AppSpacing.sm + 4) {
                             Image(systemName: "location.circle.fill")
-                                .font(.system(size: 20, weight: .semibold))
-
                             Text("Navigate")
-                                .font(.system(.body, design: .monospaced, weight: .semibold))
                         }
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 25)
-                                .fill(.ultraThinMaterial)
-                                .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 25)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
+                        .appFont(.bodyBold)
+                        .padding(.horizontal, AppSpacing.xl)
+                        .padding(.vertical, AppSpacing.md)
                     }
+                    // Glass, not `.ultraThinMaterial` — a material samples the
+                    // device colour scheme, so it inverted against the app's
+                    // own theme.
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(theme.colors.primary)
+                    .accessibilityLabel(Text("Navigate this trip"))
 
                     Spacer()
                 }
-                .padding(.bottom, 20)
-                .background(Color.clear)
+                .padding(.bottom, AppSpacing.lg)
             }
             .navigationTitle(trip.title)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(theme.colorScheme, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(.title3))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                        Image(systemName: "xmark")
+                            .font(AppTypography.mono(.body, weight: .semibold))
                     }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .accessibilityLabel(Text("Close map"))
                 }
             }
         }
@@ -2227,54 +2059,59 @@ struct RegionDetectionBannerView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        let theme = themeManager.currentTheme
+
+        return HStack(spacing: AppSpacing.sm + 4) {
             Image(systemName: "map.fill")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(themeManager.currentTheme.colors.primary)
+                .font(AppTypography.mono(.subheadline, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(theme.colors.primary)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Organize by regions?")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(themeManager.currentTheme.colors.text)
-                Text("Group activities by location automatically")
-                    .font(.system(size: 13, weight: .regular, design: .rounded))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                Text("Organise by regions?")
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.text)
+
+                Text("Group activities by where they happened")
+                    .appFont(.placeMeta, lineLimit: .exactly(2))
+                    .foregroundStyle(theme.colors.textSecondary)
             }
 
-            Spacer()
+            Spacer(minLength: AppSpacing.sm)
 
             if isDetecting {
                 ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle())
+                    .progressViewStyle(CircularProgressViewStyle(tint: theme.colors.primary))
                     .scaleEffect(0.85)
             } else {
-                HStack(spacing: 8) {
-                    Button(action: onDismiss) {
-                        Text("Not now")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    }
-                    Button(action: onDetect) {
-                        Text("Detect")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(themeManager.currentTheme.colors.primary)
-                            .clipShape(Capsule())
+                SkyLineGlassPanel(spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        Button(action: onDismiss) {
+                            Text("Not now")
+                                .appFont(.verdictLabel)
+                                .foregroundStyle(theme.colors.textSecondary)
+                                .padding(.horizontal, AppSpacing.sm)
+                                .padding(.vertical, AppSpacing.xs + 2)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+
+                        Button(action: onDetect) {
+                            Text("Detect")
+                                .appFont(.verdictLabel)
+                                .padding(.horizontal, AppSpacing.sm)
+                                .padding(.vertical, AppSpacing.xs + 2)
+                        }
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.capsule)
+                        .tint(theme.colors.primary)
                     }
                 }
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(themeManager.currentTheme.colors.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(themeManager.currentTheme.colors.primary.opacity(0.25), lineWidth: 1)
-        )
+        .padding(AppSpacing.md)
+        .skylineGlassCard(tint: theme.colors.primary.opacity(0.16), theme: theme)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -2294,55 +2131,80 @@ struct RegionPickerView: View {
     @State private var isUpdating = false
 
     var body: some View {
-        NavigationView {
+        let theme = themeManager.currentTheme
+
+        return NavigationStack {
             List {
                 // Existing regions
                 if !existingRegions.isEmpty {
-                    Section("Existing Regions") {
+                    Section {
                         ForEach(Array(existingRegions.enumerated()), id: \.offset) { _, region in
                             Button {
                                 moveEntry(to: region.regionName, order: region.regionOrder)
                             } label: {
-                                HStack {
+                                HStack(spacing: AppSpacing.sm) {
                                     Image(systemName: "mappin.circle.fill")
-                                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(theme.colors.primary)
+
                                     Text(region.regionName)
-                                        .foregroundColor(themeManager.currentTheme.colors.text)
+                                        .appFont(.body)
+                                        .foregroundStyle(theme.colors.text)
+
                                     Spacer()
+
                                     if entry.regionName == region.regionName {
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                                            .foregroundStyle(theme.colors.primary)
                                     }
                                 }
                             }
+                            .listRowBackground(theme.colors.surface)
                         }
+                    } header: {
+                        Text("Existing regions".uppercased())
+                            .appFont(.verdictLabel)
+                            .foregroundStyle(theme.colors.textSecondary)
                     }
                 }
 
                 // New region option
-                Section("New Region") {
+                Section {
                     if showNewRegionField {
                         HStack {
                             TextField("Region name", text: $newRegionName)
+                                .appFont(.body)
+                                .foregroundStyle(theme.colors.text)
+
                             Button("Add") {
                                 let nextOrder = (existingRegions.map { $0.regionOrder }.max() ?? -1) + 1
                                 moveEntry(to: newRegionName, order: nextOrder)
                             }
+                            .appFont(.bodyBold)
                             .disabled(newRegionName.trimmingCharacters(in: .whitespaces).isEmpty)
-                            .foregroundColor(themeManager.currentTheme.colors.primary)
+                            .foregroundStyle(theme.colors.primary)
                         }
+                        .listRowBackground(theme.colors.surface)
                     } else {
                         Button {
                             showNewRegionField = true
                         } label: {
-                            HStack {
+                            HStack(spacing: AppSpacing.sm) {
                                 Image(systemName: "plus.circle.fill")
-                                    .foregroundColor(themeManager.currentTheme.colors.primary)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(theme.colors.primary)
+
                                 Text("Create new region")
-                                    .foregroundColor(themeManager.currentTheme.colors.text)
+                                    .appFont(.body)
+                                    .foregroundStyle(theme.colors.text)
                             }
                         }
+                        .listRowBackground(theme.colors.surface)
                     }
+                } header: {
+                    Text("New region".uppercased())
+                        .appFont(.verdictLabel)
+                        .foregroundStyle(theme.colors.textSecondary)
                 }
 
                 // Remove from region
@@ -2351,26 +2213,42 @@ struct RegionPickerView: View {
                         Button(role: .destructive) {
                             moveEntry(to: nil, order: nil)
                         } label: {
-                            HStack {
+                            HStack(spacing: AppSpacing.sm) {
                                 Image(systemName: "minus.circle.fill")
+                                    .symbolRenderingMode(.hierarchical)
                                 Text("Remove from region")
+                                    .appFont(.body)
                             }
+                            // `error` rather than `.red`: the palette's error
+                            // is tuned per theme, `.red` follows the device.
+                            .foregroundStyle(theme.colors.error)
                         }
+                        .listRowBackground(theme.colors.surface)
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background { theme.colors.background.ignoresSafeArea() }
             .navigationTitle("Move to Region")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(theme.colorScheme, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancel") { dismiss() }
+                        .appFont(.bodyBold)
+                        .foregroundStyle(theme.colors.primary)
                 }
             }
             .overlay {
                 if isUpdating {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.1))
+                    ZStack {
+                        theme.colors.scrim.ignoresSafeArea()
+
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: theme.colors.text))
+                            .padding(AppSpacing.lg)
+                            .skylineGlassCard(theme: theme)
+                    }
                 }
             }
         }

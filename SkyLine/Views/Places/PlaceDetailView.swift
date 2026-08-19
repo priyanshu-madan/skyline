@@ -11,10 +11,49 @@
 //  opinion is allowed to change between trips, and this screen is where that
 //  change is visible and editable.
 //
+//  ── Why this screen used to render DARK CARDS on a LIGHT PAGE ──────────────
+//
+//  Nothing in this file ever named a dark colour. The page was `colors.background`
+//  and the cards were `.skylineGlassCard`. The bug was one level down: Liquid
+//  Glass, `.buttonStyle(.glass)`, MapKit's tile set, `TextEditor`, and every
+//  other system-drawn surface resolve their appearance from
+//  `EnvironmentValues.colorScheme` — never from `themeManager.currentTheme`.
+//
+//  The app only ever expressed its theme through `.preferredColorScheme(...)`
+//  (SkyLineApp:97, ContentView:72). That is a *preference*: it travels up to the
+//  nearest hosting controller and is re-applied at that presentation's root. It
+//  does not reliably reach a `navigationDestination` subtree living inside a
+//  sheet that has `.presentationBackground(.clear)` — which is exactly where
+//  this view lives (globe sheet → SkyLineBottomBarView → PlaceLogView's
+//  NavigationStack → here). So on a dark-appearance device with the app's Light
+//  theme selected, `colors.background` correctly painted a light page while the
+//  glass above it, and the map inside it, still rendered in the *device's* dark
+//  scheme. Dark cards, light page. Same class of bug as the one already fixed
+//  inside Theme.swift, one layer further out.
+//
+//  The fix is to stop hinting and start stating: every screen root in this file
+//  writes the app theme straight into the environment with
+//  `.environment(\.colorScheme, theme.colorScheme)`. That is a value, not a
+//  preference, so it propagates down the whole subtree unconditionally and takes
+//  the glass, the map and the text editor with it. Patching a single fill would
+//  have left the map, the `.glass` buttons and the keyboard still wrong.
+//
 
 import SwiftUI
 import MapKit
 import CoreLocation
+
+// MARK: - On-Photo Ink
+/// A photograph carries its own light: it is a dark-mode context no matter which
+/// theme the app is in, so the caption over one must not flip with the theme.
+///
+/// These are still tokens — they are the dark palette, pinned deliberately —
+/// rather than `Color.white` / `Color.black` literals, so an audit stays
+/// mechanical and a palette change still moves them.
+private enum PhotoInk {
+    static let primary = ThemeColors.dark.text
+    static let scrim = ThemeColors.dark.background
+}
 
 // MARK: - Formatters
 private extension DateFormatter {
@@ -70,6 +109,11 @@ struct PlaceDetailView: View {
 
     @State private var noteEditorVisit: Visit?
 
+    /// Roughly 4:3 on a 390pt-wide device. `@ScaledMetric` rather than a constant
+    /// so the picture grows with the caption sitting on it instead of the caption
+    /// outgrowing the frame at accessibility sizes.
+    @ScaledMetric(relativeTo: .body) private var heroHeight: CGFloat = 260
+
     init(place: Place) {
         self.placeId = place.id
         self.seedPlace = place
@@ -102,6 +146,13 @@ struct PlaceDetailView: View {
         return Set(verdicts).count > 1
     }
 
+    /// The photograph this place gets to lead with: the first frame of the most
+    /// recent visit that actually shot anything. A place the user photographed
+    /// is a place they remember looking at, so the picture outranks the label.
+    private var heroAssetIdentifier: String? {
+        visits.first { !$0.photoLocalIdentifiers.isEmpty }?.photoLocalIdentifiers.first
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -109,7 +160,11 @@ struct PlaceDetailView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.lg) {
-                header(theme: theme)
+                if let heroAssetIdentifier {
+                    heroCard(theme: theme, assetIdentifier: heroAssetIdentifier)
+                } else {
+                    header(theme: theme)
+                }
 
                 if visits.count > 1 {
                     repeatCard(theme: theme)
@@ -129,6 +184,11 @@ struct PlaceDetailView: View {
         }
         .skylineScrollEdges()
         .background(theme.colors.background.ignoresSafeArea())
+        // See the file header. This is the fix for "dark cards on a light page":
+        // the glass, the MapKit tile set and the note editor all read the
+        // environment's colour scheme, and until this line they were reading the
+        // device's rather than the app's.
+        .environment(\.colorScheme, theme.colorScheme)
         .navigationTitle(place.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -153,8 +213,98 @@ struct PlaceDetailView: View {
         }
     }
 
+    // MARK: Hero
+
+    /// The photographed case. Same construction as a deck card — photo clipped
+    /// into a concentric rectangle, legibility gradient, caption laid over the
+    /// bottom third, glass frame — so a place looks like the same object on the
+    /// screen where it was judged and the screen where it is remembered.
+    @ViewBuilder
+    private func heroCard(theme: AppTheme, assetIdentifier: String) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            PHAssetImageView(
+                localIdentifier: assetIdentifier,
+                size: .card,
+                contentMode: .fill
+            )
+            .frame(height: heroHeight)
+            .frame(maxWidth: .infinity)
+            .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
+            .overlay { photoLegibilityGradient }
+
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(place.category.displayName.uppercased())
+                    .appFont(.footnote)
+                    .foregroundStyle(PhotoInk.primary.opacity(0.75))
+                    .accessibilityLabel(Text(place.category.displayName))
+
+                Text(place.name)
+                    .appFont(.title, lineLimit: .exactly(2))
+                    .foregroundStyle(PhotoInk.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Locality and visit count share one baseline rather than the
+                // count floating in a corner overlay, so a long city name
+                // cannot slide underneath it.
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
+                    if !place.displayLocality.isEmpty {
+                        Text(place.displayLocality)
+                            .appFont(.placeMeta, lineLimit: .exactly(1))
+                            .foregroundStyle(PhotoInk.primary.opacity(0.85))
+                    }
+
+                    Spacer(minLength: AppSpacing.sm)
+
+                    Text(summary.visitCountText)
+                        .appFont(.verdictLabel)
+                        .foregroundStyle(PhotoInk.primary.opacity(0.85))
+                }
+            }
+            .padding(AppSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(AppSpacing.xs)
+        .skylineGlassCard(theme: theme)
+        .overlay(alignment: .topTrailing) {
+            heroVerdict(theme: theme)
+                .padding(AppSpacing.sm + 2)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func heroVerdict(theme: AppTheme) -> some View {
+        if let verdict = summary.verdict {
+            VerdictBadge(verdict: verdict)
+        } else {
+            Text("NOT RATED")
+                .appFont(.verdictLabel)
+                .foregroundStyle(theme.colors.text)
+                .padding(.horizontal, AppSpacing.sm + 2)
+                .padding(.vertical, 5)
+                .skylineGlassCapsule(theme: theme)
+        }
+    }
+
+    /// A photograph cannot be relied on for contrast, and glass behind it cannot
+    /// help — the picture is on top. This is the contrast floor for the caption.
+    private var photoLegibilityGradient: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.30),
+                .init(color: PhotoInk.scrim.opacity(0.32), location: 0.58),
+                .init(color: PhotoInk.scrim.opacity(0.82), location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .allowsHitTesting(false)
+    }
+
     // MARK: Header
 
+    /// The un-photographed case: type only, and the name gets to be the biggest
+    /// thing on the screen instead.
     @ViewBuilder
     private func header(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -234,9 +384,18 @@ struct PlaceDetailView: View {
             }
 
             if !counts.isEmpty {
-                // Every verdict gets a row, including the ones scoring zero, so
-                // "Skip" reads as an answer the place could have had rather than
-                // an absence.
+                // The split, before the numbers. One hairline answers "what did
+                // this place mostly get?" faster than three rows of counts, and
+                // the unrated remainder is a segment rather than a gap so the
+                // bar always accounts for every visit.
+                VerdictDistributionBar(
+                    counts: counts,
+                    unratedCount: max(0, visits.count - counts.values.reduce(0, +))
+                )
+
+                // Every verdict still gets a row, including the ones scoring
+                // zero, so "Skip" reads as an answer the place could have had
+                // rather than an absence.
                 VStack(spacing: AppSpacing.xs + 2) {
                     ForEach(Verdict.allCases) { verdict in
                         verdictTallyRow(verdict: verdict, count: counts[verdict] ?? 0, theme: theme)
@@ -246,7 +405,13 @@ struct PlaceDetailView: View {
         }
         .padding(AppSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .skylineGlassCard(theme: theme)
+        // Tinted only when the verdict actually held. If the user changed their
+        // mind there is no single colour that is true of this place, and picking
+        // one would be the card telling a lie in the loudest ink available.
+        .skylineGlassCard(
+            tint: didChangeVerdict ? nil : summary.verdict.map { $0.color(for: theme).opacity(0.16) },
+            theme: theme
+        )
     }
 
     /// Oldest rated verdict on the left, newest on the right.
@@ -480,37 +645,44 @@ private struct VisitCard: View {
     var body: some View {
         let theme = themeManager.currentTheme
 
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            // When
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: AppSpacing.sm) {
-                    Text(ordinalLabel.uppercased())
-                        .appFont(.footnote)
-                        .foregroundStyle(theme.colors.textSecondary)
+        HStack(alignment: .top, spacing: AppSpacing.md - 4) {
+            // The same spine as every other place row in the app, so a column of
+            // visits reads as a column of judgements before a word is read.
+            VerdictRail(verdict: visit.verdict)
+                .frame(maxHeight: .infinity)
 
-                    Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                // When
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    HStack(spacing: AppSpacing.sm) {
+                        Text(ordinalLabel.uppercased())
+                            .appFont(.footnote)
+                            .foregroundStyle(theme.colors.textSecondary)
 
-                    Text(visit.source.displayName)
-                        .appFont(.footnote)
-                        .foregroundStyle(theme.colors.textSecondary)
+                        Spacer(minLength: 0)
+
+                        Text(visit.source.displayName)
+                            .appFont(.footnote)
+                            .foregroundStyle(theme.colors.textSecondary)
+                    }
+
+                    Text(dayText)
+                        .appFont(.placeName, lineLimit: .exactly(1))
+                        .foregroundStyle(theme.colors.text)
                 }
+                .accessibilityElement(children: .combine)
 
-                Text(dayText)
-                    .appFont(.placeName, lineLimit: .exactly(1))
-                    .foregroundStyle(theme.colors.text)
-            }
-            .accessibilityElement(children: .combine)
+                // What you decided. Each visit owns its own verdict — going back
+                // and hating it does not rewrite what you thought the first time.
+                VisitVerdictRow(visit: visit)
 
-            // What you decided. Each visit owns its own verdict — going back and
-            // hating it does not rewrite what you thought the first time.
-            VisitVerdictRow(visit: visit)
+                // What you wrote
+                noteBlock(theme: theme)
 
-            // What you wrote
-            noteBlock(theme: theme)
-
-            // What you shot
-            if visit.hasPhotos {
-                VisitPhotoStrip(identifiers: visit.photoLocalIdentifiers)
+                // What you shot
+                if visit.hasPhotos {
+                    VisitPhotoStrip(identifiers: visit.photoLocalIdentifiers)
+                }
             }
         }
         .padding(AppSpacing.md)
@@ -541,9 +713,19 @@ private struct VisitCard: View {
             }
             .padding(AppSpacing.sm + 2)
             .frame(maxWidth: .infinity, alignment: .leading)
+            // A sunken well, not a second card. Opaque `surface` plus one
+            // hairline is the recessed treatment: it reads as a slot the note
+            // was written into rather than an object lifted off the card. The
+            // previous `surface.opacity(0.55)` was an opacity guess standing in
+            // for a `surfaceSunken` token that does not exist yet — and at 55%
+            // it vanished into the glass in light theme.
             .background {
                 ConcentricRectangle(corners: .concentric, isUniform: true)
-                    .fill(theme.colors.surface.opacity(0.55))
+                    .fill(theme.colors.surface)
+            }
+            .overlay {
+                ConcentricRectangle(corners: .concentric, isUniform: true)
+                    .stroke(theme.colors.border, lineWidth: 1)
             }
         } else {
             Button(action: onEditNote) {
@@ -632,7 +814,7 @@ private struct VisitPhotoStrip: View {
                         .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
                         .overlay {
                             ConcentricRectangle(corners: .concentric, isUniform: true)
-                                .stroke(theme.colors.border.opacity(0.6), lineWidth: 0.5)
+                                .stroke(theme.colors.border, lineWidth: 1)
                         }
                     }
                 }
@@ -685,6 +867,10 @@ private struct VisitNoteEditor: View {
                         ConcentricRectangle(corners: .fixed(AppRadius.lg), isUniform: true)
                             .fill(theme.colors.surface)
                     }
+                    .overlay {
+                        ConcentricRectangle(corners: .fixed(AppRadius.lg), isUniform: true)
+                            .stroke(theme.colors.border, lineWidth: 1)
+                    }
                     .overlay(alignment: .topLeading) {
                         if draft.isEmpty {
                             Text("What do you want to remember about \(placeName)?")
@@ -713,6 +899,10 @@ private struct VisitNoteEditor: View {
                 }
             }
         }
+        // A sheet is its own presentation, so it does not inherit the colour
+        // scheme resolved for the screen that pushed it. Restate the theme here
+        // or the editor's well, its caret and its keyboard follow the device.
+        .environment(\.colorScheme, theme.colorScheme)
         .presentationDetents([.medium, .large])
         .presentationCornerRadius(AppRadius.sheet)
         .onAppear { isFocused = true }

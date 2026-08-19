@@ -68,10 +68,29 @@ struct ContentView: View {
                     // sheet's presentation config lives with the rest of the chrome.
                     // Existing `selectedDetent == .fraction(0.3)` checks still hold.
                     .skylineGlobeSheetChrome(selectedDetent: $selectedDetent)
+                    // A `.sheet` is a SEPARATE modal presentation, not a child of
+                    // the presenting stack, so it does not reliably inherit
+                    // `preferredColorScheme` from the ZStack below. Without this
+                    // the tab bar's `.glassEffect` - a system material that
+                    // resolves against the environment's colorScheme - renders
+                    // light in both themes while the globe behind it goes dark.
+                    .preferredColorScheme(themeManager.currentTheme.colorScheme)
             }
-            .preferredColorScheme(themeManager.currentTheme.colorScheme)
-            .accentColor(themeManager.currentTheme.colors.primary)
         }
+        // Hoisted from the sheet host onto the whole stack.
+        //
+        // `preferredColorScheme` is what makes any dynamic system colour still
+        // reachable in a child view resolve against the THEME the user picked
+        // rather than the DEVICE appearance — the exact failure mode that gave a
+        // white page with dark cards. Applied to `Color.clear` it only covered
+        // the sheet; on the ZStack it covers the globe host as well, so the
+        // status bar and the WebView's own chrome agree with the palette.
+        .preferredColorScheme(themeManager.currentTheme.colorScheme)
+        // `.tint` rather than the deprecated `.accentColor`. It reaches system
+        // controls we do not draw ourselves — the sheet grabber, text-field
+        // carets, `.glassProminent` labels — and `primary` is legible on both
+        // palettes by construction (5.9:1 light, 7.3:1 dark on background).
+        .tint(themeManager.currentTheme.colors.primary)
     }
 
     // MARK: - Flight Selection Handler

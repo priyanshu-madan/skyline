@@ -99,6 +99,18 @@ struct SkyLineBottomBarView: View {
     @State private var showingEditProfile = false
     @State private var profileImage: UIImage? = nil
 
+    // Non-text metrics seeded from `AppTypography.Metrics`, so glyph wells and
+    // avatars grow in step with the type beside them instead of staying frozen
+    // while the labels around them get bigger.
+    @ScaledMetric(relativeTo: .largeTitle) private var avatarSize: CGFloat = 80
+    @ScaledMetric(relativeTo: .body) private var avatarBadge: CGFloat = 28
+    @ScaledMetric(relativeTo: .title3) private var menuGlyphWell: CGFloat = 30
+    @ScaledMetric(relativeTo: .body) private var passGlyphWell: CGFloat = 44
+    @ScaledMetric(relativeTo: .largeTitle) private var passWatermarkSize: CGFloat = 148
+    @ScaledMetric(relativeTo: .body) private var passNotchSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var barcodeHeight: CGFloat = 64
+    @ScaledMetric(relativeTo: .caption) private var statusDotSize: CGFloat = 6
+
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
     let onTabSelected: (() -> Void)?
@@ -154,7 +166,7 @@ struct SkyLineBottomBarView: View {
                     )
                     .fill(themeManager.currentTheme.colors.background)
                 }
-                .onChange(of: activeTab) { newTab in
+                .onChange(of: activeTab) { _, newTab in
                     print("🔄 Tab changed in onChange: \(newTab.rawValue)")
                     onTabChanged?(newTab)
                 }
@@ -239,42 +251,48 @@ struct SkyLineBottomBarView: View {
     @ViewBuilder
     private func LegacyTabScroll(_ tab: SkyLineTab) -> some View {
         ScrollView(.vertical) {
-            VStack {
+            // One explicit stack rather than two siblings in the ScrollView's
+            // implicit one, so the gap between header and content is on the grid
+            // instead of being SwiftUI's default.
+            VStack(spacing: 0) {
                 // Remove the header section when viewing flight details
                 if !(tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large)) {
                     TabHeader(tab)
                 }
-            }
 
-            // Tab-specific content
-            switch tab {
-            case .places:
-                // Unreachable: `.places` is routed to PlaceLogView above.
-                EmptyView()
-            case .trips:
-                TripsTabContent()
-            case .flights:
-                if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
-                    ModernFlightDetailContent(flight: selectedFlight, theme: themeManager)
-                    .id(flightDetailsViewKey)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .clipped()
-                    .transaction { transaction in
-                        // Force immediate update without animation to reset scroll state
-                        transaction.disablesAnimations = true
+                // Tab-specific content
+                switch tab {
+                case .places:
+                    // Unreachable: `.places` is routed to PlaceLogView above.
+                    EmptyView()
+                case .trips:
+                    TripsTabContent()
+                case .flights:
+                    if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
+                        ModernFlightDetailContent(flight: selectedFlight, theme: themeManager)
+                        .id(flightDetailsViewKey)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .clipped()
+                        .transaction { transaction in
+                            // Force immediate update without animation to reset scroll state
+                            transaction.disablesAnimations = true
+                        }
+                        .onAppear {
+                            print("\u{1F50D} DEBUG: FlightDetailView appeared in SkyLineBottomBarView")
+                            print("\u{1F50D} DEBUG: Current selectedDetent: \(selectedDetent)")
+                            print("\u{1F50D} DEBUG: Flight: \(selectedFlight.flightNumber)")
+                            print("\u{1F50D} DEBUG: ViewKey: \(flightDetailsViewKey)")
+                        }
+                    } else {
+                        FlightsTabContent()
                     }
-                    .onAppear {
-                        print("🔍 DEBUG: FlightDetailView appeared in SkyLineBottomBarView")
-                        print("🔍 DEBUG: Current selectedDetent: \(selectedDetent)")
-                        print("🔍 DEBUG: Flight: \(selectedFlight.flightNumber)")
-                        print("🔍 DEBUG: ViewKey: \(flightDetailsViewKey)")
-                    }
-                } else {
-                    FlightsTabContent()
+                case .profile:
+                    ProfileTabContent()
                 }
-            case .profile:
-                ProfileTabContent()
             }
+            // The tab bar floats over the globe below the slab, so content has to
+            // be able to scroll clear of it rather than ending underneath.
+            .padding(.bottom, AppSpacing.xxl)
         }
         .background(.clear)
         // Softens the fade where content passes under the glass bar. `.soft`
@@ -289,21 +307,21 @@ struct SkyLineBottomBarView: View {
     /// The large-title row for the legacy surfaces. Its trailing controls sit in a
     /// single `GlassEffectContainer` so adjacent glass circles sample one backdrop
     /// and merge instead of stacking blurs.
-    @ViewBuilder
     private func TabHeader(_ tab: SkyLineTab) -> some View {
         let theme = themeManager.currentTheme
 
-        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+        return VStack(alignment: .leading, spacing: AppSpacing.sm) {
             // Flights is a sub-surface of Trips now, so it needs a way back.
             if tab == .flights {
                 Button {
                     returnToTrips()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: AppSpacing.xs) {
                         Image(systemName: "chevron.left")
+                            .font(AppTypography.mono(.subheadline, weight: .semibold))
                         Text("Trips")
+                            .appFont(.bodySmall, lineLimit: .exactly(1))
                     }
-                    .font(AppTypography.mono(.subheadline, weight: .semibold))
                     .foregroundStyle(theme.colors.primary)
                     .contentShape(.rect)
                 }
@@ -311,20 +329,21 @@ struct SkyLineBottomBarView: View {
                 .accessibilityLabel(Text("Back to Trips"))
             }
 
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     Text(tab.rawValue)
-                        .font(AppTypography.titleLarge)
-                        .foregroundColor(theme.colors.text)
+                        .appFont(.titleLarge)
+                        .foregroundStyle(theme.colors.text)
+                        .accessibilityAddTraits(.isHeader)
 
                     if let subtitle = headerSubtitle(for: tab) {
                         Text(subtitle)
-                            .font(AppTypography.body)
-                            .foregroundColor(theme.colors.textSecondary)
+                            .appFont(.placeMeta, lineLimit: .exactly(1))
+                            .foregroundStyle(theme.colors.textSecondary)
                     }
                 }
 
-                Spacer(minLength: 0)
+                Spacer(minLength: AppSpacing.sm)
 
                 SkyLineGlassPanel(spacing: AppSpacing.sm) {
                     HStack(spacing: AppSpacing.sm) {
@@ -347,7 +366,7 @@ struct SkyLineBottomBarView: View {
                             CustomMenuView(style: .glass) {
                                 Image(systemName: "plus")
                                     .font(AppTypography.mono(.title3, weight: .semibold))
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: menuGlyphWell, height: menuGlyphWell)
                             } content: {
                                 BoardingPassMenuContent()
                                     .environmentObject(themeManager)
@@ -364,9 +383,9 @@ struct SkyLineBottomBarView: View {
                 }
             }
         }
-        .padding(.top, 15)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 15)
+        .padding(.top, AppSpacing.md)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.bottom, AppSpacing.md)
     }
 
     private func headerSubtitle(for tab: SkyLineTab) -> String? {
@@ -383,6 +402,12 @@ struct SkyLineBottomBarView: View {
 
     private var chromeAnimation: Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.3)
+    }
+
+    /// List reflow, 0.25s, matching `PlaceLogView`. `nil` under Reduce Motion —
+    /// the same computed-Animation pattern the Places screens already use.
+    private var listAnimation: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.25)
     }
 
     /// Trips -> Flights, the only entry point now that the bar has no flights slot.
@@ -420,8 +445,9 @@ struct SkyLineBottomBarView: View {
     /// needs predictable luminance behind it, and a live 3D globe is not that.
     @ViewBuilder
     func CustomTabBar() -> some View {
+        // Corner radius is deliberately not passed: 28 is `SkyLineGlassBar`'s own
+        // default and belongs to the component, not to this call site.
         SkyLineGlassBar(
-            cornerRadius: 28,
             horizontalPadding: AppSpacing.xs,
             verticalPadding: AppSpacing.xs
         ) {
@@ -520,63 +546,44 @@ struct SkyLineBottomBarView: View {
     
     @ViewBuilder
     func FlightsTabContent() -> some View {
-        VStack(spacing: 0) {
-            // Segmented Control
+        // No inner ScrollView: `LegacyTabScroll` already owns one, and nesting an
+        // unbounded vertical scroll view inside it collapses this content's height.
+        VStack(spacing: AppSpacing.md) {
             if !flightStore.flights.isEmpty {
                 FlightFilterSegmentedControl(selectedFilter: $selectedFlightFilter)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
+                    .environmentObject(themeManager)
+                    .padding(.horizontal, AppSpacing.md)
             }
 
             if flightStore.flights.isEmpty {
-                VStack(spacing: 24) {
-                    Spacer()
-
-                    VStack(spacing: 16) {
-                        Image(systemName: "airplane")
-                            .font(.system(size: 48, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.primary)
-                            .animation(.easeInOut(duration: 0.3), value: themeManager.currentTheme)
-
-                        Text("No Flights")
-                            .font(.system(.title2, design: .monospaced))
-                            .fontWeight(.semibold)
-
-                        Text("Add flights to track their status")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
+                FlightsEmptyStateView(kind: .noFlights)
+                    .environmentObject(themeManager)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        let filteredFlights = filteredFlightsList
-                        if filteredFlights.isEmpty {
-                            EmptyFlightFilterStateView(filterType: selectedFlightFilter.rawValue.lowercased())
-                                .padding(.top, 40)
-                        } else {
-                            ForEach(filteredFlights) { flight in
-                                FlightRowView(
-                                    flight: flight,
-                                    isSelected: selectedFlightId == flight.id,
-                                    onTap: {
-                                        handleFlightTap(flight)
-                                    },
-                                    onDelete: {
-                                        handleFlightDelete(flight)
-                                    }
-                                )
-                                .id("\(flight.id)-\(refreshID)")
-                            }
+                let filteredFlights = filteredFlightsList
+
+                if filteredFlights.isEmpty {
+                    FlightsEmptyStateView(
+                        kind: selectedFlightFilter == .upcoming ? .noUpcoming : .noPast
+                    )
+                    .environmentObject(themeManager)
+                } else {
+                    LazyVStack(spacing: AppSpacing.md) {
+                        ForEach(filteredFlights) { flight in
+                            FlightRowView(
+                                flight: flight,
+                                isSelected: selectedFlightId == flight.id,
+                                onTap: {
+                                    handleFlightTap(flight)
+                                },
+                                onDelete: {
+                                    handleFlightDelete(flight)
+                                }
+                            )
+                            .id("\(flight.id)-\(refreshID)")
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
+                    .padding(.horizontal, AppSpacing.md)
+                    .animation(listAnimation, value: selectedFlightFilter)
                 }
             }
         }
@@ -595,106 +602,16 @@ struct SkyLineBottomBarView: View {
     
     @ViewBuilder
     func ProfileTabContent() -> some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Profile Header
-                Button {
-                    showingEditProfile = true
-                } label: {
-                    VStack(spacing: 12) {
-                        // Profile Picture with Edit Badge
-                        ZStack(alignment: .topTrailing) {
-                            // Profile Picture with Ring
-                            Group {
-                                if let profileImage = profileImage {
-                                    Image(uiImage: profileImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 80, height: 80)
-                                        .clipShape(Circle())
-                                } else {
-                                    Circle()
-                                        .fill(themeManager.currentTheme.colors.primary)
-                                        .frame(width: 80, height: 80)
-                                        .overlay(
-                                            Text(authService.authenticationState.user?.initials ?? "SU")
-                                                .font(.system(size: 32, weight: .medium, design: .monospaced))
-                                                .foregroundColor(.white)
-                                        )
-                                }
-                            }
-                            .overlay(
-                                Circle()
-                                    .stroke(themeManager.currentTheme.colors.border.opacity(0.2), lineWidth: 2)
-                            )
+        let theme = themeManager.currentTheme
 
-                            // Edit Pencil Icon
-                            ZStack {
-                                Circle()
-                                    .fill(themeManager.currentTheme.colors.surface)
-                                    .frame(width: 28, height: 28)
-                                    .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
-
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(themeManager.currentTheme.colors.text)
-                            }
-                            .offset(x: 2, y: -2)
-                        }
-
-                        // Name and Email
-                        VStack(spacing: 4) {
-                            Text(authService.authenticationState.user?.displayName ?? "SkyLine User")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundColor(themeManager.currentTheme.colors.text)
-
-                            if let email = authService.authenticationState.user?.email {
-                                Text(email)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                            }
-                        }
-                    }
-                }
-
-                // Statistics Card
-                HStack(spacing: 0) {
-                    StatCard(
-                        icon: "suitcase.fill",
-                        label: "Total Trips",
-                        value: "\(tripStore.trips.count)"
-                    )
-
-                    Divider()
-                        .frame(height: 60)
-
-                    StatCard(
-                        icon: "globe",
-                        label: "Countries",
-                        value: "\(calculateCountriesVisited())"
-                    )
-
-                    Divider()
-                        .frame(height: 60)
-
-                    StatCard(
-                        icon: "airplane",
-                        label: "Flights",
-                        value: "\(flightStore.flights.count)"
-                    )
-                }
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(themeManager.currentTheme.colors.surface)
-                        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
-                )
-
-                Spacer(minLength: 40)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
+        // No inner ScrollView: this is already inside `LegacyTabScroll`'s scroll
+        // view, and a nested unbounded one fights it for the drag.
+        VStack(spacing: AppSpacing.lg) {
+            profileIdentity(theme: theme)
+            profileStats(theme: theme)
         }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.top, AppSpacing.xs)
         .frame(maxWidth: .infinity)
         .task {
             // Fetch profile image from CloudKit
@@ -720,29 +637,120 @@ struct SkyLineBottomBarView: View {
         }
     }
 
-    // MARK: - Profile Tab Helper Functions
+    @ViewBuilder
+    private func profileIdentity(theme: AppTheme) -> some View {
+        Button {
+            showingEditProfile = true
+        } label: {
+            VStack(spacing: AppSpacing.sm) {
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if let profileImage = profileImage {
+                            Image(uiImage: profileImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: avatarSize, height: avatarSize)
+                                .clipShape(Circle())
+                        } else {
+                            // Initials in `primary` on tinted glass, not white on
+                            // a `primary` fill: white over dark `primary`
+                            // (0x4DA3FF) is 2.6:1 and fails AA. `primary` on the
+                            // glass fallback clears AA in both palettes.
+                            Text(authService.authenticationState.user?.initials ?? "SU")
+                                .appFont(.title, lineLimit: .exactly(1))
+                                .foregroundStyle(theme.colors.primary)
+                                .frame(width: avatarSize, height: avatarSize)
+                                .skylineGlass(
+                                    .card,
+                                    in: Circle(),
+                                    tint: theme.colors.primary.opacity(0.22),
+                                    theme: theme
+                                )
+                        }
+                    }
+
+                    Image(systemName: "pencil")
+                        .font(AppTypography.mono(.caption, weight: .semibold))
+                        .foregroundStyle(theme.colors.text)
+                        .frame(width: avatarBadge, height: avatarBadge)
+                        .skylineGlass(.control, in: Circle(), theme: theme)
+                        .offset(x: AppSpacing.xs, y: -AppSpacing.xs)
+                }
+
+                VStack(spacing: AppSpacing.xs) {
+                    Text(authService.authenticationState.user?.displayName ?? "SkyLine User")
+                        .appFont(.headline)
+                        .foregroundStyle(theme.colors.text)
+
+                    if let email = authService.authenticationState.user?.email {
+                        Text(email)
+                            .appFont(.placeMeta, lineLimit: .exactly(1))
+                            .foregroundStyle(theme.colors.textSecondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Edit profile"))
+    }
 
     @ViewBuilder
-    private func StatCard(
-        icon: String,
-        label: String,
-        value: String
-    ) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 28))
-                .foregroundColor(themeManager.currentTheme.colors.primary)
+    private func profileStats(theme: AppTheme) -> some View {
+        let tripCount = tripStore.trips.count
+        let countryCount = calculateCountriesVisited()
+        let flightCount = flightStore.flights.count
 
-            Text(value)
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(themeManager.currentTheme.colors.text)
+        SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            HStack(spacing: 0) {
+                statColumn(value: tripCount, label: tripCount == 1 ? "trip" : "trips")
+                statDivider
+                statColumn(value: countryCount, label: countryCount == 1 ? "country" : "countries")
+                statDivider
+                statColumn(value: flightCount, label: flightCount == 1 ? "flight" : "flights")
+            }
+            .padding(.vertical, AppSpacing.md)
+            .padding(.horizontal, AppSpacing.sm)
+            .frame(maxWidth: .infinity)
+            // Glass, not `surface` + shadow. A black shadow on 0x0A0F1C has
+            // nowhere to go, so on dark the old card had no edge at all.
+            .skylineGlassCard(theme: theme)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            Text("\(tripCount) trips in \(countryCount) countries, \(flightCount) flights.")
+        )
+    }
 
-            Text(label)
-                .font(.system(size: 14))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .multilineTextAlignment(.center)
+    // MARK: - Profile Tab Helper Functions
+
+    /// One column of the profile stat row, matching `PlaceLogView.statColumn`
+    /// exactly so the two screens read as one system. The icons are gone: value
+    /// plus label is two type tokens, and adding a glyph made three graphic
+    /// layers competing inside a 100pt-wide column.
+    @ViewBuilder
+    private func statColumn(value: Int, label: String) -> some View {
+        VStack(spacing: AppSpacing.xs) {
+            Text("\(value)")
+                .appFont(.title, lineLimit: .exactly(1))
+                .foregroundStyle(themeManager.currentTheme.colors.text)
+                .contentTransition(.numericText())
+
+            Text(label.uppercased())
+                .appFont(.footnote, lineLimit: .exactly(1))
+                .foregroundStyle(themeManager.currentTheme.colors.textSecondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// A ruled line from the palette. A bare `Divider()` is a semantic separator
+    /// and follows the DEVICE appearance, not the theme the user picked.
+    private var statDivider: some View {
+        Rectangle()
+            .fill(themeManager.currentTheme.colors.border)
+            .frame(width: 1, height: 28)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Statistics Calculations
@@ -775,510 +783,26 @@ struct SkyLineBottomBarView: View {
 
     // MARK: - Modern Flight Detail Content Component
     
+    /// The flight detail surface.
+    ///
+    /// The ticket metaphor survives — it is the app's one piece of skeuomorphism
+    /// and it earns its place — but it was hard-designed for dark: literal black
+    /// fills, white hairlines, a black-backed CTA. Every layer now comes from the
+    /// palette, so the perforation notches read as the page showing through in
+    /// both themes rather than as black holes punched in a white card.
     func ModernFlightDetailContent(flight: Flight, theme: ThemeManager) -> some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // Header - exactly like Builder.io
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Flight Details")
-                            .font(.system(size: 22, weight: .black, design: .monospaced))
-                            .tracking(-0.5)
-                            .foregroundColor(theme.currentTheme.colors.text)
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        print("🔍 DEBUG: Close button tapped")
-                        
-                        // Haptic feedback
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                        impactFeedback.impactOccurred()
-                        
-                        // Reset globe and close flight details
-                        onGlobeReset?()
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            // Check navigation context for back navigation
-                            switch flightNavigationContext {
-                            case .flights:
-                                // Normal flights tab navigation - stay on flights tab
-                                selectedFlightForDetails = nil
-                                selectedDetent = .fraction(0.2)
-                            case .trip(let trip):
-                                // Came from a trip - navigate back to specific trip
-                                selectedFlightForDetails = nil
-                                activeTab = .trips
-                                selectedDetent = .fraction(0.2)
-                                
-                                // Set the trip to reopen
-                                tripToReopen = trip
-                                
-                                // Clear the trip selection after a delay to allow the view to update
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    tripToReopen = nil
-                                }
-                                
-                                // Reset context
-                                flightNavigationContext = .flights
-                            }
-                            flightDetailsViewKey = UUID()
-                            print("🔍 DEBUG: Context-aware navigation completed")
-                        }
-                    }) {
-                        ZStack {
-                            Circle()
-                                .fill(theme.currentTheme.colors.border.opacity(0.5))
-                                .frame(width: 40, height: 40)
-                                .blur(radius: 8)
-                            
-                            Circle()
-                                .fill(theme.currentTheme.colors.surface.opacity(0.8))
-                                .frame(width: 40, height: 40)
-                                .overlay(
-                                    Circle()
-                                        .stroke(theme.currentTheme.colors.border.opacity(0.5), lineWidth: 1)
-                                )
-                            
-                            Image(systemName: "xmark")
-                                .font(.system(size: 20, weight: .medium))
-                                .foregroundColor(theme.currentTheme.colors.text)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                
-                // Main Boarding Pass Card
-                VStack(spacing: 0) {
-                    // Card with gradient background and blur effect
-                    ZStack {
-                        // Background gradient
-                        RoundedRectangle(cornerRadius: 32)
-                            .fill(
-                                LinearGradient(
-                                    gradient: Gradient(stops: [
-                                        .init(color: theme.currentTheme.colors.surface.opacity(0.9), location: 0),
-                                        .init(color: theme.currentTheme.colors.surface.opacity(0.7), location: 1)
-                                    ]),
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 32)
-                                    .stroke(.white.opacity(0.1), lineWidth: 1)
-                            )
-                        
-                        // Large airplane watermark
-                        HStack {
-                            Spacer()
-                            VStack {
-                                Image(systemName: "airplane")
-                                    .font(.system(size: 156, weight: .ultraLight))
-                                    .foregroundColor(theme.currentTheme.colors.text.opacity(0.03))
-                                    .rotationEffect(.degrees(320))
-                                    .padding(.top, 24)
-                                    .padding(.trailing, 32)
-                                Spacer()
-                            }
-                        }
-                        
-                        // Main content
-                        VStack(spacing: 16) {
-                            // Top section: Airline & Flight info
-                            VStack(spacing: 20) {
-                                // Airline and flight number
-                                HStack {
-                                    HStack(spacing: 12) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 16)
-                                                .fill(theme.currentTheme.colors.primary.opacity(0.1))
-                                                .frame(width: 48, height: 48)
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 16)
-                                                        .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
-                                                )
-                                                .shadow(color: theme.currentTheme.colors.primary.opacity(0.1), radius: 10)
-                                            
-                                            Image(systemName: "airplane")
-                                                .font(.system(size: 24, weight: .medium))
-                                                .foregroundColor(theme.currentTheme.colors.primary)
-                                        }
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("AIRLINE")
-                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                .tracking(1.5)
-                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                                .textCase(.uppercase)
-                                            
-                                            Text(flight.airline ?? "American Airlines")
-                                                .font(.system(size: 14, weight: .black, design: .monospaced))
-                                                .foregroundColor(theme.currentTheme.colors.text)
-                                        }
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text("FLIGHT")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .tracking(1.5)
-                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                            .textCase(.uppercase)
-                                        
-                                        Text(flight.flightNumber)
-                                            .font(.system(size: 14, weight: .black))
-                                            .foregroundColor(theme.currentTheme.colors.text)
-                                    }
-                                }
-                                
-                                // Route section with large airport codes
-                                HStack {
-                                    // Departure
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(flight.departure.code)
-                                            .font(.system(size: 53, weight: .black, design: .monospaced))
-                                            .tracking(-2)
-                                            .foregroundColor(theme.currentTheme.colors.text)
-                                        
-                                        Text(flight.departure.city)
-                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                            .tracking(1.5)
-                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                            .textCase(.uppercase)
-                                        
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(flight.departure.displayTime)
-                                                .font(.system(size: 20, weight: .black, design: .monospaced))
-                                                .foregroundColor(theme.currentTheme.colors.primary)
-                                            
-                                            Text(formatDate(flight.departureDate ?? flight.date))
-                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                .tracking(0.5)
-                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                                .textCase(.uppercase)
-                                        }
-                                        .padding(.top, 16)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    // Flight path
-                                    VStack(spacing: 8) {
-                                        HStack(spacing: 12) {
-                                            Rectangle()
-                                                .fill(
-                                                    LinearGradient(
-                                                        gradient: Gradient(stops: [
-                                                            .init(color: .clear, location: 0),
-                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 0.5),
-                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 1)
-                                                        ]),
-                                                        startPoint: .leading,
-                                                        endPoint: .trailing
-                                                    )
-                                                )
-                                                .frame(height: 1)
-                                                .cornerRadius(0.5)
-                                            
-                                            ZStack {
-                                                Circle()
-                                                    .fill(theme.currentTheme.colors.primary.opacity(0.2))
-                                                    .frame(width: 20, height: 20)
-                                                    .blur(radius: 8)
-                                                
-                                                Image(systemName: "airplane")
-                                                    .font(.system(size: 20, weight: .medium))
-                                                    .foregroundColor(theme.currentTheme.colors.primary)
-                                                    .rotationEffect(.degrees(0))
-                                            }
-                                            
-                                            Rectangle()
-                                                .fill(
-                                                    LinearGradient(
-                                                        gradient: Gradient(stops: [
-                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 0),
-                                                            .init(color: theme.currentTheme.colors.primary.opacity(0.4), location: 0.5),
-                                                            .init(color: .clear, location: 1)
-                                                        ]),
-                                                        startPoint: .leading,
-                                                        endPoint: .trailing
-                                                    )
-                                                )
-                                                .frame(height: 1)
-                                                .cornerRadius(0.5)
-                                        }
-                                        
-                                        HStack(spacing: 6) {
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(theme.currentTheme.colors.primary.opacity(0.1))
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
-                                                )
-                                                .frame(width: 60, height: 20)
-                                                .overlay(
-                                                    Text(flight.flightDuration ?? calculateFlightDuration(flight: flight))
-                                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                        .tracking(1.2)
-                                                        .foregroundColor(theme.currentTheme.colors.primary)
-                                                        .textCase(.uppercase)
-                                                )
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.horizontal, 16)
-                                    
-                                    Spacer()
-                                    
-                                    // Arrival
-                                    VStack(alignment: .trailing, spacing: 4) {
-                                        Text(flight.arrival.code)
-                                            .font(.system(size: 53, weight: .black, design: .monospaced))
-                                            .tracking(-2)
-                                            .foregroundColor(theme.currentTheme.colors.text)
-                                        
-                                        Text(flight.arrival.city)
-                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                            .tracking(1.5)
-                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                            .textCase(.uppercase)
-                                        
-                                        VStack(alignment: .trailing, spacing: 4) {
-                                            Text(flight.arrival.displayTime)
-                                                .font(.system(size: 20, weight: .black, design: .monospaced))
-                                                .foregroundColor(theme.currentTheme.colors.primary)
-                                            
-                                            Text(formatDate(flight.arrivalDate ?? flight.date))
-                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                .tracking(0.5)
-                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                                .textCase(.uppercase)
-                                        }
-                                        .padding(.top, 16)
-                                    }
-                                }
-                                
-                                // Passenger info section
-                                HStack {
-                                    HStack(spacing: 16) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(theme.currentTheme.colors.primary.opacity(0.1))
-                                                .frame(width: 40, height: 40)
-                                                .overlay(
-                                                    Circle()
-                                                        .stroke(theme.currentTheme.colors.primary.opacity(0.2), lineWidth: 1)
-                                                )
-                                            
-                                            Image(systemName: "person")
-                                                .font(.system(size: 20, weight: .medium))
-                                                .foregroundColor(theme.currentTheme.colors.primary)
-                                        }
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("PASSENGER")
-                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                                .tracking(1.5)
-                                                .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                                .textCase(.uppercase)
-                                            
-                                            Text("Priyanshu Madan")
-                                                .font(.system(size: 14, weight: .black, design: .monospaced))
-                                                .foregroundColor(theme.currentTheme.colors.text)
-                                        }
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text("CLASS")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .tracking(1.5)
-                                            .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                            .textCase(.uppercase)
-                                        
-                                        Text("Business")
-                                            .font(.system(size: 14, weight: .black))
-                                            .foregroundColor(theme.currentTheme.colors.text)
-                                    }
-                                }
-                                .padding(16)
-                                .background(.white.opacity(0.03))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(.white.opacity(0.05), lineWidth: 1)
-                                )
-                                .cornerRadius(16)
-                            }
-                            .padding(.top, 20)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 8)
-                            
-                            // Perforation line
-                            ZStack {
-                                // Dotted line in center
-                                Rectangle()
-                                    .fill(.clear)
-                                    .frame(height: 2)
-                                    .overlay(
-                                        GeometryReader { geometry in
-                                            Path { path in
-                                                let dashLength: CGFloat = 8
-                                                let gapLength: CGFloat = 4
-                                                let totalLength = dashLength + gapLength
-                                                let width = geometry.size.width
-                                                let numberOfDashes = Int(width / totalLength)
-                                                let startX = (width - CGFloat(numberOfDashes) * totalLength) / 2
-                                                
-                                                for i in 0..<numberOfDashes {
-                                                    let x = startX + CGFloat(i) * totalLength
-                                                    path.move(to: CGPoint(x: x, y: 1))
-                                                    path.addLine(to: CGPoint(x: x + dashLength, y: 1))
-                                                }
-                                            }
-                                            .stroke(.white.opacity(0.1), lineWidth: 2)
-                                        }
-                                    )
-                                    .padding(.horizontal, 40)
-                                
-                                // Left circle cutout
-                                HStack {
-                                    Circle()
-                                        .fill(Color.black)
-                                        .frame(width: 36, height: 36)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(.white.opacity(0.05), lineWidth: 1)
-                                        )
-                                        .shadow(color: .black.opacity(0.4), radius: 6, x: -4, y: 0)
-                                        .offset(x: -18)
-                                    
-                                    Spacer()
-                                    
-                                    // Right circle cutout
-                                    Circle()
-                                        .fill(Color.black)
-                                        .frame(width: 36, height: 36)
-                                        .overlay(
-                                            Circle()
-                                                .stroke(.white.opacity(0.05), lineWidth: 1)
-                                        )
-                                        .shadow(color: .black.opacity(0.4), radius: 6, x: 4, y: 0)
-                                        .offset(x: 18)
-                                }
-                            }
-                            .frame(height: 36)
-                            
-                            // Bottom section: Barcode
-                            VStack(spacing: 16) {
-                                // Barcode
-                                HStack(spacing: 2) {
-                                    ForEach(0..<80, id: \.self) { i in
-                                        let widths: [CGFloat] = [1, 2, 3, 1, 4, 2, 1, 3]
-                                        Rectangle()
-                                            .fill(theme.currentTheme.colors.text.opacity(0.6))
-                                            .frame(width: widths[i % 8], height: 80)
-                                            .opacity(Double.random(in: 0.1...1) > 0.1 ? 1 : 0.4)
-                                            .cornerRadius(widths[i % 8] / 2)
-                                    }
-                                }
-                                .frame(height: 80)
-                                .padding(.horizontal, 24)
-                                
-                                // PNR and Ticket info
-                                HStack {
-                                    Text("PNR: G7X9K2")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .tracking(1.6)
-                                        .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                        .textCase(.uppercase)
-                                    
-                                    Spacer()
-                                    
-                                    Text("TKT: 0012345678901")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .tracking(1.6)
-                                        .foregroundColor(theme.currentTheme.colors.textSecondary)
-                                        .textCase(.uppercase)
-                                }
-                                .padding(.horizontal, 40)
-                            }
-                            .padding(.bottom, 16)
-                            .background(.white.opacity(0.02))
-                        }
-                    }
-                }
-                
-                // Action buttons
-                HStack(spacing: 16) {
-                    // Add to Trip button
-                    Button(action: {
-                        showingAddToTripSheet = true
-                    }) {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(.white)
-                                    .frame(width: 32, height: 32)
-                                
-                                Image(systemName: "folder.badge.plus")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundColor(.black)
-                            }
-                            
-                            Text("Add to Trip")
-                                .font(.system(size: 18, weight: .black, design: .monospaced))
-                                .foregroundColor(.white)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 80)
-                        .background(.black)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 40)
-                                .stroke(.white.opacity(0.1), lineWidth: 1)
-                        )
-                        .cornerRadius(40)
-                        .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 8)
-                        .overlay(
-                            // Shine effect
-                            RoundedRectangle(cornerRadius: 40)
-                                .fill(
-                                    LinearGradient(
-                                        gradient: Gradient(stops: [
-                                            .init(color: .clear, location: 0),
-                                            .init(color: .white.opacity(0.05), location: 0.5),
-                                            .init(color: .clear, location: 1)
-                                        ]),
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                        )
-                    }
-                    
-                    // Share button
-                    Button(action: {
-                        // TODO: Share flight
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 28, weight: .medium))
-                            .foregroundColor(theme.currentTheme.colors.text)
-                    }
-                    .frame(width: 80, height: 80)
-                    .background(theme.currentTheme.colors.surface.opacity(0.5))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 40)
-                            .stroke(.white.opacity(0.1), lineWidth: 1)
-                    )
-                    .cornerRadius(40)
-                }
+        let appTheme = theme.currentTheme
+        let colors = appTheme.colors
+
+        return ScrollView {
+            VStack(spacing: AppSpacing.lg) {
+                flightDetailHeader(flight: flight, colors: colors)
+                boardingPassCard(flight: flight, appTheme: appTheme)
+                flightDetailActions(colors: colors)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 100)
+            .padding(.top, AppSpacing.md)
+            // Clearance for the tab bar, which floats over the globe below the slab.
+            .padding(.bottom, AppSpacing.xxl)
         }
         .sheet(isPresented: $showingAddToTripSheet) {
             if let flight = selectedFlightForDetails {
@@ -1291,6 +815,391 @@ struct SkyLineBottomBarView: View {
                     .environmentObject(TripStore.shared)
             }
         }
+    }
+
+    @ViewBuilder
+    private func flightDetailHeader(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(flight.flightNumber)
+                    .appFont(.title)
+                    .foregroundStyle(colors.text)
+                    .accessibilityAddTraits(.isHeader)
+
+                Text("\(flight.departure.code) \u{2192} \(flight.arrival.code)")
+                    .appFont(.placeMeta, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.textSecondary)
+            }
+
+            Spacer(minLength: AppSpacing.sm)
+
+            // Glass, because this control can end up over the globe when the
+            // sheet is short. An opaque circle would be the only non-glass
+            // control on the surface.
+            SkyLineGlassIconButton(
+                systemImage: "xmark",
+                accessibilityLabel: "Close flight details"
+            ) {
+                closeFlightDetails()
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+    }
+
+    /// Extracted verbatim from the old close button so the navigation-context
+    /// branch, the globe reset and the detent changes all behave identically.
+    private func closeFlightDetails() {
+        print("\u{1F50D} DEBUG: Close button tapped")
+
+        onGlobeReset?()
+        withAnimation(chromeAnimation) {
+            switch flightNavigationContext {
+            case .flights:
+                selectedFlightForDetails = nil
+                selectedDetent = .fraction(0.2)
+            case .trip(let trip):
+                selectedFlightForDetails = nil
+                activeTab = .trips
+                selectedDetent = .fraction(0.2)
+
+                tripToReopen = trip
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    tripToReopen = nil
+                }
+
+                flightNavigationContext = .flights
+            }
+            flightDetailsViewKey = UUID()
+            print("\u{1F50D} DEBUG: Context-aware navigation completed")
+        }
+    }
+
+    @ViewBuilder
+    private func flightDetailActions(colors: ThemeColors) -> some View {
+        SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                Button {
+                    showingAddToTripSheet = true
+                } label: {
+                    HStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "folder.badge.plus")
+                            .font(AppTypography.mono(.body, weight: .semibold))
+                        Text("Add to Trip")
+                            .appFont(.bodyBold, lineLimit: .exactly(1))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.sm)
+                }
+                // The one loud use of `primary` on this screen.
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(colors.primary)
+
+                SkyLineGlassIconButton(
+                    systemImage: "square.and.arrow.up",
+                    accessibilityLabel: "Share flight"
+                ) {
+                    // TODO: Share flight
+                }
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+    }
+
+    // MARK: - Boarding Pass Card
+
+    @ViewBuilder
+    private func boardingPassCard(flight: Flight, appTheme: AppTheme) -> some View {
+        let colors = appTheme.colors
+
+        VStack(spacing: 0) {
+            passIdentity(flight: flight, colors: colors)
+            passRoute(flight: flight, colors: colors)
+            passDetailWell(flight: flight, colors: colors)
+            passPerforation(colors: colors)
+            passBarcode(flight: flight, colors: colors)
+        }
+        .padding(.vertical, AppSpacing.md)
+        .background(alignment: .topTrailing) {
+            Image(systemName: "airplane")
+                .font(.system(size: passWatermarkSize, weight: .ultraLight, design: .monospaced))
+                .foregroundStyle(colors.text.opacity(0.06))
+                .rotationEffect(.degrees(320))
+                .offset(x: AppSpacing.lg, y: AppSpacing.md)
+                .accessibilityHidden(true)
+        }
+        // Clip before the glass so the watermark and the notches are bitten off
+        // by the card edge instead of bleeding across the page.
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+        .skylineGlassCard(cornerRadius: AppRadius.card, theme: appTheme)
+        .padding(.horizontal, AppSpacing.md)
+    }
+
+    @ViewBuilder
+    private func passIdentity(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "airplane")
+                    .font(AppTypography.mono(.body, weight: .semibold))
+                    .foregroundStyle(colors.primary)
+                    .frame(width: passGlyphWell, height: passGlyphWell)
+                    .background {
+                        RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                            .fill(colors.primary.opacity(0.12))
+                    }
+
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("AIRLINE")
+                        .appFont(.footnote, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.textSecondary)
+
+                    Text(flight.airline ?? "Unknown")
+                        .appFont(.bodyBold, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.text)
+                }
+            }
+
+            Spacer(minLength: AppSpacing.sm)
+
+            VStack(alignment: .trailing, spacing: AppSpacing.xs) {
+                Text("FLIGHT")
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.textSecondary)
+
+                Text(flight.flightNumber)
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.text)
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+    }
+
+    @ViewBuilder
+    private func passRoute(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            passEndpoint(
+                code: flight.departure.code,
+                city: flight.departure.city,
+                time: flight.departure.displayTime,
+                date: formatDate(flight.departureDate ?? flight.date),
+                isDeparture: true,
+                colors: colors
+            )
+
+            VStack(spacing: AppSpacing.sm) {
+                routeLine(colors: colors)
+
+                Text(flight.flightDuration ?? calculateFlightDuration(flight: flight))
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.primary)
+                    .padding(.horizontal, AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background {
+                        Capsule(style: .continuous)
+                            .fill(colors.primary.opacity(0.12))
+                    }
+            }
+            // Half the 34pt code, so the line runs through the codes rather than
+            // above them.
+            .padding(.top, AppSpacing.md)
+
+            passEndpoint(
+                code: flight.arrival.code,
+                city: flight.arrival.city,
+                time: flight.arrival.displayTime,
+                date: formatDate(flight.arrivalDate ?? flight.date),
+                isDeparture: false,
+                colors: colors
+            )
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.top, AppSpacing.lg)
+    }
+
+    @ViewBuilder
+    private func passEndpoint(code: String, city: String, time: String, date: String, isDeparture: Bool, colors: ThemeColors) -> some View {
+        VStack(alignment: isDeparture ? .leading : .trailing, spacing: AppSpacing.xs) {
+            // `titleLarge` rather than a frozen 53pt: monospaced advance width is
+            // ~0.6em, so three characters at 53pt plus a city underneath is what
+            // pushed this row off a 375pt screen.
+            Text(code)
+                .appFont(.titleLarge, lineLimit: .exactly(1))
+                .foregroundStyle(colors.text)
+
+            Text(city.uppercased())
+                .appFont(.footnote, lineLimit: .exactly(1))
+                .foregroundStyle(colors.textSecondary)
+
+            VStack(alignment: isDeparture ? .leading : .trailing, spacing: AppSpacing.xs) {
+                Text(time)
+                    .appFont(.flightTime, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.primary)
+
+                Text(date.uppercased())
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.textSecondary)
+            }
+            .padding(.top, AppSpacing.sm)
+        }
+        .frame(maxWidth: .infinity, alignment: isDeparture ? .leading : .trailing)
+    }
+
+    @ViewBuilder
+    private func passDetailWell(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "person")
+                    .font(AppTypography.mono(.body, weight: .semibold))
+                    .foregroundStyle(colors.primary)
+                    .frame(width: passGlyphWell, height: passGlyphWell)
+                    .background {
+                        Circle().fill(colors.primary.opacity(0.12))
+                    }
+
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("PASSENGER")
+                        .appFont(.footnote, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.textSecondary)
+
+                    // Was a hardcoded name. The signed-in user is the passenger.
+                    Text(authService.authenticationState.user?.displayName ?? "Passenger")
+                        .appFont(.bodyBold, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.text)
+                }
+            }
+
+            Spacer(minLength: AppSpacing.sm)
+
+            VStack(alignment: .trailing, spacing: AppSpacing.xs) {
+                Text("STATUS")
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.textSecondary)
+
+                HStack(spacing: AppSpacing.xs) {
+                    statusDot(for: flight.status)
+                    Text(flight.status.displayName)
+                        .appFont(.bodyBold, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.text)
+                }
+            }
+        }
+        .padding(AppSpacing.md)
+        .background {
+            ConcentricRectangle(corners: .concentric, isUniform: true)
+                .fill(colors.surface)
+        }
+        .overlay {
+            ConcentricRectangle(corners: .concentric, isUniform: true)
+                .stroke(colors.border, lineWidth: 1)
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.top, AppSpacing.lg)
+    }
+
+    @ViewBuilder
+    private func passPerforation(colors: ThemeColors) -> some View {
+        ZStack {
+            PassPerforationLine()
+                .stroke(colors.border, style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
+                .frame(height: 1)
+                .padding(.horizontal, AppSpacing.xl)
+
+            HStack(spacing: 0) {
+                passNotch(colors: colors)
+                    .offset(x: -passNotchSize / 2)
+                Spacer(minLength: 0)
+                passNotch(colors: colors)
+                    .offset(x: passNotchSize / 2)
+            }
+        }
+        .frame(height: passNotchSize)
+        .padding(.top, AppSpacing.lg)
+        .accessibilityHidden(true)
+    }
+
+    /// The bite out of the ticket edge. Filled with `background` because that is
+    /// literally what is behind the card — which is why the old `Color.black`
+    /// looked right on dark and like a hole punched in paper on light.
+    @ViewBuilder
+    private func passNotch(colors: ThemeColors) -> some View {
+        Circle()
+            .fill(colors.background)
+            .frame(width: passNotchSize, height: passNotchSize)
+            .overlay {
+                Circle().stroke(colors.border, lineWidth: 1)
+            }
+    }
+
+    @ViewBuilder
+    private func passBarcode(flight: Flight, colors: ThemeColors) -> some View {
+        // Deterministic, seeded from the flight number. The old version called
+        // `Double.random` inside `body`, so every re-render reshuffled the bars.
+        let seed = flight.flightNumber.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+
+        VStack(spacing: AppSpacing.md) {
+            HStack(spacing: 2) {
+                ForEach(0..<56, id: \.self) { i in
+                    let widths: [CGFloat] = [1, 2, 3, 1, 4, 2, 1, 3]
+                    let step = (i &+ seed) % widths.count
+                    Capsule(style: .continuous)
+                        .fill(colors.text.opacity(step == 0 ? 0.3 : 0.7))
+                        .frame(width: widths[step], height: barcodeHeight)
+                }
+            }
+            .frame(height: barcodeHeight)
+            .padding(.horizontal, AppSpacing.lg)
+
+            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                passStamp(label: "TERMINAL", value: flight.departure.terminal ?? "\u{2014}", colors: colors, trailing: false)
+                Spacer(minLength: AppSpacing.sm)
+                passStamp(label: "GATE", value: flight.departure.gate ?? "\u{2014}", colors: colors, trailing: true)
+            }
+            .padding(.horizontal, AppSpacing.lg)
+        }
+        .padding(.top, AppSpacing.lg)
+    }
+
+    @ViewBuilder
+    private func passStamp(label: String, value: String, colors: ThemeColors, trailing: Bool) -> some View {
+        VStack(alignment: trailing ? .trailing : .leading, spacing: AppSpacing.xs) {
+            Text(label)
+                .appFont(.footnote, lineLimit: .exactly(1))
+                .foregroundStyle(colors.textSecondary)
+            Text(value)
+                .appFont(.bodyBold, lineLimit: .exactly(1))
+                .foregroundStyle(colors.text)
+        }
+    }
+
+    // MARK: - Shared Flight Primitives
+
+    /// The hairline route with an aeroplane riding it. Shared by the flight rows
+    /// and the boarding pass so the two surfaces read as the same family.
+    @ViewBuilder
+    func routeLine(colors: ThemeColors) -> some View {
+        HStack(spacing: AppSpacing.xs) {
+            Rectangle()
+                .fill(colors.border)
+                .frame(height: 1)
+
+            Image(systemName: "airplane")
+                .font(AppTypography.mono(.caption, weight: .semibold))
+                .foregroundStyle(colors.primary)
+
+            Rectangle()
+                .fill(colors.border)
+                .frame(height: 1)
+        }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    func statusDot(for status: FlightStatus) -> some View {
+        Circle()
+            .fill(getStatusColor(for: status))
+            .frame(width: statusDotSize, height: statusDotSize)
+            .accessibilityHidden(true)
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -1356,36 +1265,35 @@ struct SkyLineBottomBarView: View {
     @State private var showingAddToTripSheet = false
 }
 
-// MARK: - Preview for the new Boarding Pass UI
-#Preview("Modern Boarding Pass UI") {
-    NavigationView {
-        SkyLineBottomBarView(
-            selectedDetent: .constant(.large)
-        )
-        .environmentObject(ThemeManager())
-        .environmentObject(FlightStore())
-        .environmentObject(AuthenticationService.shared)
+// MARK: - Previews
+/// Both previews stand the sheet on the app's own `background` rather than a
+/// literal black, so what you see in the canvas is what the theme actually paints.
+private struct BottomBarPreviewHost: View {
+    let theme: AppTheme
+
+    @StateObject private var themeManager = ThemeManager()
+    @StateObject private var flightStore = FlightStore()
+
+    var body: some View {
+        ZStack {
+            themeManager.currentTheme.colors.background
+                .ignoresSafeArea()
+
+            SkyLineBottomBarView(selectedDetent: .constant(.large))
+                .environmentObject(themeManager)
+                .environmentObject(flightStore)
+                .environmentObject(AuthenticationService.shared)
+        }
+        .onAppear { themeManager.currentTheme = theme }
     }
 }
 
-#Preview("Boarding Pass Component Only") {
-    struct PreviewWrapper: View {
-        @StateObject private var themeManager = ThemeManager()
-        @StateObject private var flightStore = FlightStore()
-        
-        var body: some View {
-            ZStack {
-                Color.black.ignoresSafeArea()
-                
-                SkyLineBottomBarView(selectedDetent: .constant(.large))
-                    .environmentObject(themeManager)
-                    .environmentObject(flightStore)
-                    .environmentObject(AuthenticationService.shared)
-            }
-        }
-    }
-    
-    return PreviewWrapper()
+#Preview("Bottom bar - dark") {
+    BottomBarPreviewHost(theme: .dark)
+}
+
+#Preview("Bottom bar - light") {
+    BottomBarPreviewHost(theme: .light)
 }
 
 private extension SkyLineBottomBarView {
@@ -1616,193 +1524,218 @@ private extension SkyLineBottomBarView {
         }
     }
     
+    /// One flight in the list.
+    ///
+    /// Was four elevation signals stacked on one card — fill, corner radius,
+    /// stroke and shadow — plus a `scaleEffect` on selection that resampled the
+    /// glyphs and made the text soft. Now it is a single glass card whose tint
+    /// carries selection, with one recessed well inside it for the secondary
+    /// fields. Glass is what actually produces a card in both palettes: `surface`
+    /// on `background` is a ~2% luminance step either way, and a black shadow has
+    /// nowhere to go on 0x0A0F1C.
     @ViewBuilder
     func FlightRowView(flight: Flight, isSelected: Bool = false, onTap: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
-        VStack(spacing: 0) {
-            // Flight date
-            HStack {
-                Text(DateFormatter.flightCardDate.string(from: flight.date))
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                Spacer()
+        let theme = themeManager.currentTheme
+        let colors = theme.colors
+
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                rowMetaLine(flight: flight, colors: colors)
+                rowRoute(flight: flight, colors: colors)
+                rowDetailWell(flight: flight, colors: colors)
             }
-            .padding(.bottom, 12)
-            
-            // Main flight info section
-            HStack(spacing: 16) {
-                // Departure
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(flight.departure.displayTime)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
-                    Text(flight.departure.code)
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                    
-                    Text(flight.departure.city)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(1)
-                }
-                
-                Spacer()
-                
-                // Center airplane icon
-                ZStack {
-                    Circle()
-                        .fill(themeManager.currentTheme.colors.text)
-                        .frame(width: 32, height: 32)
-                    
-                    Image(systemName: "airplane")
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.background)
-                        .rotationEffect(.degrees(90))
-                }
-                
-                Spacer()
-                
-                // Arrival
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(flight.arrival.displayTime)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
-                    Text(flight.arrival.code)
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                    
-                    Text(flight.arrival.city)
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        .lineLimit(1)
-                }
-            }
-            .padding(.bottom, 16)
-            
-            // Bottom section with flight details
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Airlines")
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
-                    Text(flight.airline ?? "Unknown")
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Flight no")
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                    
-                    Text(flight.flightNumber)
-                        .font(.system(size: 14, weight: .medium, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.text)
-                }
-            }
-            .padding(12)
-            .background(themeManager.currentTheme == .light ? Color(.systemGray6) : Color(.systemGray6).opacity(0.3))
-            .cornerRadius(8)
+            .padding(AppSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
         }
-        .padding(12)
-        .background(isSelected ? 
-            themeManager.currentTheme.colors.primary.opacity(0.1) : 
-            (themeManager.currentTheme == .light ? .white : themeManager.currentTheme.colors.surface))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(
-                    isSelected ? 
-                        themeManager.currentTheme.colors.primary : 
-                        (themeManager.currentTheme == .light ? Color(.systemGray4) : themeManager.currentTheme.colors.border),
-                    lineWidth: isSelected ? 2 : 1
-                )
+        .buttonStyle(.plain)
+        .skylineGlassCard(tint: isSelected ? colors.primary : nil, theme: theme)
+        .accessibilityLabel(
+            Text("\(flight.flightNumber), \(flight.departure.code) to \(flight.arrival.code), \(flight.status.displayName)")
         )
-        .shadow(
-            color: isSelected ? themeManager.currentTheme.colors.primary.opacity(0.3) : .black.opacity(0.05),
-            radius: isSelected ? 8 : 2,
-            x: 0,
-            y: isSelected ? 4 : 1
-        )
-        .scaleEffect(isSelected ? 1.02 : 1.0)
-        .onTapGesture {
-            onTap()
-        }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
             Button {
                 onTap()
             } label: {
                 Label("Focus on Globe", systemImage: "globe")
             }
-            
+
             Button {
-                // Copy flight info to clipboard
-                let flightInfo = "\(flight.flightNumber): \(flight.departure.code) → \(flight.arrival.code)"
+                let flightInfo = "\(flight.flightNumber): \(flight.departure.code) \u{2192} \(flight.arrival.code)"
                 UIPasteboard.general.string = flightInfo
-                
+
                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                 impactFeedback.impactOccurred()
             } label: {
                 Label("Copy Info", systemImage: "doc.on.doc")
             }
-            
+
+            // A menu separator, not a page divider — this is the one place
+            // `Divider()` still means what it says.
             Divider()
-            
+
             Button(role: .destructive) {
                 onDelete()
             } label: {
                 Label("Delete Flight", systemImage: "trash")
             }
         } preview: {
-            // Preview content for the context menu
-            VStack(alignment: .leading, spacing: 8) {
-                Text(flight.flightNumber)
-                    .font(.system(.title2, design: .monospaced))
-                    .fontWeight(.bold)
-                
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(flight.departure.code)
-                            .font(.system(.title3, design: .monospaced))
-                            .fontWeight(.semibold)
-                        Text(flight.departure.city)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "airplane")
-                        .foregroundColor(.blue)
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .trailing) {
-                        Text(flight.arrival.code)
-                            .font(.system(.title3, design: .monospaced))
-                            .fontWeight(.semibold)
-                        Text(flight.arrival.city)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Text("Status: \(flight.status.displayName)")
-                    .font(.system(.caption, design: .monospaced))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(getStatusColor(for: flight.status))
-                    .foregroundColor(.white)
-                    .cornerRadius(6)
-            }
-            .padding()
-            .background(.regularMaterial)
-            .cornerRadius(12)
+            rowContextPreview(flight: flight, colors: colors)
         }
+    }
+
+    @ViewBuilder
+    private func rowMetaLine(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(spacing: AppSpacing.sm) {
+            Text(DateFormatter.flightCardDate.string(from: flight.date))
+                .appFont(.placeMeta, lineLimit: .exactly(1))
+                .foregroundStyle(colors.textSecondary)
+
+            Spacer(minLength: AppSpacing.xs)
+
+            // Status is metadata, not identity: a dot carries the hue and the
+            // label carries the meaning. The old filled pill put white glyphs on
+            // `statusInAir` (0x3DDC91 on dark) at roughly 1.9:1.
+            statusDot(for: flight.status)
+
+            Text(flight.status.displayName.uppercased())
+                .appFont(.flightStatus, lineLimit: .exactly(1))
+                .foregroundStyle(colors.textSecondary)
+        }
+    }
+
+    @ViewBuilder
+    private func rowRoute(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            rowEndpoint(
+                code: flight.departure.code,
+                city: flight.departure.city,
+                time: flight.departure.displayTime,
+                isDeparture: true,
+                colors: colors
+            )
+
+            // Optically centred against the 28pt code, not the top of the column:
+            // time (15) + gap (4) + half the code.
+            routeLine(colors: colors)
+                .padding(.top, AppSpacing.xl)
+
+            rowEndpoint(
+                code: flight.arrival.code,
+                city: flight.arrival.city,
+                time: flight.arrival.displayTime,
+                isDeparture: false,
+                colors: colors
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func rowEndpoint(code: String, city: String, time: String, isDeparture: Bool, colors: ThemeColors) -> some View {
+        VStack(alignment: isDeparture ? .leading : .trailing, spacing: AppSpacing.xs) {
+            Text(time)
+                .appFont(.flightTime, lineLimit: .exactly(1))
+                .foregroundStyle(colors.textSecondary)
+
+            Text(code)
+                .appFont(.title, lineLimit: .exactly(1))
+                .foregroundStyle(colors.text)
+
+            Text(city)
+                .appFont(.placeMeta, lineLimit: .exactly(1))
+                .foregroundStyle(colors.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: isDeparture ? .leading : .trailing)
+    }
+
+    @ViewBuilder
+    private func rowDetailWell(flight: Flight, colors: ThemeColors) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text("AIRLINE")
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.textSecondary)
+
+                Text(flight.airline ?? "Unknown")
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.text)
+            }
+
+            Spacer(minLength: AppSpacing.sm)
+
+            VStack(alignment: .trailing, spacing: AppSpacing.xs) {
+                Text("FLIGHT")
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.textSecondary)
+
+                Text(flight.flightNumber)
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.text)
+            }
+        }
+        .padding(AppSpacing.md)
+        // Recessed, not lifted: opaque `surface` with a hairline is the inverse
+        // of the glass card around it, which is exactly what `systemGray6` was
+        // reaching for before it followed the device appearance instead.
+        .background {
+            ConcentricRectangle(corners: .concentric, isUniform: true)
+                .fill(colors.surface)
+        }
+        .overlay {
+            ConcentricRectangle(corners: .concentric, isUniform: true)
+                .stroke(colors.border, lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func rowContextPreview(flight: Flight, colors: ThemeColors) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Text(flight.flightNumber)
+                .appFont(.flightNumber, lineLimit: .exactly(1))
+                .foregroundStyle(colors.text)
+
+            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text(flight.departure.code)
+                        .appFont(.airportCode, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.text)
+                    Text(flight.departure.city)
+                        .appFont(.placeMeta, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.textSecondary)
+                }
+
+                Spacer(minLength: AppSpacing.md)
+
+                Image(systemName: "airplane")
+                    .font(AppTypography.mono(.caption, weight: .semibold))
+                    .foregroundStyle(colors.primary)
+
+                Spacer(minLength: AppSpacing.md)
+
+                VStack(alignment: .trailing, spacing: AppSpacing.xs) {
+                    Text(flight.arrival.code)
+                        .appFont(.airportCode, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.text)
+                    Text(flight.arrival.city)
+                        .appFont(.placeMeta, lineLimit: .exactly(1))
+                        .foregroundStyle(colors.textSecondary)
+                }
+            }
+
+            HStack(spacing: AppSpacing.xs) {
+                statusDot(for: flight.status)
+                Text(flight.status.displayName)
+                    .appFont(.flightStatus, lineLimit: .exactly(1))
+                    .foregroundStyle(colors.text)
+            }
+        }
+        .padding(AppSpacing.md)
+        .frame(width: 300)
+        // The context-menu preview is hosted by the system, which paints it
+        // against the DEVICE appearance. It must bring its own opaque surface or
+        // it inherits the wrong ground. `.regularMaterial` did exactly that.
+        .background(colors.surface)
     }
     
     private func getStatusColor(for status: FlightStatus) -> Color {
@@ -1938,110 +1871,105 @@ struct BoardingPassMenuContent: View {
     @State private var isShowingPicker = false
     
     var body: some View {
-        VStack(spacing: 20) {
-            // Title
+        let theme = themeManager.currentTheme
+
+        return VStack(spacing: AppSpacing.md) {
             Text("Scan Boarding Pass")
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.text)
+                .appFont(.bodyBold, lineLimit: .exactly(1))
+                .foregroundStyle(theme.colors.text)
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 5)
-            
-            VStack(spacing: 15) {
-                // Camera Button
-                Button(action: { 
-                    isShowingPicker = true 
-                }) {
-                    HStack(spacing: 12) {
+                .accessibilityAddTraits(.isHeader)
+
+            VStack(spacing: AppSpacing.sm) {
+                Button {
+                    isShowingPicker = true
+                } label: {
+                    HStack(spacing: AppSpacing.sm) {
                         Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Scan Boarding Pass")
-                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                            Text("From camera or photos")
-                                .font(.system(size: 11, design: .monospaced))
-                                .opacity(0.8)
+                            .font(AppTypography.mono(.body, weight: .semibold))
+
+                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                            Text("Scan a pass")
+                                .appFont(.bodyBold, lineLimit: .exactly(1))
+                            Text("Camera or photos")
+                                .appFont(.footnote, lineLimit: .exactly(1))
                         }
-                        
-                        Spacer()
-                        
+
+                        Spacer(minLength: AppSpacing.xs)
+
                         Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .font(AppTypography.mono(.caption, weight: .semibold))
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(
-                        LinearGradient(
-                            colors: [themeManager.currentTheme.colors.primary, themeManager.currentTheme.colors.primary.opacity(0.8)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppSpacing.xs)
                 }
+                // `.glassProminent` + `.tint` instead of `.foregroundColor(.white)`
+                // over a `primary` fill: white on dark `primary` (0x4DA3FF) is
+                // 2.6:1 and fails AA. The system picks a legible label for us.
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.capsule)
+                .tint(theme.colors.primary)
                 .disabled(unifiedService.isProcessing)
-                
-                // Processing State
+
                 if unifiedService.isProcessing {
-                    HStack(spacing: 10) {
+                    HStack(spacing: AppSpacing.sm) {
                         ProgressView()
-                            .scaleEffect(0.8)
-                        
-                        Text("Scanning...")
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                        
-                        Spacer()
+                            .tint(theme.colors.primary)
+
+                        Text("Scanning\u{2026}")
+                            .appFont(.placeMeta, lineLimit: .exactly(1))
+                            .foregroundStyle(theme.colors.textSecondary)
+
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(themeManager.currentTheme.colors.surface)
-                    .cornerRadius(8)
                 }
-                
-                // Error State
-                if let error = unifiedService.lastResult?.error {
-                    HStack(spacing: 10) {
+
+                if unifiedService.lastResult?.error != nil {
+                    // Inline, not a filled 10%-error banner. A tinted block reads
+                    // as warm mud on navy and as a Post-it on paper; an icon plus
+                    // `error`-coloured text reads correctly in both.
+                    HStack(spacing: AppSpacing.sm) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.error)
-                        
-                        Text("Scan Failed")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundColor(themeManager.currentTheme.colors.error)
-                        
-                        Spacer()
-                        
-                        Button("Retry") {
+                            .font(AppTypography.mono(.caption, weight: .bold))
+                            .foregroundStyle(theme.colors.error)
+
+                        Text("Scan failed")
+                            .appFont(.placeMeta, lineLimit: .exactly(1))
+                            .foregroundStyle(theme.colors.error)
+
+                        Spacer(minLength: AppSpacing.xs)
+
+                        Button {
                             isShowingPicker = true
+                        } label: {
+                            Text("Retry")
+                                .appFont(.verdictLabel, lineLimit: .exactly(1))
                         }
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(themeManager.currentTheme.colors.primary)
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.capsule)
+                        .tint(theme.colors.primary)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(themeManager.currentTheme.colors.error.opacity(0.1))
-                    .cornerRadius(8)
                 }
             }
-            
-            // Cancel Button
+
             Button {
                 dismiss()
             } label: {
                 Text("Cancel")
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundColor(themeManager.currentTheme.colors.textSecondary)
+                    .appFont(.bodySmall, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.textSecondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, AppSpacing.xs)
+                    .contentShape(.rect)
             }
-            .padding(.top, 5)
+            .buttonStyle(.plain)
         }
-        .padding(20)
-        .frame(width: 280, height: 180)
+        .padding(AppSpacing.md)
+        // Width only. The old `height: 180` clipped the popover the moment
+        // Dynamic Type went past Large.
+        .frame(width: 300)
         .photosPicker(isPresented: $isShowingPicker, selection: $selectedPhoto, matching: .images)
-        .onChange(of: selectedPhoto) { newPhoto in
+        .onChange(of: selectedPhoto) { _, newPhoto in
             if let newPhoto = newPhoto {
                 processSelectedPhoto(newPhoto)
             }
@@ -2094,71 +2022,148 @@ struct BoardingPassMenuContent: View {
 }
 
 // MARK: - Flight Filter Segmented Control
+/// A glass capsule rather than an opaque radius-25 pill. The sheet's chrome is
+/// glass everywhere else; an opaque control inside it was a second, unrelated
+/// vocabulary on the same screen.
 struct FlightFilterSegmentedControl: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selectedFilter: FlightFilter
     @Namespace private var animation
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(FlightFilter.allCases, id: \.self) { filter in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selectedFilter = filter
-                    }
-                } label: {
-                    Text(filter.rawValue)
-                        .font(.system(.body, design: .monospaced, weight: .semibold))
-                        .foregroundColor(selectedFilter == filter
-                            ? themeManager.currentTheme.colors.primary
-                            : themeManager.currentTheme.colors.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            Group {
-                                if selectedFilter == filter {
-                                    RoundedRectangle(cornerRadius: 25)
-                                        .fill(themeManager.currentTheme.colors.surface)
-                                        .matchedGeometryEffect(id: "flightFilter", in: animation)
-                                }
-                            }
-                        )
+        let theme = themeManager.currentTheme
+
+        return SkyLineGlassPanel(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(FlightFilter.allCases, id: \.self) { filter in
+                    segment(filter, theme: theme)
                 }
             }
+            .padding(AppSpacing.xs)
+            .skylineGlassCapsule(theme: theme)
         }
-        .padding(4)
-        .background(
-            RoundedRectangle(cornerRadius: 25)
-                .fill(themeManager.currentTheme.colors.surface.opacity(0.3))
-        )
+    }
+
+    @ViewBuilder
+    private func segment(_ filter: FlightFilter, theme: AppTheme) -> some View {
+        let isSelected = selectedFilter == filter
+
+        Button {
+            let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+            impactFeedback.impactOccurred()
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
+                selectedFilter = filter
+            }
+        } label: {
+            Text(filter.rawValue.uppercased())
+                .appFont(.verdictLabel, lineLimit: .exactly(1))
+                .foregroundStyle(isSelected ? theme.colors.primary : theme.colors.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppSpacing.sm + 2)
+                .background {
+                    if isSelected {
+                        // One token at two alphas, not two colours: `primary` is a
+                        // dark ink on light and a light ink on dark, so a fixed
+                        // alpha would be a bruise in one theme and invisible in
+                        // the other. Mirrors `TabBarItem` exactly.
+                        Capsule(style: .continuous)
+                            .fill(theme.colors.primary.opacity(theme == .light ? 0.12 : 0.20))
+                            .matchedGeometryEffect(id: "flightFilter", in: animation)
+                    }
+                }
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(filter.rawValue))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
 // MARK: - Empty Flight Filter State
-struct EmptyFlightFilterStateView: View {
+// MARK: - Flight Empty States
+/// The flight surfaces' empty states, collapsed from two bespoke blocks into one.
+///
+/// This is deliberately a thin echo of `PlaceLogEmptyStateView` — same glyph well,
+/// same type ladder, same spacing — rather than a new visual language. The correct
+/// fix is two more cases on `PlaceLogEmptyState`, but that enum lives in a file
+/// this pass does not own.
+struct FlightsEmptyStateView: View {
+    enum Kind {
+        case noFlights
+        case noUpcoming
+        case noPast
+
+        var systemImage: String {
+            switch self {
+            case .noFlights: return "airplane"
+            case .noUpcoming: return "calendar"
+            case .noPast: return "clock.arrow.circlepath"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .noFlights: return "No flights yet"
+            case .noUpcoming: return "Nothing booked"
+            case .noPast: return "Nothing flown yet"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .noFlights:
+                return "Scan a boarding pass and SkyLine will draw the route on the globe."
+            case .noUpcoming:
+                return "Flights you have not taken yet will show up here."
+            case .noPast:
+                return "Once a flight has departed it moves here."
+            }
+        }
+    }
+
     @EnvironmentObject var themeManager: ThemeManager
-    let filterType: String
+    let kind: Kind
+
+    @ScaledMetric(relativeTo: .largeTitle) private var glyphSize: CGFloat = 44
+    @ScaledMetric(relativeTo: .largeTitle) private var glyphWell: CGFloat = 88
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: filterType == "upcoming" ? "calendar" : "clock.arrow.circlepath")
-                .font(.system(size: 48, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary.opacity(0.5))
+        let theme = themeManager.currentTheme
 
-            Text(filterType == "upcoming" ? "No Upcoming Flights" : "No Past Flights")
-                .font(.system(.title3, design: .monospaced, weight: .semibold))
-                .foregroundColor(themeManager.currentTheme.colors.text)
+        return VStack(spacing: AppSpacing.md) {
+            Image(systemName: kind.systemImage)
+                .font(.system(size: glyphSize, weight: .regular, design: .monospaced))
+                .foregroundStyle(theme.colors.textSecondary)
+                .symbolRenderingMode(.hierarchical)
+                .frame(width: glyphWell, height: glyphWell)
+                // Tinted glass rather than a filled circle: on light the tint is a
+                // faint blue wash on near-white, on dark it lifts off the navy.
+                // A flat fill would need two different colours to do the same job.
+                .skylineGlass(
+                    .card,
+                    in: Circle(),
+                    tint: theme.colors.primary.opacity(0.20),
+                    theme: theme
+                )
 
-            Text(filterType == "upcoming"
-                ? "Your upcoming flights will appear here"
-                : "Your past flights will appear here")
-                .font(.system(.body, design: .monospaced))
-                .foregroundColor(themeManager.currentTheme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+            VStack(spacing: AppSpacing.sm) {
+                Text(kind.title)
+                    .appFont(.headline)
+                    .foregroundStyle(theme.colors.text)
+                    .multilineTextAlignment(.center)
+
+                Text(kind.message)
+                    .appFont(.bodySmall, lineLimit: .unlimited)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 320)
+            }
         }
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.xl)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -2172,4 +2177,18 @@ struct EmptyFlightFilterStateView: View {
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
         .environmentObject(AuthenticationService.shared)
+}
+
+
+// MARK: - Perforation Line
+/// A single horizontal rule, stroked with a dash pattern. A `Shape` rather than a
+/// hand-drawn `Path` in a `GeometryReader` so the dash phase is resolution
+/// independent and the stroke colour comes from the palette at the call site.
+private struct PassPerforationLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
+    }
 }

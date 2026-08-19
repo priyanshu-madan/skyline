@@ -18,8 +18,35 @@
 //    • The name is editable in place. Reverse geocoding hands back street
 //      addresses; the user is ground truth.
 //
+//  Visual model:
+//    • The deck is a physical stack: three layers, each smaller and lower than
+//      the one above, so "how much is left" is legible without a progress bar.
+//    • The card answers back while you drag. Past the preview threshold the
+//      card's own edge lights in the verdict's ink and the stamp fades up, so
+//      the commit is never a surprise — the two signals share one opacity ramp
+//      and both retreat if you drag back.
+//    • Colour is spent almost entirely on verdicts. Nothing else on this screen
+//      is allowed to be saturated, because the whole screen exists to record
+//      one opinion.
+//
 
 import SwiftUI
+
+// MARK: - On-Photo Ink
+/// A photograph carries its own light: it is a dark-mode context whichever theme
+/// the app is in, so a caption over one must NOT flip with the theme — in light
+/// theme `colors.text` is near-black and would disappear into the scrim.
+///
+/// These are still tokens, deliberately pinned to the dark palette, rather than
+/// `Color.white` / `Color.black` literals. That keeps the audit mechanical and
+/// means a palette change still moves them.
+private enum PhotoInk {
+    static let primary = ThemeColors.dark.text
+    static let scrim = ThemeColors.dark.background
+    /// Caret and selection over a photo. The dark palette's primary is the light
+    /// blue, which is the one that stays visible against a dark scrim.
+    static let caret = ThemeColors.dark.primary
+}
 
 struct PlaceReviewView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -107,6 +134,13 @@ struct PlaceReviewView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        // Glass, `.buttonStyle(.glass)` and every system-drawn control resolve
+        // their appearance from the environment colour scheme, never from
+        // `themeManager`. Stating it here is what stops a dark glass chip from
+        // landing on a light page when the device appearance disagrees with the
+        // theme the user picked — this screen is presented as its own sheet, so
+        // it does not inherit the resolution done further up.
+        .environment(\.colorScheme, theme.colorScheme)
         .animation(transition, value: viewModel.isFinished)
         .animation(transition, value: viewModel.index)
         .overlay(alignment: .top) { syncNotice }
@@ -187,15 +221,22 @@ struct PlaceReviewView: View {
 
     private var cardStack: some View {
         let theme = themeManager.currentTheme
-        let shape = RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
 
         return ZStack {
             // Deck depth as a physical cue rather than a bar: you can see there
             // is more underneath.
+            //
+            // Glass rather than `surface.opacity(0.45)`. On this palette
+            // `surface` sits within ~2% luminance of `background` in BOTH
+            // themes, so a translucent fill of it is very nearly invisible —
+            // the slab was doing nothing in light theme. Glass shifts relative
+            // to whatever is behind it, so the third card reads as a card in
+            // both palettes, and under Reduce Transparency it falls back to an
+            // opaque fill with a hairline instead of disappearing.
             if viewModel.place(atQueueOffset: 2) != nil {
-                shape
-                    .fill(theme.colors.surface.opacity(0.45))
-                    .overlay(shape.stroke(theme.colors.border, lineWidth: 0.5))
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .skylineGlassCard(cornerRadius: cardCorner, theme: theme)
                     .scaleEffect(0.88)
                     .offset(y: 26)
                     .accessibilityHidden(true)
@@ -212,6 +253,10 @@ struct PlaceReviewView: View {
 
             if let current = viewModel.currentPlace {
                 cardFace(for: current, isTop: true)
+                    // Two signals on one opacity ramp: the card's own edge takes
+                    // the verdict's ink, and the stamp fades up over it. Drag
+                    // back and both retreat, so nothing commits by surprise.
+                    .overlay { pendingEdge }
                     .overlay { stampOverlay }
                     .offset(drag)
                     .rotationEffect(.degrees(rotationDegrees), anchor: .bottom)
@@ -222,6 +267,27 @@ struct PlaceReviewView: View {
                     .accessibilityActions { cardAccessibilityActions }
             }
         }
+    }
+
+    /// The card's edge, lit in the ink of whatever the current drag would commit.
+    /// This is the only place on the deck where a saturated colour appears
+    /// outside a chip, and it always means exactly one thing.
+    @ViewBuilder
+    private var pendingEdge: some View {
+        if let pending = decision(for: drag, threshold: previewThreshold) {
+            RoundedRectangle(cornerRadius: cardCorner, style: .continuous)
+                .strokeBorder(ink(for: pending), lineWidth: 3)
+                .opacity(stampOpacity)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// "Decide later" is not a verdict, so it never borrows a verdict's colour —
+    /// it gets the neutral secondary ink instead.
+    private func ink(for decision: ReviewDecision) -> Color {
+        let theme = themeManager.currentTheme
+        return decision.verdict?.color(for: theme) ?? theme.colors.textSecondary
     }
 
     @ViewBuilder
@@ -254,8 +320,8 @@ struct PlaceReviewView: View {
         LinearGradient(
             stops: [
                 .init(color: .clear, location: 0.30),
-                .init(color: .black.opacity(0.30), location: 0.58),
-                .init(color: .black.opacity(0.78), location: 1.0)
+                .init(color: PhotoInk.scrim.opacity(0.32), location: 0.58),
+                .init(color: PhotoInk.scrim.opacity(0.82), location: 1.0)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -275,12 +341,12 @@ struct PlaceReviewView: View {
                 }
             }
             .appFont(.placeMeta)
-            .foregroundStyle(.white.opacity(0.88))
+            .foregroundStyle(PhotoInk.primary.opacity(0.88))
 
             if !viewModel.canBePinned(place) {
                 Label("No location yet", systemImage: "mappin.slash")
                     .appFont(.footnote)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(PhotoInk.primary.opacity(0.7))
             }
         }
         .padding(AppSpacing.md)
@@ -290,14 +356,15 @@ struct PlaceReviewView: View {
 
     @ViewBuilder
     private func nameRow(for place: DetectedPlace) -> some View {
-        let theme = themeManager.currentTheme
-
         if isEditingName {
             HStack(spacing: AppSpacing.sm) {
                 TextField("Name this place", text: $draftName)
                     .appFont(.placeName, lineLimit: .exactly(1))
-                    .foregroundStyle(.white)
-                    .tint(theme.colors.primary)
+                    .foregroundStyle(PhotoInk.primary)
+                    // The theme's `primary` is a DARK blue in light theme, which
+                    // is invisible as a caret against the photo scrim. The caret
+                    // is on the photo, so it takes the photo's palette.
+                    .tint(PhotoInk.caret)
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
                     .submitLabel(.done)
@@ -324,12 +391,12 @@ struct PlaceReviewView: View {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
                     Text(place.name)
                         .appFont(.placeName)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(PhotoInk.primary)
                         .multilineTextAlignment(.leading)
 
                     Image(systemName: "pencil.line")
                         .appFont(.placeMeta)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(PhotoInk.primary.opacity(0.7))
                 }
             }
             .buttonStyle(.plain)
@@ -489,15 +556,7 @@ struct PlaceReviewView: View {
 
         return ScrollView {
             VStack(spacing: AppSpacing.lg) {
-                VStack(spacing: AppSpacing.xs) {
-                    Text(summary.decidedCount > 0 ? "Logged" : "Nothing judged yet")
-                        .appFont(.title)
-                        .foregroundStyle(theme.colors.text)
-
-                    Text("\(viewModel.trip.destination) · \(viewModel.trip.dateRangeText)")
-                        .appFont(.placeMeta)
-                        .foregroundStyle(theme.colors.textSecondary)
-                }
+                summaryHero(summary: summary, theme: theme)
 
                 SkyLineGlassPanel(spacing: AppSpacing.sm) {
                     HStack(spacing: AppSpacing.sm) {
@@ -505,6 +564,13 @@ struct PlaceReviewView: View {
                             countTile(verdict: verdict, count: summary.count(for: verdict))
                         }
                     }
+                }
+
+                // The one line only this app can print. Everything above is a
+                // count; this is the product's actual claim, and it is the
+                // reason this screen is worth a screenshot.
+                if summary.count(for: .skip) > 0 {
+                    skipLine(count: summary.count(for: .skip), theme: theme)
                 }
 
                 if summary.laterCount > 0 {
@@ -549,24 +615,102 @@ struct PlaceReviewView: View {
             .padding(.horizontal, AppSpacing.md)
             .padding(.vertical, AppSpacing.lg)
         }
+        // The hero scrolls up under the top bar's glass buttons. `.soft` fades
+        // it out instead of letting it collide with them.
+        .skylineScrollEdges()
+    }
+
+    /// One number, as large as the type scale goes, and one line of context.
+    /// Everything else on this screen supports it.
+    @ViewBuilder
+    private func summaryHero(summary: PlaceReviewViewModel.Summary, theme: AppTheme) -> some View {
+        VStack(spacing: AppSpacing.xs) {
+            if summary.decidedCount > 0 {
+                Text("\(summary.decidedCount)")
+                    .appFont(.titleLarge, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.text)
+                    .contentTransition(.numericText())
+
+                Text(summary.decidedCount == 1 ? "PLACE LOGGED" : "PLACES LOGGED")
+                    .appFont(.footnote)
+                    .foregroundStyle(theme.colors.textSecondary)
+            } else {
+                Text("Nothing judged yet")
+                    .appFont(.title)
+                    .foregroundStyle(theme.colors.text)
+            }
+
+            Text("\(viewModel.trip.destination) · \(viewModel.trip.dateRangeText)")
+                .appFont(.placeMeta)
+                .foregroundStyle(theme.colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, AppSpacing.xs)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private func countTile(verdict: Verdict, count: Int) -> some View {
         let theme = themeManager.currentTheme
+        let ink = verdict.color(for: theme)
+        let isPresent = count > 0
 
+        // Deliberately NOT a `VerdictBadge` inside the tile: the badge is itself
+        // a glass capsule, and glass inside tinted glass inside a glass panel is
+        // three backdrops sampling each other. The icon and label are drawn
+        // directly instead, keeping the redundant colour + silhouette pair.
         return VStack(spacing: AppSpacing.xs) {
             Text("\(count)")
-                .appFont(.title)
-                .foregroundStyle(verdict.color(for: theme))
+                .appFont(.title, lineLimit: .exactly(1))
+                .foregroundStyle(isPresent ? ink : theme.colors.textSecondary)
                 .contentTransition(.numericText())
 
-            VerdictBadge(verdict: verdict, showsLabel: true, size: .compact)
+            HStack(spacing: AppSpacing.xs) {
+                Image(systemName: isPresent ? verdict.systemImage : verdict.systemImageOutline)
+                    .foregroundStyle(isPresent ? ink : theme.colors.textSecondary)
+                    .symbolRenderingMode(.hierarchical)
+                    .imageScale(.small)
+
+                Text(verdict.shortName)
+                    .foregroundStyle(isPresent ? theme.colors.text : theme.colors.textSecondary)
+            }
+            .appFont(.verdictLabel)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppSpacing.md)
-        .skylineGlassCard(cornerRadius: AppRadius.lg, theme: theme)
+        .padding(.horizontal, AppSpacing.xs)
+        // Tinted only when the verdict was actually used. A tile scoring zero
+        // stays neutral, so the coloured tiles are a reading of the trip rather
+        // than decoration that is always on.
+        .skylineGlassCard(
+            cornerRadius: AppRadius.lg,
+            tint: isPresent ? ink.opacity(0.22) : nil,
+            theme: theme
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("\(count) \(verdict.displayName)"))
+    }
+
+    /// Skip is the one thing a saved-places list can never record, and this is
+    /// the only place in the app where the product says so in words.
+    private func skipLine(count: Int, theme: AppTheme) -> some View {
+        let ink = theme.colors.verdictSkip
+
+        return HStack(alignment: .top, spacing: AppSpacing.sm) {
+            Image(systemName: Verdict.skip.systemImage)
+                .font(AppTypography.mono(.title3, weight: .semibold))
+                .foregroundStyle(ink)
+                .symbolRenderingMode(.hierarchical)
+
+            Text("You skipped \(count) \(count == 1 ? "thing" : "things") in \(viewModel.trip.destination) so nobody else has to.")
+                .appFont(.bodySmall, lineLimit: .unlimited)
+                .foregroundStyle(theme.colors.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(AppSpacing.md)
+        .skylineGlassCard(tint: ink.opacity(0.18), theme: theme)
+        .accessibilityElement(children: .combine)
     }
 
     private func laterCallout(count: Int) -> some View {
@@ -596,7 +740,12 @@ struct PlaceReviewView: View {
         let theme = themeManager.currentTheme
         let shape = RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
 
+        // `viewModel.summary` already sorts highlights by `Verdict.sortRank`, so
+        // this list reads best-first — a ranked opinion, not a log.
         return HStack(spacing: AppSpacing.md - 4) {
+            VerdictRail(verdict: highlight.verdict)
+                .frame(maxHeight: .infinity)
+
             PHAssetImageView(
                 localIdentifier: highlight.assetIdentifier,
                 size: .thumbnail,
@@ -610,7 +759,7 @@ struct PlaceReviewView: View {
                 .foregroundStyle(theme.colors.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            VerdictBadge(verdict: highlight.verdict, showsLabel: false, size: .compact)
+            VerdictPip(verdict: highlight.verdict)
         }
         .padding(AppSpacing.sm + 2)
         .skylineGlass(.card, in: shape, theme: theme)
@@ -690,7 +839,7 @@ struct PlaceReviewView: View {
         if let pending = decision(for: drag, threshold: previewThreshold) {
             ReviewStamp(decision: pending)
                 .opacity(stampOpacity)
-                .scaleEffect(0.9 + 0.1 * stampOpacity)
+                .scaleEffect(reduceMotion ? 1.0 : 0.92 + 0.08 * stampOpacity)
                 .allowsHitTesting(false)
         }
     }
@@ -713,36 +862,63 @@ struct PlaceReviewView: View {
 
 // MARK: - Stamp
 
-/// The transient "this is what you are about to choose" mark. Verdicts reuse
-/// `VerdictBadge` so the stamp and the eventual badge on the map are visibly
-/// the same object; "later" gets a neutral twin because it is not a verdict.
+/// The transient "this is what you are about to choose" mark.
+///
+/// Drawn at its real size rather than as a `VerdictBadge` under
+/// `.scaleEffect(1.8)`. Scaling a glass capsule resamples both the material and
+/// the glyphs inside it, which is why the old stamp read soft at exactly the
+/// moment the user was looking hardest at it. Here the symbol is sized through
+/// `AppTypography.mono` — the sanctioned escape hatch for `Image(systemName:)` —
+/// so it is rendered crisp at whatever the Dynamic Type setting asks for.
+///
+/// The tilt mirrors the axis of the swipe, so the mark leans the way the card is
+/// going. It is orientation, not decoration, and it flattens under Reduce Motion.
 private struct ReviewStamp: View {
     @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let decision: ReviewDecision
 
+    private var ink: Color {
+        let theme = themeManager.currentTheme
+        return decision.verdict?.color(for: theme) ?? theme.colors.textSecondary
+    }
+
+    private var label: String {
+        decision.verdict?.shortName ?? "LATER"
+    }
+
+    /// Right for worth it, left for skip, upright for the vertical answers.
+    private var tilt: Double {
+        guard !reduceMotion else { return 0 }
+        switch decision {
+        case .verdict(.worthIt): return -8
+        case .verdict(.skip): return 8
+        default: return 0
+        }
+    }
+
     var body: some View {
         let theme = themeManager.currentTheme
+        let shape = RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
 
-        Group {
-            switch decision {
-            case .verdict(let verdict):
-                VerdictBadge(verdict: verdict)
-            case .later:
-                HStack(spacing: AppSpacing.xs + 1) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .symbolRenderingMode(.hierarchical)
-                    Text("LATER")
-                        .foregroundStyle(theme.colors.text)
-                }
+        return VStack(spacing: AppSpacing.sm) {
+            Image(systemName: decision.systemImage)
+                .font(AppTypography.mono(.largeTitle, weight: .semibold))
+                .foregroundStyle(ink)
+                .symbolRenderingMode(.hierarchical)
+
+            Text(label)
                 .appFont(.verdictLabel)
-                .padding(.horizontal, AppSpacing.sm + 2)
-                .padding(.vertical, 5)
-                .skylineGlassCapsule(tint: theme.colors.textSecondary.opacity(0.30), theme: theme)
-            }
+                .foregroundStyle(theme.colors.text)
         }
-        .scaleEffect(1.8)
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.md)
+        .skylineGlass(.control, in: shape, tint: ink.opacity(0.45), theme: theme)
+        // The ring is the colour-independent half of the signal, so the stamp
+        // still reads in greyscale and under Differentiate Without Color.
+        .overlay { shape.stroke(ink, lineWidth: 2) }
+        .rotationEffect(.degrees(tilt))
         .accessibilityHidden(true)
     }
 }
