@@ -14,6 +14,7 @@ struct SkyLineApp: App {
     @StateObject private var themeManager = ThemeManager()
     @StateObject private var flightStore = FlightStore()
     @StateObject private var authService = AuthenticationService.shared
+    @StateObject private var placeStore = PlaceStore.shared
     @State private var isGlobeReady = false
 
     var body: some Scene {
@@ -26,13 +27,25 @@ struct SkyLineApp: App {
                             .environmentObject(themeManager)
                             .environmentObject(flightStore)
                             .environmentObject(authService)
+                            .environmentObject(placeStore)
                             .onAppear {
                                 // Sync trip data when user is authenticated
                                 Task {
                                     await TripStore.shared.syncIfNeeded()
+                                    await placeStore.syncIfNeeded()
 
                                     // Seed initial airline data if needed
                                     await AirlineService.shared.seedInitialAirlines()
+
+                                    // Place/Visit record types have to exist in
+                                    // CloudKit before the first save, and the
+                                    // one-way import backfills places from the
+                                    // Trip/TripEntry/Flight records the user
+                                    // already has - so a returning user does not
+                                    // open the new app to an empty map.
+                                    await PlaceSchemaService.shared.initializePlaceSchema()
+                                    await PlaceImportService.shared.runIfNeeded(
+                                        flights: flightStore.flights)
                                 }
                             }
                             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -40,6 +53,7 @@ struct SkyLineApp: App {
                                 Task {
                                     await TripStore.shared.syncIfNeeded()
                                     await flightStore.syncIfNeeded()
+                                    await placeStore.syncIfNeeded()
                                 }
                             }
                             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("GlobeReady"))) { _ in

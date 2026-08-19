@@ -7,7 +7,7 @@
 	<key>OPENROUTER_API_KEY</key>
 	<string></string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Access photos to scan boarding passes from Apple Wallet screenshots for automatic flight import</string>
+	<string>SkyLine looks at the photos from your trip dates to work out which places you spent time at, so you can log them without typing. Your photos stay on your device.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos of boarding passes for automatic flight information import</string>
 	<key>UIBackgroundModes</key>
