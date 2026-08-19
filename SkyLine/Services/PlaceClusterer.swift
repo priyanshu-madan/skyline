@@ -329,7 +329,7 @@ struct PlaceClusterer {
                 .max() ?? 0
 
             return PlaceCluster(
-                id: UUID().uuidString,
+                id: Self.stableClusterID(assetIdentifiers: assetIDs),
                 latitude: centroid.lat,
                 longitude: centroid.lng,
                 visits: chronological,
@@ -338,6 +338,33 @@ struct PlaceClusterer {
                 spreadMeters: spread
             )
         }
+    }
+
+    /// Identity derived from content, not from `UUID()`.
+    ///
+    /// A cluster's id must be stable across runs over the same photos. Re-scanning
+    /// a trip with a fresh random id per cluster would make every place look new:
+    /// SwiftUI would tear down and rebuild the whole deck rather than diffing it,
+    /// and a verdict already recorded against a cluster could not be matched back
+    /// to it. Photo local identifiers are stable, so the earliest few of them
+    /// identify the cluster as well as any random value and survive a rescan.
+    static func stableClusterID(assetIdentifiers: [String]) -> String {
+        guard !assetIdentifiers.isEmpty else { return "cluster-empty" }
+        // Sorted, so the id does not depend on visit ordering; capped, so it
+        // does not grow with a 300-photo cluster.
+        let fingerprint = assetIdentifiers.sorted().prefix(3).joined(separator: "|")
+        return "cluster-\(Self.stableHash(fingerprint))"
+    }
+
+    /// FNV-1a. Swift's `Hasher` is seeded per process, so `hashValue` is
+    /// explicitly NOT stable across launches and cannot be used here.
+    static func stableHash(_ string: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in string.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x1000_0000_01b3
+        }
+        return String(hash, radix: 16)
     }
 
     /// Distance under which two stays are the same place.

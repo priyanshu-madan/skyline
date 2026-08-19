@@ -77,6 +77,8 @@
 		37B8061E16C11D37CD07B859 /* VerdictChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BCCF77FF4DA5819E19602B /* VerdictChip.swift */; };
 		4E767D31C50F2F2BFA8448AA /* PlaceCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE43991FA67A6C3F091C1D6F /* PlaceCard.swift */; };
 		33F3C6E8D6D5CE7F63058DC9 /* PlaceLogEmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7593F9675020C5BEF844879E /* PlaceLogEmptyStateView.swift */; };
+		BFD8B5546808CFDF27F1C971 /* PlaceClustererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4C5C9107D9F39256B8B8789 /* PlaceClustererTests.swift */; };
+		F23250AD87DAA47814B99E82 /* VerdictTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A83ACF10FFCF5643CE751B /* VerdictTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -172,6 +174,8 @@
 		84BCCF77FF4DA5819E19602B /* VerdictChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VerdictChip.swift; path = "SkyLine/Views/Components/VerdictChip.swift"; sourceTree = SOURCE_ROOT; };
 		AE43991FA67A6C3F091C1D6F /* PlaceCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaceCard.swift; path = "SkyLine/Views/Components/PlaceCard.swift"; sourceTree = SOURCE_ROOT; };
 		7593F9675020C5BEF844879E /* PlaceLogEmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaceLogEmptyStateView.swift; path = "SkyLine/Views/Components/PlaceLogEmptyStateView.swift"; sourceTree = SOURCE_ROOT; };
+		C4C5C9107D9F39256B8B8789 /* PlaceClustererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PlaceClustererTests.swift; path = "SkyLineTests/PlaceClustererTests.swift"; sourceTree = SOURCE_ROOT; };
+		21A83ACF10FFCF5643CE751B /* VerdictTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VerdictTests.swift; path = "SkyLineTests/VerdictTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -270,6 +274,8 @@
 				4B52514B30F08B762551FDB2 /* PhotoPlaceDetectionService.swift */,
 				CE3D0CD0B2D7F79DE8DDF6A5 /* PlaceClusterer.swift */,
 				0C5C0828C601CA100C674C5C /* PlaceNamingService.swift */,
+				C4C5C9107D9F39256B8B8789 /* PlaceClustererTests.swift */,
+				21A83ACF10FFCF5643CE751B /* VerdictTests.swift */,
 			);
 			path = SkyLine;
 			sourceTree = "<group>";
@@ -656,6 +662,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				D3FCEB91414EF56038AA6595 /* HarnessTests.swift in Sources */,
+				BFD8B5546808CFDF27F1C971 /* PlaceClustererTests.swift in Sources */,
+				F23250AD87DAA47814B99E82 /* VerdictTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
