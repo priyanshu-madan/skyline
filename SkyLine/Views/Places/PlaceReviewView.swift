@@ -89,24 +89,6 @@ struct PlaceReviewView: View {
         self.onAddPlace = onAddPlace
     }
 
-    /// Shorthand spelling of the same thing.
-    @MainActor
-    init(
-        trip: Trip,
-        places: [DetectedPlace],
-        store: PlaceStore? = nil,
-        onFinish: ((PlaceReviewViewModel.Summary) -> Void)? = nil,
-        onAddPlace: (() -> Void)? = nil
-    ) {
-        self.init(
-            trip: trip,
-            detectedPlaces: places,
-            store: store,
-            onFinish: onFinish,
-            onAddPlace: onAddPlace
-        )
-    }
-
     // MARK: - Body
 
     var body: some View {
@@ -928,7 +910,7 @@ private struct ReviewStamp: View {
 #Preview("Deck") {
     PlaceReviewView(
         trip: .sample,
-        places: [
+        detectedPlaces: [
             DetectedPlace(
                 tripId: Trip.sample.id,
                 name: "Kissa Sakaiki",
@@ -952,6 +934,6 @@ private struct ReviewStamp: View {
 }
 
 #Preview("Empty deck") {
-    PlaceReviewView(trip: .sample, places: [])
+    PlaceReviewView(trip: .sample, detectedPlaces: [])
         .environmentObject(ThemeManager())
 }

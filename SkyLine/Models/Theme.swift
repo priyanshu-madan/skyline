@@ -147,6 +147,15 @@ struct ThemeColors {
     /// Opaque stand-in for `.glassEffect` when Reduce Transparency is on.
     let glassFallback: Color
 
+    /// Shadow colour for a raised surface.
+    ///
+    /// Elevation reads differently per theme and cannot be one constant. On
+    /// light, a card lifts by casting a shadow onto the page. On dark it lifts
+    /// because `surface` is lighter than `background`; a black shadow on
+    /// 0x0A0F1C has almost nowhere to go, so dark carries a deeper, softer one
+    /// purely for edge separation rather than for depth.
+    let elevation: Color
+
     static let light = ThemeColors(
         // Every value here is STATIC. `Color(.systemGray6)` and friends are
         // dynamic UIColors: they resolve against the DEVICE appearance, not the
@@ -185,7 +194,8 @@ struct ThemeColors {
         verdictSkipSurface: Color.appHex(0xF7DFE4),
         onAccent: Color.appHex(0xFFFFFF),            // 5.8:1 on primary 0x0B63C5
         scrim: Color.black.opacity(0.18),
-        glassFallback: Color.appHex(0xF1F4FA)
+        glassFallback: Color.appHex(0xF1F4FA),
+        elevation: Color.black.opacity(0.10)
     )
 
     static let dark = ThemeColors(
@@ -225,7 +235,8 @@ struct ThemeColors {
         verdictSkipSurface: Color.appHex(0x431F1C),
         onAccent: Color.appHex(0x08101F),            // 7.1:1 on primary 0x4DA3FF
         scrim: Color.black.opacity(0.35),
-        glassFallback: Color.appHex(0x1B2438)
+        glassFallback: Color.appHex(0x1B2438),
+        elevation: Color.black.opacity(0.40)
     )
 }
 
@@ -438,10 +449,38 @@ struct AppRadius {
 }
 
 // MARK: - Shadow Styles
-struct AppShadow {
-    static let sm: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) = (.black.opacity(0.1), 2, 0, 1)
-    static let md: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) = (.black.opacity(0.1), 4, 0, 2)
-    static let lg: (color: Color, radius: CGFloat, x: CGFloat, y: CGFloat) = (.black.opacity(0.15), 8, 0, 4)
+/// Elevation presets. The colour always comes from `colors.elevation` so the
+/// shadow is theme-aware; only geometry lives here.
+///
+/// Replaces a previous `AppShadow` whose colours were hardcoded `.black`,
+/// which is invisible against the dark palette's 0x0A0F1C ground. It had no
+/// callers, so every raised surface in the app was either flat or hand-rolling
+/// its own shadow.
+enum AppElevation {
+    case sm, md, lg
+
+    var radius: CGFloat {
+        switch self {
+        case .sm: return 2
+        case .md: return 6
+        case .lg: return 14
+        }
+    }
+
+    var y: CGFloat {
+        switch self {
+        case .sm: return 1
+        case .md: return 3
+        case .lg: return 8
+        }
+    }
+}
+
+extension View {
+    /// Raises a surface using the active theme's elevation colour.
+    func appElevation(_ level: AppElevation, theme: AppTheme) -> some View {
+        shadow(color: theme.colors.elevation, radius: level.radius, x: 0, y: level.y)
+    }
 }
 
 // MARK: - Environment Key for Theme
