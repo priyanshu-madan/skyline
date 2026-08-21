@@ -73,17 +73,6 @@ struct FirstRunDetectionView: View {
         self.onSkip = onSkip
     }
 
-    /// For a caller that only needs "this step is over".
-    init(
-        existingPlaces: [DetectedPlace] = [],
-        onFinish: @escaping () -> Void,
-        onSkip: (() -> Void)? = nil
-    ) {
-        self.existingPlaces = existingPlaces
-        self.onFinish = { _ in onFinish() }
-        self.onSkip = onSkip
-    }
-
     // MARK: Body
 
     var body: some View {

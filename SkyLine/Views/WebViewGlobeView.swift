@@ -28,11 +28,11 @@ struct WebViewGlobeView: View {
     @State private var lastPlacePointsHash: String = ""
     
     
-    // Globe background color matching the WebGL globe theme
+    // Globe background. `globeBackground` already carries exactly this value in
+    // both palettes; the literals here were a second source of truth that would
+    // drift the moment the palette moved.
     private var globeBackgroundColor: Color {
-        return themeManager.currentTheme == .light ? 
-            Color(red: 240/255, green: 240/255, blue: 240/255) :  // #F0F0F0
-            Color(red: 0/255, green: 0/255, blue: 17/255)        // #000011
+        themeManager.currentTheme.colors.globeBackground
     }
     
     var body: some View {
@@ -159,7 +159,7 @@ struct WebViewGlobeView: View {
                     .frame(width: 44, height: 44)
                     .background(themeManager.currentTheme.colors.primary)
                     .clipShape(Circle())
-                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .appElevation(.md, theme: themeManager.currentTheme)
             }
             
             // Auto-Rotation Toggle
@@ -170,7 +170,7 @@ struct WebViewGlobeView: View {
                     .frame(width: 44, height: 44)
                     .background(isAutoRotating ? themeManager.currentTheme.colors.success : themeManager.currentTheme.colors.primary)
                     .clipShape(Circle())
-                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .appElevation(.md, theme: themeManager.currentTheme)
             }
             
             
@@ -183,7 +183,7 @@ struct WebViewGlobeView: View {
                     .frame(width: 44, height: 44)
                     .background(themeManager.currentTheme.colors.textSecondary)
                     .clipShape(Circle())
-                    .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    .appElevation(.md, theme: themeManager.currentTheme)
             }
         }
     }
@@ -752,6 +752,32 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             }
           };
 
+          // ────────────────────────────────────────────────────────────────
+          // Place pills - the one thing on this page that does NOT follow the
+          // theme.
+          //
+          // The globe is a dark OBJECT, not a themed surface: it is lit black
+          // space with a lit sphere in it whether the app is in Light or Dark,
+          // exactly like a photograph. That is the argument `PhotoOverlay` in
+          // PlaceCard.swift already makes for text laid over a photo, and the
+          // same conclusion follows here - flipping these to dark-on-cream in
+          // Light theme would put cream pills on a black sky.
+          //
+          // Opaque, not glass, for a second reason: a rotating sphere presents
+          // a different backdrop under every pill on every frame, so a glass
+          // pill has nothing stable to sample and reads as a smear. Polarsteps'
+          // Explore globe uses solid pills for precisely this.
+          //
+          // `fill` and `ink` mirror ThemeColors.dark.background / .text, the
+          // same pair PhotoOverlay borrows, so there is one place to change the
+          // day a real on-photo token lands.
+          const PILL = {
+            fill: '#0A0F1C',
+            ink: '#E9EDF7',
+            hairline: 'rgba(233, 237, 247, 0.14)',
+            shadow: '0 1px 6px rgba(0, 0, 0, 0.55)'
+          };
+
           window.currentTheme = (window.initialTheme === 'light') ? 'light' : 'dark';
           function palette() { return PALETTE[window.currentTheme] || PALETTE.dark; }
 
@@ -860,27 +886,158 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             .arcDashAnimateTime(6000)
             .arcCircularResolution(24);
 
-          // ── Labels: bare type, no chrome ───────────────────────────────
-          // Pills with a blue border were 2019 chrome fighting 2026 glass. A
-          // text-shadow carries the same legibility over both hemispheres and
-          // disappears into the composite.
+          // ── Labels ─────────────────────────────────────────────────────
+          // Two kinds, and they are deliberately different objects. A logged
+          // place is CONTENT - the reason the globe is on screen at all - so it
+          // gets an opaque pill. An airport code is CONTEXT belonging to a
+          // flight arc, so it stays bare type that disappears into the
+          // composite. Pills with a blue border were 2019 chrome fighting 2026
+          // glass; a pill that carries the user's own verdict is not chrome.
           function makeGlobeLabel(d) {
+            return d.kind === 'place' ? makePlacePill(d) : makeAirportLabel(d);
+          }
+
+          function makeAirportLabel(d) {
             const el = document.createElement('div');
-            el.textContent = d.text;  // user-entered place names: never innerHTML
-            const isPlace = d.kind === 'place';
+            el.textContent = d.text;
             el.style.cssText = `
-              color: ${isPlace ? (d.color || palette().label) : palette().label};
+              color: ${palette().label};
               font-family: 'GeistMono-Regular', ui-monospace, 'Monaco', 'Menlo', 'Consolas', monospace;
-              font-size: ${isPlace ? '10px' : '9px'};
-              font-weight: ${isPlace ? '600' : '500'};
+              font-size: 9px;
+              font-weight: 500;
               letter-spacing: 0.06em;
               text-shadow: ${palette().labelShadow};
-              opacity: ${isPlace ? '1' : '0.72'};
+              opacity: 0.72;
               text-align: center;
               pointer-events: none;
               white-space: nowrap;
               transform: translate(-50%, -50%);
             `;
+            return el;
+          }
+
+          const SVG_NS = 'http://www.w3.org/2000/svg';
+
+          // Silhouette first, colour second - the same rule the SwiftUI side
+          // follows. Burst / circle / diamond / open ring are four distinct
+          // outlines, so a pill still says which verdict it carries in
+          // greyscale and under any colour vision deficiency. Colour alone,
+          // at 11px, on a moving sphere, would be the weakest signal in the
+          // app rather than the strongest.
+          function sealPoints() {
+            const points = [];
+            const spikes = 10;
+            for (let i = 0; i < spikes * 2; i++) {
+              const radius = (i % 2 === 0) ? 5.7 : 4.4;
+              const angle = (Math.PI * i) / spikes - Math.PI / 2;
+              points.push(
+                (6 + radius * Math.cos(angle)).toFixed(2) + ',' +
+                (6 + radius * Math.sin(angle)).toFixed(2)
+              );
+            }
+            return points.join(' ');
+          }
+
+          const VERDICT_GLYPHS = {
+            worth_it: {
+              tag: 'polygon',
+              attrs: { points: sealPoints() },
+              mark: 'M3.5 6.2 L5.3 8.0 L8.6 4.4'
+            },
+            fine: {
+              tag: 'circle',
+              attrs: { cx: '6', cy: '6', r: '5.3' },
+              mark: 'M3.2 4.8 H8.8 M3.2 7.2 H8.8'
+            },
+            skip: {
+              tag: 'polygon',
+              attrs: { points: '6,0.6 11.4,6 6,11.4 0.6,6' },
+              mark: 'M4.2 4.2 L7.8 7.8 M7.8 4.2 L4.2 7.8'
+            }
+          };
+
+          function verdictGlyph(verdict, color) {
+            const svg = document.createElementNS(SVG_NS, 'svg');
+            svg.setAttribute('viewBox', '0 0 12 12');
+            svg.setAttribute('width', '11');
+            svg.setAttribute('height', '11');
+            svg.setAttribute('aria-hidden', 'true');
+            svg.style.flex = '0 0 auto';
+
+            const spec = VERDICT_GLYPHS[verdict];
+
+            if (!spec) {
+              // Undecided: an open ring. A fourth silhouette rather than a
+              // fourth colour, because "not yet judged" is a real state in this
+              // product and it should look like an empty slot, not a verdict.
+              const ring = document.createElementNS(SVG_NS, 'circle');
+              ring.setAttribute('cx', '6');
+              ring.setAttribute('cy', '6');
+              ring.setAttribute('r', '4.3');
+              ring.setAttribute('fill', 'none');
+              ring.setAttribute('stroke', color);
+              ring.setAttribute('stroke-width', '1.6');
+              svg.appendChild(ring);
+              return svg;
+            }
+
+            const body = document.createElementNS(SVG_NS, spec.tag);
+            Object.keys(spec.attrs).forEach(function(key) {
+              body.setAttribute(key, spec.attrs[key]);
+            });
+            body.setAttribute('fill', color);
+            svg.appendChild(body);
+
+            // The mark is knocked out in the pill's own fill, so it stays
+            // legible whatever the verdict colour is and needs no second token.
+            const mark = document.createElementNS(SVG_NS, 'path');
+            mark.setAttribute('d', spec.mark);
+            mark.setAttribute('fill', 'none');
+            mark.setAttribute('stroke', PILL.fill);
+            mark.setAttribute('stroke-width', '1.5');
+            mark.setAttribute('stroke-linecap', 'round');
+            mark.setAttribute('stroke-linejoin', 'round');
+            svg.appendChild(mark);
+
+            return svg;
+          }
+
+          // The log, pinned to the globe. Opaque fill, fixed ink, verdict in
+          // colour. `max-width` + `overflow: hidden` clips a long name rather
+          // than ellipsing it - a monospace ellipsis at a fixed advance is
+          // three wasted cells, and pills are already allowed to clip at the
+          // frame edge.
+          function makePlacePill(d) {
+            const el = document.createElement('div');
+            el.style.cssText = `
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              max-width: 140px;
+              padding: 3px 8px 3px 6px;
+              border-radius: 999px;
+              background: ${PILL.fill};
+              color: ${PILL.ink};
+              border: 0.5px solid ${PILL.hairline};
+              box-shadow: ${PILL.shadow};
+              font-family: 'GeistMono-Regular', ui-monospace, 'Monaco', 'Menlo', 'Consolas', monospace;
+              font-size: 10px;
+              font-weight: 600;
+              letter-spacing: 0.04em;
+              line-height: 1.25;
+              white-space: nowrap;
+              overflow: hidden;
+              pointer-events: none;
+              transform: translate(-50%, -50%);
+            `;
+
+            el.appendChild(verdictGlyph(d.verdict, d.color || PILL.ink));
+
+            const name = document.createElement('span');
+            name.textContent = d.text;  // user-entered place names: never innerHTML
+            name.style.cssText = 'overflow: hidden;';
+            el.appendChild(name);
+
             return el;
           }
 
@@ -901,35 +1058,85 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             return kept;
           }
 
-          function buildLabels(altitude) {
-            const candidates = [];
+          // How many pills the whole-globe view can carry before it stops
+          // being a globe. Pills are culled by ZOOM, never hidden outright:
+          // the resting view has to say something about the log or the globe
+          // is wallpaper, so there is no altitude at which the count is zero.
+          function placeLabelBudgetFor(altitude) {
+            if (altitude >= 3.2) return 16;   // whole sphere
+            if (altitude >= 2.0) return 26;   // a continent
+            return MAX_LABELS;                // a city, pulled apart
+          }
 
+          // Proportional to altitude for the same reason every other number in
+          // this file is: near the sub-camera point the projection scales as
+          // 1/altitude, so a linear threshold holds a CONSTANT on-screen gap.
+          // ~28px here against `labelSpacingFor`'s ~45px - pills are allowed to
+          // sit much closer than airport codes, because a pill is ~90px wide
+          // and is MEANT to overlap its neighbours. Overlap reads as density,
+          // which is the whole argument for putting the log on the globe. What
+          // this does still buy is the collapse of a genuine pile-up: three
+          // places 4km apart are 2px apart even at maximum zoom, and stacking
+          // three pills on one pixel is noise, not density. The dots underneath
+          // keep drawing all of them.
+          function placeSpacingFor(altitude) {
+            return Math.max(0.03, Math.min(8.0, altitude * 1.8));
+          }
+
+          // Which places win a pill when they cannot all have one. A verdict is
+          // what the log is FOR, so a decided place outranks an undecided one;
+          // after that, somewhere you keep going back to outranks somewhere you
+          // passed through once. Ties keep the order Swift sent, which is
+          // already most-recent-first.
+          function rankedPlaces() {
+            return placesData
+              .filter(place => !!place.name)
+              .map((place, index) => ({ place: place, index: index }))
+              .sort((a, b) => {
+                const aDecided = (a.place.verdict && a.place.verdict !== 'unrated') ? 0 : 1;
+                const bDecided = (b.place.verdict && b.place.verdict !== 'unrated') ? 0 : 1;
+                if (aDecided !== bDecided) return aDecided - bDecided;
+                const aVisits = a.place.visitCount || 1;
+                const bVisits = b.place.visitCount || 1;
+                if (aVisits !== bVisits) return bVisits - aVisits;
+                return a.index - b.index;
+              })
+              .map(entry => entry.place);
+          }
+
+          function buildLabels(altitude) {
             // Places claim the label budget first; airport codes get whatever
-            // room is left. Names only appear once you have zoomed in far
-            // enough for them to mean something.
-            if (altitude < 2.6) {
-              placesData.forEach(place => {
-                if (!place.name) return;
-                candidates.push({
-                  lat: place.lat,
-                  lng: place.lng,
-                  text: place.name,
-                  color: place.color,
-                  kind: 'place'
-                });
-              });
-            }
+            // room is left.
+            const places = dedupeByDistance(
+              rankedPlaces().map(place => ({
+                lat: place.lat,
+                lng: place.lng,
+                text: place.name,
+                color: place.color,
+                verdict: place.verdict,
+                kind: 'place'
+              })),
+              placeSpacingFor(altitude)
+            ).slice(0, placeLabelBudgetFor(altitude));
 
             const labelledArcs = focusedFlightId
               ? arcsData.filter(arc => arc.flightId === focusedFlightId)
               : arcsData;
 
+            const airportCandidates = [];
             labelledArcs.forEach(flight => {
-              candidates.push({ lat: flight.startLat, lng: flight.startLng, text: flight.departureCode || 'DEP', kind: 'airport' });
-              candidates.push({ lat: flight.endLat, lng: flight.endLng, text: flight.arrivalCode || 'ARR', kind: 'airport' });
+              airportCandidates.push({ lat: flight.startLat, lng: flight.startLng, text: flight.departureCode || 'DEP', kind: 'airport' });
+              airportCandidates.push({ lat: flight.endLat, lng: flight.endLng, text: flight.arrivalCode || 'ARR', kind: 'airport' });
             });
 
-            return dedupeByDistance(candidates, labelSpacingFor(altitude)).slice(0, MAX_LABELS);
+            // Seeded with the surviving pills, so an airport code never lands
+            // on top of one, then filtered back down to the airports it added.
+            const airports = dedupeByDistance(
+              places.concat(airportCandidates),
+              labelSpacingFor(altitude)
+            ).filter(candidate => candidate.kind === 'airport');
+
+            return places.concat(airports).slice(0, MAX_LABELS);
           }
 
           world
@@ -938,6 +1145,19 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             .htmlLng(d => d.lng)
             .htmlAltitude(0.05)  // clears the tallest place pillar (0.04)
             .htmlElement(makeGlobeLabel);
+
+          // HTML labels are DOM, not geometry, so nothing occludes them: a pill
+          // on the far side of the sphere draws straight through it. Bare type
+          // got away with that; an opaque pill does not - Tokyo would appear to
+          // be in the Atlantic. Only `visibility` is touched, so the airport
+          // label's own 0.72 opacity survives. Feature-tested because the hook
+          // arrived in globe.gl 2.31 and the library is loaded from a CDN by
+          // floating tag; without it the labels behave exactly as before.
+          if (typeof world.htmlElementVisibilityModifier === 'function') {
+            world.htmlElementVisibilityModifier((el, isBehindGlobe) => {
+              el.style.visibility = isBehindGlobe ? 'hidden' : 'visible';
+            });
+          }
 
           // ── One place where zoom-dependent visuals get applied ──────────
           function applyArcColor() {

@@ -9,7 +9,8 @@
 //    VerdictRail             — the 3pt colour spine on the leading edge of a list row.
 //    VerdictPip              — the trailing swatch: silhouette in an opaque verdict tint.
 //    VerdictBadge            — passive glass capsule, for photos and map callouts.
-//    VerdictChip             — tappable. Pill by default; a stat tile when given a count.
+//    VerdictChip             — tappable. Pill by default; a stat tile when given a
+//                              count; a large stamp when asked for one.
 //    VerdictPicker           — the three-up selector.
 //    VerdictDistributionBar  — proportion of a whole log, as one hairline bar.
 //
@@ -133,18 +134,39 @@ struct VerdictBadge: View {
     }
 }
 
+// MARK: - Verdict Chip Shape
+/// Which silhouette a `VerdictChip` takes.
+enum VerdictChipShape {
+    /// A capsule pill, or the stat tile when a count is supplied. The chip's
+    /// historical behaviour and its default.
+    case automatic
+    /// The compact pill, even if a count is supplied.
+    case pill
+    /// The stat tile — number first, verdict beneath — even with no count.
+    case tile
+    /// A large flat stamp: a filled circle carrying the verdict's silhouette,
+    /// with the noun beneath it. For the one screen where choosing a verdict IS
+    /// the screen, so the app's central act stops looking like a list filter.
+    case stamp
+}
+
 // MARK: - Verdict Chip
-/// The interactive form, in two shapes.
+/// The interactive form, in three shapes.
 ///
-///   `count == nil` — a capsule pill. The compact form used when the chip is
-///                    asking a question ("how was it?").
-///   `count != nil` — a stat tile: the number leads, the verdict labels it.
-///                    Used when the chip is *also* the summary, as on the place
-///                    log, where the filter row doubles as the tally.
+///   `.pill`  — a capsule. The compact form used when the chip is asking a
+///              question inside a row of other chrome.
+///   `.tile`  — a stat tile: the number leads, the verdict labels it. Used when
+///              the chip is *also* the summary, as on the place log, where the
+///              filter row doubles as the tally.
+///   `.stamp` — a 64pt circle in the verdict's own surface colour, symbol in the
+///              verdict's ink, noun beneath. Three of these read as three OBJECTS
+///              you choose between rather than three buttons you press.
 ///
 /// Selected state is carried by four redundant signals — tint, filled-vs-outline
 /// symbol, a stroke ring and (under Differentiate Without Color) a checkmark —
-/// so it survives greyscale and colour-vision deficiency.
+/// so it survives greyscale and colour-vision deficiency. The stamp deliberately
+/// keeps the distinct silhouette AND the noun: a bare colour-coded circle fails
+/// greyscale, colour-vision deficiency and Differentiate Without Color all at once.
 struct VerdictChip: View {
     @EnvironmentObject var themeManager: ThemeManager
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -152,17 +174,44 @@ struct VerdictChip: View {
     let verdict: Verdict
     var isSelected: Bool = false
     var showsLabel: Bool = true
-    /// Supplying a count switches the chip to its stat-tile shape.
+    /// Supplying a count switches the chip to its stat-tile shape, unless `shape`
+    /// says otherwise.
     var count: Int? = nil
+    /// Overrides the shape the count would otherwise imply.
+    var shape: VerdictChipShape = .automatic
     var namespace: Namespace.ID? = nil
     let action: () -> Void
 
     @ScaledMetric(relativeTo: .body) private var minHeight: CGFloat = 44
+    /// The stamp's diameter. Large on purpose: the most important interaction on
+    /// a screen should be the largest target on it.
+    @ScaledMetric(relativeTo: .body) private var stampDiameter: CGFloat = 64
 
-    private var shape: AnyShape {
-        count == nil
-            ? AnyShape(Capsule(style: .continuous))
-            : AnyShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
+    /// `.automatic` resolved against whether a count was supplied.
+    private var resolvedShape: VerdictChipShape {
+        switch shape {
+        case .automatic: return count == nil ? .pill : .tile
+        case .pill, .tile, .stamp: return shape
+        }
+    }
+
+    private var isStamp: Bool {
+        if case .stamp = resolvedShape { return true }
+        return false
+    }
+
+    /// The chip's outline — used for glass, the selection ring and the hit region.
+    private var outlineShape: AnyShape {
+        switch resolvedShape {
+        case .pill, .automatic:
+            return AnyShape(Capsule(style: .continuous))
+        case .tile:
+            return AnyShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
+        case .stamp:
+            // The circle is drawn inside the stamp; this is only the tap target,
+            // and it has to include the label so the noun is tappable too.
+            return AnyShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
+        }
     }
 
     var body: some View {
@@ -175,29 +224,28 @@ struct VerdictChip: View {
             action()
         } label: {
             Group {
-                if count == nil {
-                    pillContent(theme: theme, ink: ink)
-                } else {
-                    tileContent(theme: theme, ink: ink)
+                switch resolvedShape {
+                case .stamp: stampContent(theme: theme, ink: ink)
+                case .tile: tileContent(theme: theme, ink: ink)
+                case .pill, .automatic: pillContent(theme: theme, ink: ink)
                 }
             }
-            .contentShape(shape)
+            .contentShape(outlineShape)
         }
         .buttonStyle(.plain)
-        .skylineGlass(
-            .control,
-            in: shape,
-            tint: isSelected ? ink.opacity(0.55) : nil,
-            interactive: true,
-            theme: theme
+        .modifier(
+            ChipSurface(
+                // A stamp is an opaque object, not a pane of glass: it draws its
+                // own fill and its own edge, so it must not also take a glass
+                // backdrop or a second ring around the label.
+                isGlass: !isStamp,
+                shape: outlineShape,
+                tint: isSelected ? ink.opacity(0.55) : nil,
+                ring: isSelected ? ink : nil,
+                theme: theme
+            )
         )
-        .overlay {
-            // A ring is the colour-independent selection cue.
-            if isSelected {
-                shape.stroke(ink, lineWidth: 1.5)
-            }
-        }
-        .modifier(GlassID(id: verdict.rawValue, namespace: namespace))
+        .modifier(GlassID(id: verdict.rawValue, namespace: isStamp ? nil : namespace))
         .animation(.easeInOut(duration: 0.22), value: isSelected)
         .accessibilityLabel(Text(verdict.displayName))
         .accessibilityValue(Text(count.map { $0 == 1 ? "1 place" : "\($0) places" } ?? ""))
@@ -256,6 +304,56 @@ struct VerdictChip: View {
         .frame(minHeight: minHeight)
     }
 
+    // MARK: Stamp
+
+    /// The verdict as an object: a flat disc of the verdict's own surface colour
+    /// with its silhouette struck into it, and the noun underneath.
+    ///
+    /// Opaque rather than glass, and identical in both themes' logic, because the
+    /// `verdict.surface` / `verdict.color` pair is defined per palette to clear
+    /// contrast without a branch here — the same pairing `VerdictPip` uses, scaled
+    /// up from a 28pt swatch to a 64pt target.
+    private func stampContent(theme: AppTheme, ink: Color) -> some View {
+        VStack(spacing: AppSpacing.sm) {
+            ZStack {
+                Circle()
+                    .fill(verdict.surface(for: theme))
+
+                Image(systemName: isSelected ? verdict.systemImage : verdict.systemImageOutline)
+                    // @ScaledMetric-free symbol sizing: `mono` is relative to a text
+                    // style, so the glyph grows with Dynamic Type in step with the
+                    // circle around it.
+                    .font(AppTypography.mono(.title2, weight: .semibold))
+                    .foregroundStyle(ink)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .frame(width: stampDiameter, height: stampDiameter)
+            // The surface tints are quiet by design, so the disc gets its own edge
+            // rather than relying on the fill to separate it from the card behind.
+            .overlay {
+                Circle().strokeBorder(
+                    isSelected ? ink : ink.opacity(0.35),
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+            }
+
+            if showsLabel {
+                HStack(spacing: AppSpacing.xs) {
+                    Text(verdict.displayName)
+                        .foregroundStyle(theme.colors.text)
+
+                    differentiator(theme: theme)
+                }
+                // Two lines so "Worth it" wraps at accessibility sizes rather than
+                // shrinking towards illegibility.
+                .appFont(.verdictLabel, lineLimit: .exactly(2))
+                .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.vertical, AppSpacing.xs)
+        .frame(maxWidth: .infinity)
+    }
+
     // MARK: Parts
 
     private func symbol(ink: Color) -> some View {
@@ -271,6 +369,39 @@ struct VerdictChip: View {
             Image(systemName: "checkmark")
                 .foregroundStyle(theme.colors.text)
                 .imageScale(.small)
+        }
+    }
+}
+
+// MARK: - Chip Surface
+/// The chip's backdrop and selection ring, in one place so the stamp can opt out
+/// of both without duplicating the rest of the chip's body.
+private struct ChipSurface: ViewModifier {
+    let isGlass: Bool
+    let shape: AnyShape
+    let tint: Color?
+    let ring: Color?
+    let theme: AppTheme
+
+    func body(content: Content) -> some View {
+        Group {
+            if isGlass {
+                content.skylineGlass(
+                    .control,
+                    in: shape,
+                    tint: tint,
+                    interactive: true,
+                    theme: theme
+                )
+            } else {
+                content
+            }
+        }
+        .overlay {
+            // A ring is the colour-independent selection cue.
+            if isGlass, let ring {
+                shape.stroke(ring, lineWidth: 1.5)
+            }
         }
     }
 }
@@ -423,6 +554,30 @@ private struct VerdictPickerPreviewHost: View {
         VStack(spacing: AppSpacing.md) {
             VerdictPicker(selection: $selection)
             VerdictPicker(selection: $selection, counts: [.worthIt: 12, .fine: 5, .skip: 4])
+        }
+    }
+}
+
+#Preview("Stamps") {
+    StampPreviewHost()
+        .padding()
+        .environmentObject(ThemeManager())
+}
+
+private struct StampPreviewHost: View {
+    @State private var selection: Verdict?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            ForEach(Verdict.allCases) { verdict in
+                VerdictChip(
+                    verdict: verdict,
+                    isSelected: selection == verdict,
+                    shape: .stamp
+                ) {
+                    selection = (selection == verdict) ? nil : verdict
+                }
+            }
         }
     }
 }

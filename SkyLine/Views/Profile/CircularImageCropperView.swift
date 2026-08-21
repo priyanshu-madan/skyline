@@ -129,7 +129,7 @@ struct CircularImageCropperView: View {
                         // Dark overlay with circular cutout
                         OverlayWithCircularCutout(
                             circleSize: cropSize,
-                            overlayColor: Color.black.opacity(0.6)
+                            overlayColor: themeManager.currentTheme.colors.scrim.opacity(0.85)
                         )
                         .allowsHitTesting(false)
 

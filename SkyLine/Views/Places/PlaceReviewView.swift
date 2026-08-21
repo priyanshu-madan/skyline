@@ -6,15 +6,20 @@
 //  one detected place at a time, full bleed, until the trip is judged.
 //
 //  Interaction model:
-//    • Three verdict chips at thumb height, equally weighted. Skip is an
-//      answer, not a dismissal — it is the one thing a saved-places list can
-//      never record, so it sits beside the other two, same size, same glass.
+//    • Three verdict STAMPS at thumb height, equally weighted — 64pt discs, the
+//      largest targets on the screen, because choosing between them is the
+//      screen. Skip is an answer, not a dismissal: it is the one thing a
+//      saved-places list can never record, so it sits beside the other two at
+//      the same size. Everything else in the bottom third is demoted to text.
 //    • The same three answers are also swipes: right = worth it, left = skip,
 //      up = fine, down = decide later. The swipe is an accelerator for people
-//      who have done this before; the chips are the discoverable path.
+//      who have done this before; the stamps are the discoverable path.
 //    • Every swipe is undoable, from a persistent control in the top bar and
 //      from a toast that survives four seconds after the card leaves. Losing a
 //      judgement to a mis-swipe is infuriating and entirely avoidable.
+//    • The verdict commits in ONE tap and nothing is allowed to gate it. The
+//      note is offered from that same toast, AFTER the write, at the only
+//      moment the user still remembers why — never as a step in the loop.
 //    • The name is editable in place. Reverse geocoding hands back street
 //      addresses; the user is ground truth.
 //
@@ -28,6 +33,10 @@
 //    • Colour is spent almost entirely on verdicts. Nothing else on this screen
 //      is allowed to be saturated, because the whole screen exists to record
 //      one opinion.
+//    • The end-of-deck summary opens with a CLAIM, not a count: one sentence at
+//      `.claim` scale stating a result, with the numbers as a single boxless row
+//      beneath it. A grid of counts is a receipt; a sentence is what somebody
+//      screenshots.
 //
 
 import SwiftUI
@@ -64,6 +73,10 @@ struct PlaceReviewView: View {
     @State private var isEditingName = false
     @State private var draftName = ""
     @FocusState private var nameFieldFocused: Bool
+
+    /// The decision the user has asked to annotate. Non-nil only while the note
+    /// composer is up; the verdict it refers to is already written either way.
+    @State private var pendingNote: PendingNote?
 
     @ScaledMetric(relativeTo: .body) private var cardCorner: CGFloat = 28
     @ScaledMetric(relativeTo: .body) private var controlSlot: CGFloat = 44
@@ -126,6 +139,20 @@ struct PlaceReviewView: View {
         .animation(transition, value: viewModel.isFinished)
         .animation(transition, value: viewModel.index)
         .overlay(alignment: .top) { syncNotice }
+        // A sheet is its own presentation: it inherits neither the colour scheme
+        // resolved above nor the environment override, so both are restated on
+        // the content itself.
+        .sheet(item: $pendingNote) { target in
+            NoteComposerSheet(placeName: target.placeName, verdict: target.verdict) { text in
+                attachNote(text, toStepWithId: target.id)
+            }
+            .environmentObject(themeManager)
+            .environment(\.colorScheme, theme.colorScheme)
+            .preferredColorScheme(theme.colorScheme)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(theme.colors.background)
+        }
         .task { viewModel.prefetchImages() }
         .onChange(of: viewModel.index) { _, _ in
             viewModel.prefetchImages()
@@ -399,36 +426,53 @@ struct PlaceReviewView: View {
         let theme = themeManager.currentTheme
 
         return VStack(spacing: AppSpacing.sm) {
-            SkyLineGlassPanel(spacing: AppSpacing.sm) {
-                HStack(spacing: AppSpacing.sm) {
-                    ForEach(Verdict.allCases) { verdict in
-                        VerdictChip(
-                            verdict: verdict,
-                            isSelected: false,
-                            showsLabel: true,
-                            namespace: glassNamespace
-                        ) {
-                            commit(.verdict(verdict), from: .zero, animated: false)
-                        }
+            // Three OBJECTS, not three buttons. The app's central act used to be
+            // rendered with the same component at the same 44pt as the filter row
+            // on the place log, so the one screen that exists to record an opinion
+            // looked exactly like a way to narrow a list. The stamp is the largest
+            // target on the screen because it is the most important one.
+            //
+            // The silhouettes and the noun labels stay. Beli's reference is three
+            // colour-only circles, which fails greyscale and colour-vision
+            // deficiency; we take the SIZE from it, not the stripped encoding.
+            //
+            // No `SkyLineGlassPanel` here any more: a stamp draws its own opaque
+            // disc, so a GlassEffectContainer around three of them has nothing to
+            // merge and would only add a backdrop nobody samples.
+            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                ForEach(Verdict.allCases) { verdict in
+                    VerdictChip(
+                        verdict: verdict,
+                        isSelected: false,
+                        showsLabel: true,
+                        shape: .stamp,
+                        namespace: glassNamespace
+                    ) {
+                        commit(.verdict(verdict), from: .zero, animated: false)
                     }
                 }
             }
 
+            // Demoted to plain text. "Decide later" is a way out, not a fourth
+            // verdict, and a glass capsule directly under three verdict objects
+            // ranked it equal to them — three competing rows of chrome in the
+            // bottom third. The 44pt hit target survives the demotion.
             Button {
                 commit(.later, from: .zero, animated: false)
             } label: {
-                Label("Decide later", systemImage: "clock.arrow.circlepath")
+                Text("Decide later")
                     .appFont(.bodySmall)
+                    .foregroundStyle(theme.colors.textSecondary)
                     .padding(.horizontal, AppSpacing.md)
-                    .padding(.vertical, AppSpacing.xs + 2)
+                    .frame(minHeight: controlSlot)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
+            .buttonStyle(.plain)
             .accessibilityHint(Text("Keeps this place unrated so you can come back to it"))
 
             if showsSwipeHint {
-                Text("Or swipe: right worth it, left skip, up fine, down later")
-                    .appFont(.footnote, lineLimit: .exactly(2))
+                Text("Or swipe: → worth it · ← skip · ↑ fine · ↓ later")
+                    .appFont(.footnote, lineLimit: .exactly(1))
                     .foregroundStyle(theme.colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .accessibilityHidden(true)
@@ -461,30 +505,33 @@ struct PlaceReviewView: View {
 
     // MARK: - Undo Toast
 
+    /// What happens AFTER the one-tap commit: the confirmation, an offer to say
+    /// why, and the way back.
+    ///
+    /// The note is an offer, never a step. The verdict is already written and
+    /// already synced by the time this appears; the toast still auto-dismisses
+    /// on the same four seconds, so the deck's rhythm is untouched and ignoring
+    /// the offer costs nothing. It is here because this is the only moment the
+    /// user still remembers why they decided what they decided — a note asked
+    /// for later is a note never written.
     @ViewBuilder
     private var undoToast: some View {
         let theme = themeManager.currentTheme
 
         if let step = viewModel.lastStep {
-            HStack(spacing: AppSpacing.sm) {
-                Image(systemName: step.decision.systemImage)
-                    .foregroundStyle(step.decision.verdict?.color(for: theme) ?? theme.colors.textSecondary)
-                    .symbolRenderingMode(.hierarchical)
-
-                Text(step.decision.confirmationText)
-                    .foregroundStyle(theme.colors.text)
-
-                Button {
-                    withAnimation(transition) { viewModel.undo() }
-                } label: {
-                    Text("Undo")
-                        .foregroundStyle(theme.colors.primary)
-                }
-                .buttonStyle(.plain)
+            // Three runs of monospaced text plus a glyph overflow a 343pt capsule
+            // well before Dynamic Type runs out, and monospace cannot reflow
+            // inside a word. The stacked arrangement is the same content wrapped,
+            // rather than the same content truncated.
+            ViewThatFits(in: .horizontal) {
+                toastContent(step: step, theme: theme, stacked: false)
+                toastContent(step: step, theme: theme, stacked: true)
             }
             .appFont(.verdictLabel)
             .padding(.horizontal, AppSpacing.md)
-            .padding(.vertical, AppSpacing.sm)
+            // The buttons carry their own vertical padding so their hit rects are
+            // taller than a line of caption type; the capsule takes what is left.
+            .padding(.vertical, AppSpacing.xs)
             .skylineGlassCapsule(theme: theme)
             .padding(.bottom, AppSpacing.md)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -496,6 +543,137 @@ struct PlaceReviewView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func toastContent(
+        step: PlaceReviewViewModel.Step,
+        theme: AppTheme,
+        stacked: Bool
+    ) -> some View {
+        let confirmation = HStack(spacing: AppSpacing.sm) {
+            Image(systemName: step.decision.systemImage)
+                .foregroundStyle(step.decision.verdict?.color(for: theme) ?? theme.colors.textSecondary)
+                .symbolRenderingMode(.hierarchical)
+
+            Text(step.decision.confirmationText)
+                .foregroundStyle(theme.colors.text)
+        }
+
+        let actions = HStack(spacing: AppSpacing.sm) {
+            // Only offered where there is something to attach a note to. A
+            // deferral writes nothing at all, and a place with no coordinate is
+            // held locally without a visit — offering a note against either
+            // would be offering to lose it.
+            if let verdict = step.decision.verdict,
+               !viewModel.needsLocation.contains(step.detectedPlaceId) {
+                Button {
+                    pendingNote = PendingNote(
+                        id: step.id,
+                        placeName: viewModel.place(withId: step.detectedPlaceId)?.name ?? "this place",
+                        verdict: verdict
+                    )
+                } label: {
+                    Text("Add a note")
+                        .foregroundStyle(theme.colors.primary)
+                        .padding(.vertical, AppSpacing.sm)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Write down why, while you still remember"))
+
+                Text(verbatim: "·")
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .accessibilityHidden(true)
+            }
+
+            Button {
+                withAnimation(transition) { viewModel.undo() }
+            } label: {
+                // Two adjacent text buttons in one capsule, and one of them
+                // reverses a judgement. They get real hit rects that do not bleed
+                // into each other.
+                Text("Undo")
+                    .foregroundStyle(theme.colors.primary)
+                    .padding(.vertical, AppSpacing.sm)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+
+        if stacked {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                confirmation
+                actions
+            }
+        } else {
+            HStack(spacing: AppSpacing.sm) {
+                confirmation
+                actions
+            }
+        }
+    }
+
+    // MARK: - Note
+
+    /// The decision a note is being written against. Identified by the undo
+    /// step, because that is what carries the ids of the visits the swipe wrote.
+    private struct PendingNote: Identifiable {
+        let id: UUID
+        let placeName: String
+        let verdict: Verdict
+    }
+
+    /// Writes the note onto the visits the swipe already created.
+    ///
+    /// Never gates anything: the verdict is saved with or without this, and
+    /// abandoning the composer costs nothing.
+    private func attachNote(_ raw: String, toStepWithId stepId: UUID) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        Task { @MainActor in
+            guard let visitIds = await visitIds(forStep: stepId) else {
+                // Undone while the composer was open. There is no longer a
+                // verdict for the note to belong to, and saying so would be
+                // interrupting the user about something they just reversed.
+                print("📝 PlaceReview: note dropped — its decision was undone")
+                return
+            }
+
+            guard !visitIds.isEmpty else {
+                viewModel.errorMessage = "Could not attach your note yet — that place is still saving."
+                return
+            }
+
+            let store = PlaceStore.shared
+            var attached = 0
+
+            for visitId in visitIds {
+                guard let visit = store.visits.first(where: { $0.id == visitId }) else { continue }
+                _ = await store.updateVisit(visit.with(note: trimmed))
+                attached += 1
+            }
+
+            print("📝 PlaceReview: attached a note to \(attached) visit(s)")
+        }
+    }
+
+    /// The visit ids the swipe produced.
+    ///
+    /// `nil` means the step is gone — undone — and there is nothing to write to.
+    /// An empty array means the write has not landed yet. The undo stack is only
+    /// filled in once the persist returns, which is normally long before the
+    /// user has finished typing, so this waits rather than dropping what they
+    /// wrote the moment iCloud is slow.
+    @MainActor
+    private func visitIds(forStep stepId: UUID) async -> [String]? {
+        for _ in 0..<20 {
+            guard let step = viewModel.history.first(where: { $0.id == stepId }) else { return nil }
+            if !step.visitIds.isEmpty { return step.visitIds }
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+        return []
     }
 
     // MARK: - Sync Notice
@@ -538,22 +716,11 @@ struct PlaceReviewView: View {
 
         return ScrollView {
             VStack(spacing: AppSpacing.lg) {
+                // The claim leads. Everything under it is support: a grid of
+                // numbers is a receipt, and nobody screenshots a receipt.
                 summaryHero(summary: summary, theme: theme)
 
-                SkyLineGlassPanel(spacing: AppSpacing.sm) {
-                    HStack(spacing: AppSpacing.sm) {
-                        ForEach(Verdict.allCases) { verdict in
-                            countTile(verdict: verdict, count: summary.count(for: verdict))
-                        }
-                    }
-                }
-
-                // The one line only this app can print. Everything above is a
-                // count; this is the product's actual claim, and it is the
-                // reason this screen is worth a screenshot.
-                if summary.count(for: .skip) > 0 {
-                    skipLine(count: summary.count(for: .skip), theme: theme)
-                }
+                countRow(summary: summary, theme: theme)
 
                 if summary.laterCount > 0 {
                     laterCallout(count: summary.laterCount)
@@ -602,97 +769,174 @@ struct PlaceReviewView: View {
         .skylineScrollEdges()
     }
 
-    /// One number, as large as the type scale goes, and one line of context.
-    /// Everything else on this screen supports it.
+    /// One CLAIM, at display size, and the trip that earned it.
+    ///
+    /// This block used to open with the decided count at `.titleLarge` and bury
+    /// the skip sentence fourth, under a stat block — while the comment beside
+    /// that sentence said it was "the reason this screen is worth a screenshot".
+    /// The comment was right and the layout contradicted it. A count is a
+    /// measurement; a sentence is a result, and a summary is only worth keeping
+    /// when it states one.
+    ///
+    /// When there were no skips the fallback is a DIFFERENT claim, never the
+    /// number — falling back to the count is exactly the receipt this block
+    /// exists to stop being.
     @ViewBuilder
     private func summaryHero(summary: PlaceReviewViewModel.Summary, theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.xs) {
-            if summary.decidedCount > 0 {
-                Text("\(summary.decidedCount)")
-                    .appFont(.titleLarge, lineLimit: .exactly(1))
-                    .foregroundStyle(theme.colors.text)
-                    .contentTransition(.numericText())
+        let claim = summaryClaim(for: summary, theme: theme)
 
-                Text(summary.decidedCount == 1 ? "PLACE LOGGED" : "PLACES LOGGED")
-                    .appFont(.footnote)
+        HStack(alignment: .top, spacing: AppSpacing.sm + 2) {
+            // The verdict's silhouette as a leading glyph, so the claim is
+            // shape-coded as well as colour-coded before it is read.
+            Image(systemName: claim.symbol)
+                .font(AppTypography.mono(.title2, weight: .semibold))
+                .foregroundStyle(claim.ink)
+                .symbolRenderingMode(.hierarchical)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Text(claim.sentence)
+                    .appFont(.claim)
+                    .foregroundStyle(theme.colors.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text("\(viewModel.trip.destination) · \(viewModel.trip.dateRangeText)")
+                    .appFont(.placeMeta)
                     .foregroundStyle(theme.colors.textSecondary)
-            } else {
-                Text("Nothing judged yet")
-                    .appFont(.title)
-                    .foregroundStyle(theme.colors.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Text("\(viewModel.trip.destination) · \(viewModel.trip.dateRangeText)")
-                .appFont(.placeMeta)
-                .foregroundStyle(theme.colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.top, AppSpacing.xs)
         }
-        .frame(maxWidth: .infinity)
+        .padding(AppSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .skylineGlassCard(tint: claim.ink.opacity(0.18), theme: theme)
         .accessibilityElement(children: .combine)
     }
 
-    private func countTile(verdict: Verdict, count: Int) -> some View {
-        let theme = themeManager.currentTheme
-        let ink = verdict.color(for: theme)
-        let isPresent = count > 0
+    /// The one fact promoted out of the tally, with the ink and the silhouette
+    /// that carry it.
+    private struct SummaryClaim {
+        let sentence: String
+        let symbol: String
+        let ink: Color
+    }
 
-        // Deliberately NOT a `VerdictBadge` inside the tile: the badge is itself
-        // a glass capsule, and glass inside tinted glass inside a glass panel is
-        // three backdrops sampling each other. The icon and label are drawn
-        // directly instead, keeping the redundant colour + silhouette pair.
+    private func summaryClaim(for summary: PlaceReviewViewModel.Summary, theme: AppTheme) -> SummaryClaim {
+        let destination = viewModel.trip.destination
+        let skipped = summary.count(for: .skip)
+
+        // Skip first, always. It is the one thing a saved-places list can never
+        // record, and this is the only place in the app where the product says
+        // so in words.
+        if skipped > 0 {
+            return SummaryClaim(
+                sentence: "You skipped \(skipped) \(skipped == 1 ? "thing" : "things") in \(destination) so nobody else has to.",
+                symbol: Verdict.skip.systemImage,
+                ink: theme.colors.verdictSkip
+            )
+        }
+
+        guard summary.decidedCount > 0 else {
+            return SummaryClaim(
+                sentence: "Nothing in \(destination) is judged yet.",
+                symbol: "circle.dashed",
+                ink: theme.colors.textSecondary
+            )
+        }
+
+        // "Everywhere was worth it" is only true when nothing was merely fine.
+        // Overclaiming here would cost the screen the credibility that makes the
+        // skip sentence land in the first place.
+        if summary.count(for: .fine) == 0 {
+            return SummaryClaim(
+                sentence: "Everywhere you went in \(destination) was worth it.",
+                symbol: Verdict.worthIt.systemImage,
+                ink: theme.colors.verdictWorthIt
+            )
+        }
+
+        return SummaryClaim(
+            sentence: "Nothing in \(destination) was worth skipping.",
+            symbol: Verdict.worthIt.systemImage,
+            ink: theme.colors.verdictWorthIt
+        )
+    }
+
+    /// The numbers, in ONE place and without boxes.
+    ///
+    /// The total used to be the hero and the three verdict counts a row of
+    /// tinted cards beneath it — four numbers spread over two blocks, which is
+    /// precisely what makes a summary read as a stat block. They are one row
+    /// now, and the row is boxless: with a claim above doing the work, a card
+    /// around each number is spreadsheet furniture.
+    ///
+    /// Colour and silhouette per verdict survive the loss of the box, so the row
+    /// still doubles as the legend for every rail in the app.
+    private func countRow(summary: PlaceReviewViewModel.Summary, theme: AppTheme) -> some View {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
+            countColumn(
+                value: summary.decidedCount,
+                label: "LOGGED",
+                symbol: nil,
+                ink: theme.colors.text,
+                isPresent: summary.decidedCount > 0,
+                accessibility: summary.decidedCount == 1 ? "1 place logged" : "\(summary.decidedCount) places logged"
+            )
+
+            ForEach(Verdict.allCases) { verdict in
+                let count = summary.count(for: verdict)
+
+                countColumn(
+                    value: count,
+                    label: verdict.shortName,
+                    symbol: count > 0 ? verdict.systemImage : verdict.systemImageOutline,
+                    ink: verdict.color(for: theme),
+                    isPresent: count > 0,
+                    accessibility: "\(count) \(verdict.displayName)"
+                )
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Inked only when the verdict was actually used. A column scoring zero
+    /// stays neutral, so the colour on this row is a reading of the trip rather
+    /// than decoration that is always on.
+    private func countColumn(
+        value: Int,
+        label: String,
+        symbol: String?,
+        ink: Color,
+        isPresent: Bool,
+        accessibility: String
+    ) -> some View {
+        let theme = themeManager.currentTheme
+
         return VStack(spacing: AppSpacing.xs) {
-            Text("\(count)")
+            Text("\(value)")
                 .appFont(.title, lineLimit: .exactly(1))
                 .foregroundStyle(isPresent ? ink : theme.colors.textSecondary)
                 .contentTransition(.numericText())
 
             HStack(spacing: AppSpacing.xs) {
-                Image(systemName: isPresent ? verdict.systemImage : verdict.systemImageOutline)
-                    .foregroundStyle(isPresent ? ink : theme.colors.textSecondary)
-                    .symbolRenderingMode(.hierarchical)
-                    .imageScale(.small)
+                if let symbol {
+                    Image(systemName: symbol)
+                        .foregroundStyle(isPresent ? ink : theme.colors.textSecondary)
+                        .symbolRenderingMode(.hierarchical)
+                        .imageScale(.small)
+                }
 
-                Text(verdict.shortName)
+                Text(label)
                     .foregroundStyle(isPresent ? theme.colors.text : theme.colors.textSecondary)
             }
-            .appFont(.verdictLabel)
+            // Two lines, so that at accessibility type sizes "WORTH IT" wraps
+            // rather than shrinking towards illegibility.
+            .appFont(.verdictLabel, lineLimit: .exactly(2))
+            .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSpacing.md)
-        .padding(.horizontal, AppSpacing.xs)
-        // Tinted only when the verdict was actually used. A tile scoring zero
-        // stays neutral, so the coloured tiles are a reading of the trip rather
-        // than decoration that is always on.
-        .skylineGlassCard(
-            cornerRadius: AppRadius.lg,
-            tint: isPresent ? ink.opacity(0.22) : nil,
-            theme: theme
-        )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(count) \(verdict.displayName)"))
-    }
-
-    /// Skip is the one thing a saved-places list can never record, and this is
-    /// the only place in the app where the product says so in words.
-    private func skipLine(count: Int, theme: AppTheme) -> some View {
-        let ink = theme.colors.verdictSkip
-
-        return HStack(alignment: .top, spacing: AppSpacing.sm) {
-            Image(systemName: Verdict.skip.systemImage)
-                .font(AppTypography.mono(.title3, weight: .semibold))
-                .foregroundStyle(ink)
-                .symbolRenderingMode(.hierarchical)
-
-            Text("You skipped \(count) \(count == 1 ? "thing" : "things") in \(viewModel.trip.destination) so nobody else has to.")
-                .appFont(.bodySmall, lineLimit: .unlimited)
-                .foregroundStyle(theme.colors.text)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(AppSpacing.md)
-        .skylineGlassCard(tint: ink.opacity(0.18), theme: theme)
-        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(accessibility))
     }
 
     private func laterCallout(count: Int) -> some View {
@@ -905,6 +1149,131 @@ private struct ReviewStamp: View {
     }
 }
 
+// MARK: - Note Composer
+/// The enrichment step, offered strictly AFTER the commit.
+///
+/// The one-tap verdict is the whole point of the deck and nothing is allowed to
+/// gate it, so this is reachable only from the undo toast and only for a
+/// decision that is already written. Cancelling changes nothing; saving adds a
+/// note to the visits that swipe created.
+///
+/// The editor sits on `noteSurface` with an `accent` border rather than in the
+/// same glass as everything else on this screen. Material as taxonomy: what the
+/// user wrote is a different class of thing from what the app derived, and it
+/// should not be possible to confuse the two at a glance.
+private struct NoteComposerSheet: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.dismiss) private var dismiss
+
+    let placeName: String
+    let verdict: Verdict
+    let onSave: (String) -> Void
+
+    @State private var text: String = ""
+    @FocusState private var isFocused: Bool
+
+    @ScaledMetric(relativeTo: .body) private var editorHeight: CGFloat = 148
+
+    var body: some View {
+        let theme = themeManager.currentTheme
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.lg) {
+                header(theme: theme)
+                editor(theme: theme)
+                actions(theme: theme)
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.lg)
+        }
+        .background(theme.colors.background)
+        // A sheet is a separate presentation and inherits neither of these from
+        // the deck behind it.
+        .environment(\.colorScheme, theme.colorScheme)
+        .preferredColorScheme(theme.colorScheme)
+        .onAppear { isFocused = true }
+    }
+
+    private func header(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            VerdictBadge(verdict: verdict)
+
+            Text(placeName)
+                .appFont(.placeName)
+                .foregroundStyle(theme.colors.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Why? You will not remember in a month.")
+                .appFont(.bodySmall)
+                .foregroundStyle(theme.colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func editor(theme: AppTheme) -> some View {
+        let shape = RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+
+        return ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                // TextEditor has no placeholder, and its text inset is fixed, so
+                // the prompt is positioned to land on the same baseline.
+                Text("Best hand drip in Shibuya. Go before 10am.")
+                    .appFont(.body)
+                    .foregroundStyle(theme.colors.textSecondary)
+                    .padding(.horizontal, AppSpacing.sm + 1)
+                    .padding(.top, AppSpacing.sm + 4)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+
+            TextEditor(text: $text)
+                .appFont(.body)
+                .foregroundStyle(theme.colors.text)
+                .tint(theme.colors.primary)
+                .scrollContentBackground(.hidden)
+                .focused($isFocused)
+                .padding(AppSpacing.xs)
+                .frame(minHeight: editorHeight, alignment: .top)
+                .accessibilityLabel(Text("Note"))
+        }
+        .padding(AppSpacing.sm)
+        .background(shape.fill(theme.colors.noteSurface))
+        .overlay(shape.strokeBorder(theme.colors.accent, lineWidth: 1))
+    }
+
+    private func actions(theme: AppTheme) -> some View {
+        HStack(spacing: AppSpacing.sm) {
+            Button {
+                dismiss()
+            } label: {
+                Text("Not now")
+                    .appFont(.bodyBold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.xs)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.capsule)
+
+            Button {
+                onSave(text)
+                dismiss()
+            } label: {
+                Text("Save note")
+                    .appFont(.bodyBold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.xs)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .tint(theme.colors.primary)
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Deck") {
@@ -935,5 +1304,10 @@ private struct ReviewStamp: View {
 
 #Preview("Empty deck") {
     PlaceReviewView(trip: .sample, detectedPlaces: [])
+        .environmentObject(ThemeManager())
+}
+
+#Preview("Note composer") {
+    NoteComposerSheet(placeName: "Kissa Sakaiki", verdict: .worthIt) { _ in }
         .environmentObject(ThemeManager())
 }

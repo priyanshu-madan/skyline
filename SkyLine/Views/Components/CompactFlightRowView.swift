@@ -197,7 +197,7 @@ struct CompactFlightRowView: View {
         }
     }
     .padding()
-    .background(Color.gray.opacity(0.1))
+    .background(AppTheme.dark.colors.background)
     .environmentObject(ThemeManager())
     .environmentObject(FlightStore())
 }

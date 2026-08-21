@@ -10,12 +10,21 @@
 //
 //    .poster   photo-forward tile — the swipe deck and the trip grid.
 //    .row      a standalone glass card — one place floating on its own.
-//    .listRow  a flat row for a continuous list. No surface of its own, a
-//              hairline under the text column, and the verdict rail running the
-//              full height of the leading edge. This is what a hundred-row log
-//              is built from: stacking a hundred glass cards produces a wall of
-//              specular edges, whereas an unbroken column of verdict rails reads
-//              as a single ribbon of judgement.
+//    .listRow  a flat, TEXT-ONLY row for a continuous list. No surface of its
+//              own, a hairline under the text column, and the verdict rail
+//              running the full height of the leading edge. This is what a
+//              hundred-row log is built from: stacking a hundred glass cards
+//              produces a wall of specular edges, whereas an unbroken column of
+//              verdict rails reads as a single ribbon of judgement.
+//
+//  Photographs belong where content is PRESENTED (.poster, .row); text belongs
+//  where content is SCANNED (.listRow). A list row that reserved a thumbnail
+//  spent 68pt of a 375pt screen on a slot that is empty for every place logged
+//  without a photo — and an empty slot drawn with a border is a hole running
+//  down the leading edge, competing with the very rail it sits beside. Dropping
+//  it takes the name column from 216pt (~22 monospaced characters) to 284pt
+//  (~29), which is the difference between "Nakameguro Riverside Walk" fitting
+//  and truncating.
 //
 
 import SwiftUI
@@ -65,8 +74,25 @@ enum PlaceCardStyle {
     case poster
     /// A standalone glass card, for a place shown on its own.
     case row
-    /// A flat row for a continuous list — no surface, hairline separator.
+    /// A flat, text-only row for a continuous list — no surface, no thumbnail,
+    /// hairline separator.
     case listRow
+}
+
+// MARK: - Row Name Alignment
+/// Centres the trailing verdict pip on the place NAME rather than on the row box.
+///
+/// In a text-only row the name is what the verdict is a verdict *about*. A pip
+/// centred on the whole two-line column sits level with the gap between name and
+/// meta, so it reads as belonging to neither.
+private enum PlaceRowNameAlignment: AlignmentID {
+    static func defaultValue(in context: ViewDimensions) -> CGFloat {
+        context[VerticalAlignment.center]
+    }
+}
+
+private extension VerticalAlignment {
+    static let placeRowName = VerticalAlignment(PlaceRowNameAlignment.self)
 }
 
 // MARK: - Place Card
@@ -77,12 +103,14 @@ struct PlaceCard: View {
     let date: Date
     var subtitle: String? = nil
     var verdict: Verdict? = nil
+    /// Ignored by `.listRow` — see the note at the top of the file.
     var image: UIImage? = nil
     var photoCount: Int = 0
     var style: PlaceCardStyle = .poster
     var showsYear: Bool = false
     /// Glyph shown when there is no photograph. Pass the place's category symbol
     /// so an unphotographed place still says what kind of thing it is.
+    /// Unused by `.listRow`, which carries no photo column at all.
     var placeholderSystemImage: String = "photo"
     /// `.listRow` only. Drop it on the last row of a section so the hairline does
     /// not float under the group.
@@ -91,6 +119,11 @@ struct PlaceCard: View {
 
     @ScaledMetric(relativeTo: .body) private var posterHeight: CGFloat = 220
     @ScaledMetric(relativeTo: .body) private var rowThumbSize: CGFloat = 56
+
+    /// Measured height of the poster's caption block, so the scrim can turn solid
+    /// exactly where the caption starts instead of at a guessed fraction that goes
+    /// wrong the moment Dynamic Type or a two-line name changes the block.
+    @State private var captionHeight: CGFloat = 0
 
     /// Fixed, not scaled: the rail is a hairline of colour, and a rail that grew
     /// with Dynamic Type would stop reading as an edge and start reading as a block.
@@ -182,27 +215,12 @@ struct PlaceCard: View {
                 .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
                 .overlay { legibilityGradient }
 
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(name)
-                    .appFont(.placeName)
-                    .foregroundStyle(PhotoOverlay.ink)
-
-                HStack(spacing: AppSpacing.sm) {
-                    Text(dateText)
-                    if let subtitle {
-                        Text("·")
-                        Text(subtitle)
-                    }
-                    if photoCount > 0 {
-                        Text("·")
-                        Label("\(photoCount)", systemImage: "photo.stack")
-                            .labelStyle(.titleAndIcon)
-                    }
+            posterCaption
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    captionHeight = height
                 }
-                .appFont(.placeMeta)
-                .foregroundStyle(PhotoOverlay.ink.opacity(0.85))
-            }
-            .padding(AppSpacing.md)
 
             if let verdict {
                 VerdictBadge(verdict: verdict)
@@ -215,14 +233,63 @@ struct PlaceCard: View {
         .containerShape(cardShape)
     }
 
-    /// Text over an arbitrary photo needs its own contrast floor. The glass card
-    /// behind the photo cannot supply it, so scrim the bottom third directly.
+    private var posterCaption: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            Text(name)
+                .appFont(.placeName)
+                .foregroundStyle(PhotoOverlay.ink)
+
+            HStack(spacing: AppSpacing.sm) {
+                Text(dateText)
+                if let subtitle {
+                    Text("·")
+                    Text(subtitle)
+                }
+                if photoCount > 0 {
+                    Text("·")
+                    Label("\(photoCount)", systemImage: "photo.stack")
+                        .labelStyle(.titleAndIcon)
+                }
+            }
+            .appFont(.placeMeta)
+            .foregroundStyle(PhotoOverlay.ink.opacity(0.85))
+        }
+        .padding(AppSpacing.md)
+    }
+
+    /// Where the scrim stops being a gradient and becomes a plinth, as a fraction
+    /// of the poster's height. The measured caption block, floored so a caption
+    /// that has grown past the photo cannot flood the whole tile, and ceilinged so
+    /// there is always a plinth even before the first geometry pass lands.
+    private var captionPlinthStart: CGFloat {
+        guard posterHeight > 0, captionHeight > 0 else { return 0.66 }
+        return min(0.9, max(0.15, 1 - captionHeight / posterHeight))
+    }
+
+    /// Text over an arbitrary photo needs its own contrast floor, and a *gradient*
+    /// cannot supply one: a photograph's luminance is unknowable, so a partial
+    /// scrim is a bet on the pixels underneath. So the scrim ramps to FULL opacity
+    /// and finishes ramping where the caption begins — the photo visibly becomes
+    /// navy, the caption sits on flat navy, and every contrast ratio in the caption
+    /// is computable rather than hoped for.
+    ///
+    /// The old 0.82 ceiling was the worst of both: enough haze that the "photo"
+    /// behind the caption was already a murky navy band, not enough to make the
+    /// caption's contrast a known quantity.
     private var legibilityGradient: some View {
-        LinearGradient(
+        let plinth = captionPlinthStart
+        // The ramp never starts above the top of the photo, so a very tall caption
+        // shortens the fade instead of clipping it.
+        let ramp = min(0.42, plinth)
+        let start = plinth - ramp
+
+        return LinearGradient(
             stops: [
-                .init(color: PhotoOverlay.scrim.opacity(0), location: 0.35),
-                .init(color: PhotoOverlay.scrim.opacity(0.30), location: 0.62),
-                .init(color: PhotoOverlay.scrim.opacity(0.72), location: 1.0)
+                .init(color: PhotoOverlay.scrim.opacity(0), location: start),
+                .init(color: PhotoOverlay.scrim.opacity(0.22), location: start + ramp * 0.5),
+                .init(color: PhotoOverlay.scrim.opacity(0.68), location: start + ramp * 0.84),
+                .init(color: PhotoOverlay.scrim, location: plinth),
+                .init(color: PhotoOverlay.scrim, location: 1.0)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -239,22 +306,28 @@ struct PlaceCard: View {
         return rowContent(
             theme: theme,
             thumbShape: AnyShape(ConcentricRectangle(corners: .concentric, isUniform: true)),
-            compactMeta: false
+            compactMeta: false,
+            textSpacing: AppSpacing.xs
         )
         .padding(AppSpacing.sm + 2)
         .skylineGlass(.card, in: cardShape, theme: theme)
         .containerShape(cardShape)
     }
 
-    // MARK: - List Row (flat, for continuous lists)
+    // MARK: - List Row (flat, text-only, for continuous lists)
 
     private var listRowBody: some View {
         let theme = themeManager.currentTheme
 
         return rowContent(
             theme: theme,
-            thumbShape: AnyShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)),
-            compactMeta: true
+            // No thumbnail: a scanned row is text. See the note at the top of the file.
+            thumbShape: nil,
+            compactMeta: true,
+            // A visible gap rather than a hairline one, so name and meta read as
+            // two ranks of information instead of one wrapped paragraph. This is
+            // the space the thumbnail used to buy with a border.
+            textSpacing: AppSpacing.sm
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottom) { listSeparator(theme: theme) }
@@ -267,7 +340,7 @@ struct PlaceCard: View {
         if showsSeparator {
             HStack(spacing: 0) {
                 Color.clear
-                    .frame(width: Self.railWidth + Self.rowGutter * 2 + rowThumbSize)
+                    .frame(width: Self.railWidth + Self.rowGutter)
                 Rectangle()
                     .fill(theme.colors.border)
                     .frame(height: 0.5)
@@ -278,29 +351,41 @@ struct PlaceCard: View {
 
     // MARK: - Shared Row Content
 
-    private func rowContent(theme: AppTheme, thumbShape: AnyShape, compactMeta: Bool) -> some View {
+    /// `thumbShape == nil` drops the photo column entirely — the `.listRow` case.
+    private func rowContent(
+        theme: AppTheme,
+        thumbShape: AnyShape?,
+        compactMeta: Bool,
+        textSpacing: CGFloat
+    ) -> some View {
+        // The rail is aligned to the row box so the column of rails stays an
+        // unbroken ribbon; only the row's contents hang off the name.
         HStack(spacing: 0) {
             VerdictRail(verdict: verdict, width: Self.railWidth)
 
-            HStack(spacing: Self.rowGutter) {
-                photoLayer
-                    .frame(width: rowThumbSize, height: rowThumbSize)
-                    .clipShape(thumbShape)
-                    // `surface` sits under two percent off `background` in both
-                    // palettes — correct for a recessed well, not enough to
-                    // describe an edge — so an empty thumbnail gets a hairline to
-                    // hold its shape. A real photograph describes its own edge and
-                    // does not get one.
-                    .overlay {
-                        if image == nil {
-                            thumbShape.stroke(theme.colors.border, lineWidth: 1)
+            HStack(alignment: thumbShape == nil ? .placeRowName : .center, spacing: Self.rowGutter) {
+                if let thumbShape {
+                    photoLayer
+                        .frame(width: rowThumbSize, height: rowThumbSize)
+                        .clipShape(thumbShape)
+                        // `surface` sits under two percent off `background` in both
+                        // palettes — correct for a recessed well, not enough to
+                        // describe an edge — so an empty thumbnail gets a hairline
+                        // to hold its shape. A real photograph describes its own
+                        // edge and does not get one.
+                        .overlay {
+                            if image == nil {
+                                thumbShape.stroke(theme.colors.border, lineWidth: 1)
+                            }
                         }
-                    }
+                }
 
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                VStack(alignment: .leading, spacing: textSpacing) {
                     Text(name)
                         .appFont(.bodyBold, lineLimit: .exactly(1))
                         .foregroundStyle(theme.colors.text)
+                        // Publishes the name's centre so the pip can find it.
+                        .alignmentGuide(.placeRowName) { $0[VerticalAlignment.center] }
 
                     Text(metaText(compact: compactMeta))
                         .appFont(.placeMeta, lineLimit: .exactly(1))
@@ -389,7 +474,9 @@ private struct PlaceCardPressStyle: ButtonStyle {
         PlaceCard(name: "Kissa Sakaiki", date: Date(), subtitle: "Shibuya, Japan · 3 visits", verdict: .worthIt, style: .listRow, showsYear: true, placeholderSystemImage: "cup.and.saucer", onTap: {})
         PlaceCard(name: "Shibuya Sky", date: Date(), subtitle: "Shibuya, Japan", verdict: .fine, style: .listRow, showsYear: true, placeholderSystemImage: "binoculars", onTap: {})
         PlaceCard(name: "Takeshita Street", date: Date(), subtitle: "Harajuku, Japan", verdict: .skip, style: .listRow, showsYear: true, placeholderSystemImage: "bag", onTap: {})
-        PlaceCard(name: "Nakameguro", date: Date(), subtitle: "Meguro, Japan", style: .listRow, showsYear: true, placeholderSystemImage: "map", showsSeparator: false, onTap: {})
+        // 25 characters — the row this style exists to fit. It truncated while a
+        // thumbnail was holding 68pt of the leading edge.
+        PlaceCard(name: "Nakameguro Riverside Walk", date: Date(), subtitle: "Meguro, Japan", style: .listRow, showsYear: true, placeholderSystemImage: "map", showsSeparator: false, onTap: {})
     }
     .padding()
     .environmentObject(ThemeManager())

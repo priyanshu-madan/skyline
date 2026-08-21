@@ -11,6 +11,18 @@
 //  opinion is allowed to change between trips, and this screen is where that
 //  change is visible and editable.
 //
+//  ── Why every place gets a cover ───────────────────────────────────────────
+//
+//  The hero used to be a binary: a photograph, or a flat run of type. But a
+//  place always has a location even when it has no photograph, and the map that
+//  could have been its cover was already being drawn 200pt further down this
+//  same screen. So the cover is a three-step fallback — photograph, then map,
+//  then type — and when the map is promoted to the cover, the duplicate lower
+//  down collapses to an address and a hand-off. A map used as ground is
+//  desaturated and veiled so the caption stays the loud element, and it keeps
+//  the legibility gradient: the reference this comes from can set dark ink
+//  straight onto a pale map, and SkyLine's ink is light.
+//
 //  ── Why this screen used to render DARK CARDS on a LIGHT PAGE ──────────────
 //
 //  Nothing in this file ever named a dark colour. The page was `colors.background`
@@ -43,9 +55,10 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
-// MARK: - On-Photo Ink
-/// A photograph carries its own light: it is a dark-mode context no matter which
-/// theme the app is in, so the caption over one must not flip with the theme.
+// MARK: - On-Cover Ink
+/// A hero cover carries its own light: a photograph, or a map under a scrim, is
+/// a dark-mode context no matter which theme the app is in, so the caption over
+/// one must not flip with the theme.
 ///
 /// These are still tokens — they are the dark palette, pinned deliberately —
 /// rather than `Color.white` / `Color.black` literals, so an audit stays
@@ -53,6 +66,28 @@ import CoreLocation
 private enum PhotoInk {
     static let primary = ThemeColors.dark.text
     static let scrim = ThemeColors.dark.background
+}
+
+// MARK: - Hero Metrics
+private enum HeroMetrics {
+    /// Ground, not subject. A map that reads as a picture of a map competes with
+    /// the name set on top of it.
+    static let mapSaturation: Double = 0.35
+
+    /// `saturation` is a rendering filter, and a `Map` is a platform view rather
+    /// than something SwiftUI draws itself — so the filter is asked for, and then
+    /// a veil in the theme's own ground colour does the muting that does not
+    /// depend on the filter having landed. Both push the tiles the same way:
+    /// toward the page in light, into the night in dark.
+    static let mapVeilOpacity: Double = 0.22
+
+    /// The card lower down wants the street; a cover wants the neighbourhood,
+    /// because a cover reads as a place rather than as a pin.
+    static let mapSpanMeters: CLLocationDistance = 2000
+
+    /// Roughly six lines of body copy. Past this a note fades out rather than
+    /// pushing the visit below it off the screen.
+    static let collapsedNoteHeight: CGFloat = 132
 }
 
 // MARK: - Formatters
@@ -160,11 +195,7 @@ struct PlaceDetailView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.lg) {
-                if let heroAssetIdentifier {
-                    heroCard(theme: theme, assetIdentifier: heroAssetIdentifier)
-                } else {
-                    header(theme: theme)
-                }
+                hero(theme: theme)
 
                 if visits.count > 1 {
                     repeatCard(theme: theme)
@@ -215,53 +246,86 @@ struct PlaceDetailView: View {
 
     // MARK: Hero
 
-    /// The photographed case. Same construction as a deck card — photo clipped
-    /// into a concentric rectangle, legibility gradient, caption laid over the
-    /// bottom third, glass frame — so a place looks like the same object on the
-    /// screen where it was judged and the screen where it is remembered.
+    /// What this place gets to lead with.
+    ///
+    /// Three steps, not two. A photograph is the best cover because it is what
+    /// the user chose to look at; failing that the map is a cover, because
+    /// location is the one asset a place never lacks; only a place with neither
+    /// falls through to type.
+    private enum HeroCover {
+        case photo(String)
+        case map
+        case type
+    }
+
+    private var heroCover: HeroCover {
+        if let heroAssetIdentifier { return .photo(heroAssetIdentifier) }
+        if place.hasValidCoordinate { return .map }
+        return .type
+    }
+
+    /// True when the map has been promoted to the cover, and so must not also be
+    /// drawn as a card further down the same screen.
+    private var heroIsMap: Bool {
+        if case .map = heroCover { return true }
+        return false
+    }
+
     @ViewBuilder
-    private func heroCard(theme: AppTheme, assetIdentifier: String) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            PHAssetImageView(
-                localIdentifier: assetIdentifier,
-                size: .card,
-                contentMode: .fill
-            )
-            .frame(height: heroHeight)
-            .frame(maxWidth: .infinity)
-            .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
-            .overlay { photoLegibilityGradient }
-
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(place.category.displayName.uppercased())
-                    .appFont(.footnote)
-                    .foregroundStyle(PhotoInk.primary.opacity(0.75))
-                    .accessibilityLabel(Text(place.category.displayName))
-
-                Text(place.name)
-                    .appFont(.title, lineLimit: .exactly(2))
-                    .foregroundStyle(PhotoInk.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                // Locality and visit count share one baseline rather than the
-                // count floating in a corner overlay, so a long city name
-                // cannot slide underneath it.
-                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
-                    if !place.displayLocality.isEmpty {
-                        Text(place.displayLocality)
-                            .appFont(.placeMeta, lineLimit: .exactly(1))
-                            .foregroundStyle(PhotoInk.primary.opacity(0.85))
-                    }
-
-                    Spacer(minLength: AppSpacing.sm)
-
-                    Text(summary.visitCountText)
-                        .appFont(.verdictLabel)
-                        .foregroundStyle(PhotoInk.primary.opacity(0.85))
-                }
+    private func hero(theme: AppTheme) -> some View {
+        switch heroCover {
+        case .photo(let assetIdentifier):
+            heroCard(theme: theme) {
+                PHAssetImageView(
+                    localIdentifier: assetIdentifier,
+                    size: .card,
+                    contentMode: .fill
+                )
             }
-            .padding(AppSpacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        case .map:
+            heroCard(theme: theme) {
+                PlaceMapCanvas(
+                    place: place,
+                    verdict: summary.verdict,
+                    spanMeters: HeroMetrics.mapSpanMeters
+                )
+                .saturation(HeroMetrics.mapSaturation)
+                .overlay {
+                    theme.colors.background.opacity(HeroMetrics.mapVeilOpacity)
+                }
+                // The caption already names the place, and the badge already
+                // states the verdict; a second "map showing…" inside the
+                // combined element would only be read out twice.
+                .accessibilityHidden(true)
+            }
+        case .type:
+            header(theme: theme)
+        }
+    }
+
+    /// One hero, two possible covers. Same construction as a deck card — cover
+    /// clipped into a concentric rectangle, legibility gradient, caption laid
+    /// over the bottom third, glass frame — so a place looks like the same
+    /// object on the screen where it was judged and the screen where it is
+    /// remembered, and an unphotographed place looks like a place rather than
+    /// like a gap.
+    @ViewBuilder
+    private func heroCard<Cover: View>(
+        theme: AppTheme,
+        @ViewBuilder cover: () -> Cover
+    ) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            cover()
+                .frame(height: heroHeight)
+                .frame(maxWidth: .infinity)
+                // Gradient BEFORE the clip. An overlay applied after a clip is
+                // not itself clipped, and this one ends at 0.82 opacity — so it
+                // used to paint two square navy corners across the bottom of a
+                // rounded cover.
+                .overlay { photoLegibilityGradient }
+                .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
+
+            heroCaption(theme: theme)
         }
         .padding(AppSpacing.xs)
         .skylineGlassCard(theme: theme)
@@ -270,6 +334,43 @@ struct PlaceDetailView: View {
                 .padding(AppSpacing.sm + 2)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// The plinth: identical over a photograph and over a map, because the ink
+    /// is pinned to the dark palette in both cases and the gradient guarantees
+    /// the ground under it.
+    @ViewBuilder
+    private func heroCaption(theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            Text(place.category.displayName.uppercased())
+                .appFont(.footnote)
+                .foregroundStyle(PhotoInk.primary.opacity(0.75))
+                .accessibilityLabel(Text(place.category.displayName))
+
+            Text(place.name)
+                .appFont(.title, lineLimit: .exactly(2))
+                .foregroundStyle(PhotoInk.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Locality and visit count share one baseline rather than the
+            // count floating in a corner overlay, so a long city name
+            // cannot slide underneath it.
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
+                if !place.displayLocality.isEmpty {
+                    Text(place.displayLocality)
+                        .appFont(.placeMeta, lineLimit: .exactly(1))
+                        .foregroundStyle(PhotoInk.primary.opacity(0.85))
+                }
+
+                Spacer(minLength: AppSpacing.sm)
+
+                Text(summary.visitCountText)
+                    .appFont(.verdictLabel)
+                    .foregroundStyle(PhotoInk.primary.opacity(0.85))
+            }
+        }
+        .padding(AppSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -287,7 +388,10 @@ struct PlaceDetailView: View {
     }
 
     /// A photograph cannot be relied on for contrast, and glass behind it cannot
-    /// help — the picture is on top. This is the contrast floor for the caption.
+    /// help — the picture is on top. This is the contrast floor for the caption,
+    /// and the map cover keeps it: the reference that sets dark ink straight
+    /// onto an unscrimmed map can do that because its map is pale and its ink is
+    /// dark. Both of those are the other way round here.
     private var photoLegibilityGradient: some View {
         LinearGradient(
             stops: [
@@ -303,8 +407,9 @@ struct PlaceDetailView: View {
 
     // MARK: Header
 
-    /// The un-photographed case: type only, and the name gets to be the biggest
-    /// thing on the screen instead.
+    /// The third fallback: no photograph AND no coordinate, so there is no cover
+    /// to be had. Type only, and the name gets to be the biggest thing on the
+    /// screen instead.
     @ViewBuilder
     private func header(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -355,7 +460,7 @@ struct PlaceDetailView: View {
     // MARK: The repeat
 
     /// Only rendered for places visited more than once. Leads with the count,
-    /// then says whether the verdict held or moved.
+    /// then states how the verdict moved and across how many visits it moved.
     @ViewBuilder
     private func repeatCard(theme: AppTheme) -> some View {
         let counts = summary.verdictCounts
@@ -375,9 +480,10 @@ struct PlaceDetailView: View {
             }
             .accessibilityElement(children: .combine)
 
-            Text(didChangeVerdict ? "You changed your mind" : "Same call every time")
-                .appFont(.bodyBold)
+            Text(verdictMovementText)
+                .appFont(.bodyBold, lineLimit: .unlimited)
                 .foregroundStyle(theme.colors.text)
+                .fixedSize(horizontal: false, vertical: true)
 
             if ratedVisitsOldestFirst.count > 1 {
                 verdictTrajectory(theme: theme)
@@ -412,6 +518,37 @@ struct PlaceDetailView: View {
             tint: didChangeVerdict ? nil : summary.verdict.map { $0.color(for: theme).opacity(0.16) },
             theme: theme
         )
+    }
+
+    /// How the opinion moved, and what it moved across.
+    ///
+    /// "You changed your mind" states a movement with no base under it, and a
+    /// swing from Worth it to Skip is a different fact over two visits than over
+    /// six. The badges below carry the base only if the reader stops and counts
+    /// them, so the sentence carries it instead — and it names the endpoints,
+    /// which is the part of the trajectory worth reading at a glance.
+    private var verdictMovementText: String {
+        let rated = ratedVisitsOldestFirst.compactMap { $0.verdict }
+
+        guard let first = rated.first, let last = rated.last, rated.count > 1 else {
+            // One rated visit (or none) among several: there is no trajectory to
+            // describe, only a repeat.
+            return didChangeVerdict ? "You changed your mind" : "Same call every time"
+        }
+
+        let base = "\(rated.count) visits"
+
+        guard didChangeVerdict else {
+            return "Same call across \(base)"
+        }
+
+        // A verdict that left and came back is still a change, but
+        // "Worth it to Worth it" is not a sentence.
+        if first == last {
+            return "Back to \(last.displayName) after \(base)"
+        }
+
+        return "\(first.displayName) to \(last.displayName) over \(base)"
     }
 
     /// Oldest rated verdict on the left, newest on the right.
@@ -477,7 +614,8 @@ struct PlaceDetailView: View {
             guard let verdict = visit.verdict else { return nil }
             return "\(DateFormatter.placeDetailMonthYear.string(from: visit.date)): \(verdict.displayName)"
         }
-        return "Verdict history. " + steps.joined(separator: ", then ")
+        let base = steps.count == 1 ? "1 visit" : "\(steps.count) visits"
+        return "Verdict history across \(base). " + steps.joined(separator: ", then ")
     }
 
     // MARK: Where it is
@@ -489,7 +627,13 @@ struct PlaceDetailView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 if place.hasValidCoordinate {
-                    PlaceLocationMap(place: place, verdict: summary.verdict)
+                    // When the map has been promoted to the cover, drawing it
+                    // again 300pt lower is the same asset twice on one screen.
+                    // The card keeps the address and the hand-off, which are the
+                    // parts the cover cannot carry.
+                    if !heroIsMap {
+                        PlaceLocationMap(place: place, verdict: summary.verdict)
+                    }
                 } else {
                     // Photo-derived places can land without usable coordinates.
                     // Say so rather than dropping a marker on Null Island.
@@ -600,23 +744,27 @@ struct PlaceDetailView: View {
     }
 }
 
-// MARK: - Location Map
-/// A small, non-interactive map with one marker. Interaction is off because this
-/// sits inside a vertical scroll view — a pannable map here would eat the drag.
-private struct PlaceLocationMap: View {
+// MARK: - Map Canvas
+/// The tiles themselves: no frame, no clip, no label of its own, so the same map
+/// can be a 170pt card lower down the screen and a 260pt cover at the top of it
+/// without either one owning the other's geometry.
+///
+/// Interaction is off because both callers sit inside a vertical scroll view —
+/// a pannable map here would eat the drag.
+private struct PlaceMapCanvas: View {
     @EnvironmentObject var themeManager: ThemeManager
 
     let place: Place
     let verdict: Verdict?
-
-    @ScaledMetric(relativeTo: .body) private var mapHeight: CGFloat = 170
+    /// Vertical extent of the visible region.
+    var spanMeters: CLLocationDistance = 900
 
     var body: some View {
         let theme = themeManager.currentTheme
         let region = MKCoordinateRegion(
             center: place.coordinate,
-            latitudinalMeters: 900,
-            longitudinalMeters: 900
+            latitudinalMeters: spanMeters,
+            longitudinalMeters: spanMeters
         )
 
         Map(initialPosition: .region(region), interactionModes: []) {
@@ -624,11 +772,25 @@ private struct PlaceLocationMap: View {
                 .tint(verdict.map { $0.color(for: theme) } ?? theme.colors.accent)
         }
         .mapStyle(.standard(pointsOfInterest: .excludingAll))
-        .frame(height: mapHeight)
-        .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
         .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Map showing \(place.name)"))
+    }
+}
+
+// MARK: - Location Map
+/// A small, non-interactive map with one marker, for the "Where it is" card.
+/// Only rendered when the hero is NOT already a map.
+private struct PlaceLocationMap: View {
+    let place: Place
+    let verdict: Verdict?
+
+    @ScaledMetric(relativeTo: .body) private var mapHeight: CGFloat = 170
+
+    var body: some View {
+        PlaceMapCanvas(place: place, verdict: verdict)
+            .frame(height: mapHeight)
+            .clipShape(ConcentricRectangle(corners: .concentric, isUniform: true))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Map showing \(place.name)"))
     }
 }
 
@@ -641,6 +803,19 @@ private struct VisitCard: View {
     let ordinalLabel: String
     let timeZone: TimeZone
     let onEditNote: () -> Void
+
+    /// The height the note WOULD take if nothing capped it. Measured on the
+    /// uncapped text, so applying the cap cannot change it and the two cannot
+    /// chase each other.
+    @State private var fullNoteHeight: CGFloat = 0
+
+    /// The window the note is allowed. `@ScaledMetric` so the window grows with
+    /// the type rather than swallowing more of the note at every size.
+    @ScaledMetric(relativeTo: .body) private var collapsedNoteHeight: CGFloat = HeroMetrics.collapsedNoteHeight
+
+    private var isNoteTruncated: Bool {
+        fullNoteHeight > collapsedNoteHeight + 1
+    }
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -694,18 +869,62 @@ private struct VisitCard: View {
         VisitDayFormatter.string(from: visit.date, in: timeZone)
     }
 
+    /// A long note is capped by a fade, never by an ellipsis.
+    ///
+    /// A fade says "there is more"; an ellipsis says "we cut this" — and a
+    /// monospaced ellipsis is three characters at a fixed advance, which at this
+    /// size is a visible stutter at the end of a sentence. Nothing is truncated
+    /// in the accessibility tree either: the `Text` still holds the whole note,
+    /// so VoiceOver reads it in full and only the drawing is masked.
+    @ViewBuilder
+    private func noteText(_ note: String, theme: AppTheme) -> some View {
+        Text(note)
+            .appFont(.body, lineLimit: .unlimited)
+            .foregroundStyle(theme.colors.text)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { height in
+                fullNoteHeight = height
+            }
+            // `fixedSize` above means the text keeps its full height whatever is
+            // proposed, so the cap has to clip rather than compress.
+            .frame(maxHeight: isNoteTruncated ? collapsedNoteHeight : nil, alignment: .top)
+            .clipped()
+            .mask(alignment: .top) { noteFade(theme: theme) }
+    }
+
+    /// A mask reads ALPHA only — the colour is irrelevant, so it is taken from a
+    /// token rather than written as a `Color.black` literal, which keeps a
+    /// colour audit of this file mechanical.
+    private func noteFade(theme: AppTheme) -> LinearGradient {
+        let ink = theme.colors.text
+        // 0.73 of a 132pt window is the last ~36pt: about one and a half lines
+        // of body copy, enough for the fall-off to read as deliberate rather
+        // than as a rendering glitch.
+        let stops: [Gradient.Stop] = isNoteTruncated
+            ? [
+                .init(color: ink, location: 0.0),
+                .init(color: ink, location: 0.73),
+                .init(color: ink.opacity(0), location: 1.0)
+              ]
+            : [
+                .init(color: ink, location: 0.0),
+                .init(color: ink, location: 1.0)
+              ]
+
+        return LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
+    }
+
     @ViewBuilder
     private func noteBlock(theme: AppTheme) -> some View {
         if let note = visit.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(note)
-                    .appFont(.body, lineLimit: .unlimited)
-                    .foregroundStyle(theme.colors.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                noteText(note, theme: theme)
 
                 Button(action: onEditNote) {
-                    Label("Edit note", systemImage: "square.and.pencil")
+                    Label(isNoteTruncated ? "Read and edit" : "Edit note", systemImage: "square.and.pencil")
                         .appFont(.footnote)
                 }
                 .buttonStyle(.plain)
@@ -713,19 +932,20 @@ private struct VisitCard: View {
             }
             .padding(AppSpacing.sm + 2)
             .frame(maxWidth: .infinity, alignment: .leading)
-            // A sunken well, not a second card. Opaque `surface` plus one
-            // hairline is the recessed treatment: it reads as a slot the note
-            // was written into rather than an object lifted off the card. The
-            // previous `surface.opacity(0.55)` was an opacity guess standing in
-            // for a `surfaceSunken` token that does not exist yet — and at 55%
-            // it vanished into the glass in light theme.
+            // Material as taxonomy. Everything else on this card is generated —
+            // a date, a source, a verdict, a photo count — and the note is the
+            // one thing on the screen a person actually wrote. Rendering it in
+            // the same glass as four derived facts said they were the same class
+            // of thing. `noteSurface` is warm where the whole app is cool, so
+            // the user's own writing is findable before it is read; `accent`
+            // draws the edge of the page it is written on.
             .background {
                 ConcentricRectangle(corners: .concentric, isUniform: true)
-                    .fill(theme.colors.surface)
+                    .fill(theme.colors.noteSurface)
             }
             .overlay {
                 ConcentricRectangle(corners: .concentric, isUniform: true)
-                    .stroke(theme.colors.border, lineWidth: 1)
+                    .stroke(theme.colors.accent.opacity(0.6), lineWidth: 1)
             }
         } else {
             Button(action: onEditNote) {

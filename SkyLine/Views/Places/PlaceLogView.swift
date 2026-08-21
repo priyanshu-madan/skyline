@@ -79,6 +79,11 @@ private struct PlaceLogStats {
     var placeCount: Int = 0
     var countryCount: Int = 0
     var yearCount: Int = 0
+    /// Endpoints of the log's timeline. The card's identity line states the
+    /// span; the `yearCount` column states its size. They are different facts
+    /// and a log with a two-year gap in it proves they are.
+    var earliestYear: Int?
+    var latestYear: Int?
     var verdictCounts: [Verdict: Int] = [:]
     var unratedCount: Int = 0
 }
@@ -212,7 +217,8 @@ struct PlaceLogView: View {
         .padding(.bottom, AppSpacing.md)
     }
 
-    /// The log as an object: three numbers, then the whole thing as one bar.
+    /// The log as an object: a name, three numbers, then the whole thing as one
+    /// bar.
     ///
     /// The bar is also the legend. It teaches the three verdict colours in the
     /// one place the user is already looking, which is what lets the rows below
@@ -222,21 +228,30 @@ struct PlaceLogView: View {
 
         return SkyLineGlassPanel(spacing: AppSpacing.sm) {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
-                HStack(spacing: 0) {
-                    statColumn(
-                        value: stats.placeCount,
-                        label: stats.placeCount == 1 ? "place" : "places"
-                    )
-                    statDivider
-                    statColumn(
-                        value: stats.countryCount,
-                        label: stats.countryCount == 1 ? "country" : "countries"
-                    )
-                    statDivider
-                    statColumn(
-                        value: stats.yearCount,
-                        label: stats.yearCount == 1 ? "year" : "years"
-                    )
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    identityRow(stats: stats)
+
+                    // No rules between the numbers. A vertical divider is what
+                    // turns three facts into a spreadsheet, and it is furniture
+                    // the numbers do not need: Strava's stat grid and
+                    // Polarsteps' profile row both separate with whitespace
+                    // alone. Dropping it also leaves the distribution bar below
+                    // as the ONLY drawn line on the card, which is what makes
+                    // that line read as the legend rather than as more chrome.
+                    HStack(alignment: .top, spacing: 0) {
+                        statColumn(
+                            value: stats.placeCount,
+                            label: stats.placeCount == 1 ? "place" : "places"
+                        )
+                        statColumn(
+                            value: stats.countryCount,
+                            label: stats.countryCount == 1 ? "country" : "countries"
+                        )
+                        statColumn(
+                            value: stats.yearCount,
+                            label: stats.yearCount == 1 ? "year" : "years"
+                        )
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -255,9 +270,55 @@ struct PlaceLogView: View {
             .skylineGlassCard(theme: theme)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(
-            Text("\(stats.placeCount) places in \(stats.countryCount) countries across \(stats.yearCount) years")
-        )
+        .accessibilityLabel(Text(summaryAccessibilityLabel(stats: stats)))
+    }
+
+    /// What the card IS, said out loud.
+    ///
+    /// Without the dividers the three numbers stop looking like a table, and a
+    /// card that is no longer a table needs to name itself or it reads as three
+    /// loose figures floating above a bar. This is the same move Strava makes
+    /// with the badge on its summary card: one small identity element, top
+    /// left, so everything under it has something to belong to.
+    ///
+    /// The year span rides on the right because it is the one fact the three
+    /// columns underneath cannot state - `yearCount` says how many years the
+    /// log covers, never which ones.
+    private func identityRow(stats: PlaceLogStats) -> some View {
+        let theme = themeManager.currentTheme
+
+        return HStack(alignment: .firstTextBaseline, spacing: AppSpacing.sm) {
+            Text("YOUR LOG")
+                .appFont(.footnote, lineLimit: .exactly(1))
+                .tracking(1.1)
+                .foregroundStyle(theme.colors.textSecondary)
+
+            Spacer(minLength: AppSpacing.sm)
+
+            if let span = yearSpanText(stats: stats) {
+                Text(span)
+                    .appFont(.footnote, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.textSecondary)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// "2026" for a single year, "2019-2026" for a run. Nil when the log has no
+    /// dated place at all, which is the one case where a span would be a lie.
+    private func yearSpanText(stats: PlaceLogStats) -> String? {
+        guard let earliest = stats.earliestYear, let latest = stats.latestYear else { return nil }
+        return earliest == latest ? "\(earliest)" : "\(earliest)\u{2013}\(latest)"
+    }
+
+    /// Spoken form of the whole card, including the identity line that is
+    /// hidden from VoiceOver as a separate element.
+    private func summaryAccessibilityLabel(stats: PlaceLogStats) -> String {
+        var text = "Your log. \(stats.placeCount) places in \(stats.countryCount) countries across \(stats.yearCount) years"
+        if let earliest = stats.earliestYear, let latest = stats.latestYear {
+            text += earliest == latest ? ", \(earliest)" : ", \(earliest) to \(latest)"
+        }
+        return text
     }
 
     private func distributionCaption(stats: PlaceLogStats) -> String {
@@ -268,10 +329,15 @@ struct PlaceLogView: View {
         return "\(stats.unratedCount) \(noun) STILL UNDECIDED"
     }
 
+    /// Leading-aligned, not centred. With the dividers gone the columns need an
+    /// edge of their own to sit on, and the card already has one: the first
+    /// column lines up under "YOUR LOG" and the labels form a second baseline
+    /// straight across. Centred figures in equal thirds only read as a table
+    /// while something is drawn between them.
     private func statColumn(value: Int, label: String) -> some View {
         let theme = themeManager.currentTheme
 
-        return VStack(spacing: AppSpacing.xs) {
+        return VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Text("\(value)")
                 .appFont(.title, lineLimit: .exactly(1))
                 .foregroundStyle(theme.colors.text)
@@ -280,15 +346,8 @@ struct PlaceLogView: View {
                 .appFont(.footnote, lineLimit: .exactly(1))
                 .foregroundStyle(theme.colors.textSecondary)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-    }
-
-    private var statDivider: some View {
-        Rectangle()
-            .fill(themeManager.currentTheme.colors.border)
-            .frame(width: 1, height: 28)
-            .accessibilityHidden(true)
     }
 
     // MARK: - Results Bar
@@ -303,6 +362,14 @@ struct PlaceLogView: View {
 
             Spacer(minLength: AppSpacing.sm)
 
+            // A glass capsule directly beneath a row of glass verdict chips
+            // ranked the reset equal to the thing it resets - same material,
+            // same silhouette, one row apart. Plain type in `primary` reads as
+            // the affordance it is: the way back, not a fourth filter.
+            //
+            // The capsule was also the hit target, so the frame has to put the
+            // 44pt back explicitly. `contentShape` makes the whole 44pt tappable
+            // rather than just the glyph-height text inside it.
             Button {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .light)
                 impactFeedback.impactOccurred()
@@ -313,10 +380,11 @@ struct PlaceLogView: View {
             } label: {
                 Text("Show all")
                     .appFont(.caption, lineLimit: .exactly(1))
-                    .padding(.horizontal, AppSpacing.xs)
+                    .foregroundStyle(theme.colors.primary)
+                    .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.capsule)
+            .buttonStyle(.plain)
             .accessibilityLabel(Text("Clear filters"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -552,6 +620,8 @@ struct PlaceLogView: View {
 
         stats.countryCount = countries.count
         stats.yearCount = years.count
+        stats.earliestYear = years.min()
+        stats.latestYear = years.max()
         return stats
     }
 
