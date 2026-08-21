@@ -68,7 +68,7 @@ struct GoogleSignInConfiguration: Equatable {
     /// Why Google sign-in is not available in this build. Each case carries copy
     /// the UI can show verbatim — the button must explain itself while disabled,
     /// not fail at tap time.
-    enum Problem: Equatable {
+    enum Problem: Error, Equatable {
         case keyMissing
         case placeholderValue(String)
         case malformedClientID(String)
@@ -205,6 +205,10 @@ final class GoogleSignInService: NSObject {
 
     /// Held only so the system doesn't deallocate the session mid-flow.
     private var activeSession: ASWebAuthenticationSession?
+
+    /// `ASWebAuthenticationSession.presentationContextProvider` is a WEAK property,
+    /// so the provider has to be owned here or it is gone before the sheet opens.
+    private var activeAnchorProvider: AnchorProvider?
 
     init(bundle: Bundle = .main) {
         self.configuration = GoogleSignInConfiguration.load(from: bundle)
@@ -349,7 +353,19 @@ final class GoogleSignInService: NSObject {
                 continuation.resume(returning: callbackURL)
             }
 
-            session.presentationContextProvider = self
+            guard let window = Self.anchorWindow() else {
+                // No window means nothing to present into. Resolving it up front
+                // turns that into a visible error instead of a session that opens
+                // against a detached window and silently never appears.
+                _ = once.claim()
+                continuation.resume(throwing: GoogleSignInError.sessionFailedToStart)
+                return
+            }
+
+            let provider = AnchorProvider(window: window)
+            activeAnchorProvider = provider
+            session.presentationContextProvider = provider
+
             // Left false on purpose: an ephemeral session hides the user's existing
             // Google login, so everyone would have to type a password even when
             // Safari already knows them.
@@ -600,20 +616,38 @@ extension GoogleSignInService.IDTokenClaims {
 
 // MARK: - Presentation Anchor
 
-extension GoogleSignInService: ASWebAuthenticationPresentationContextProviding {
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+extension GoogleSignInService {
+    /// The window the sign-in sheet should be presented over, or nil if there
+    /// isn't one.
+    ///
+    /// Prefers the foreground-active scene: `connectedScenes` is an unordered Set,
+    /// so `.first` can hand back a background scene and anchor the sheet to a
+    /// window the user cannot see.
+    static func anchorWindow() -> UIWindow? {
         let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
 
-        // Prefer the foreground-active scene: `connectedScenes.first` is unordered
-        // and can hand back a background scene, which anchors the sheet to a window
-        // the user cannot see.
-        let window = scenes
-            .first { $0.activationState == .foregroundActive }?
-            .keyWindow
+        return scenes.first { $0.activationState == .foregroundActive }?.keyWindow
             ?? scenes.first?.keyWindow
+    }
+}
 
-        return window ?? ASPresentationAnchor()
+/// Owns a window that is already known to exist.
+///
+/// Kept separate from `GoogleSignInService` so the anchor is non-optional: there
+/// is no branch here that has to invent a `UIWindow` to satisfy the protocol, and
+/// therefore no case where the sheet is presented over something detached.
+@MainActor
+private final class AnchorProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let window: UIWindow
+
+    init(window: UIWindow) {
+        self.window = window
+        super.init()
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        window
     }
 }
 

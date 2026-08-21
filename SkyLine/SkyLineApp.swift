@@ -17,6 +17,18 @@ struct SkyLineApp: App {
     @StateObject private var placeStore = PlaceStore.shared
     @State private var isGlobeReady = false
 
+    // MARK: First run
+    //
+    // Read once, from UserDefaults, so the very first frame after sign-in is
+    // already the right one. `OnboardingState` is a plain namespace rather than
+    // a member of the (main-actor isolated) view model precisely so it can be
+    // touched from a `@State` initialiser.
+    @State private var showOnboarding = !OnboardingState.hasSeenOnboarding
+    @State private var onboardingEntryPage: OnboardingPage = .premise
+    /// The globe has reported ready. Kept separately from `isGlobeReady`, which
+    /// is when we ACT on it. See `revealGlobeIfReady()`.
+    @State private var didReceiveGlobeReady = false
+
     var body: some Scene {
         WindowGroup {
             ZStack {
@@ -68,10 +80,10 @@ struct SkyLineApp: App {
                                 }
                             }
                             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("GlobeReady"))) { _ in
-                                // Hide splash when globe is fully loaded
-                                withAnimation(.easeOut(duration: 0.5)) {
-                                    isGlobeReady = true
-                                }
+                                // The globe has finished loading. Whether the
+                                // splash lifts right now is a separate question.
+                                didReceiveGlobeReady = true
+                                revealGlobeIfReady()
                             }
 
                     case .authenticating:
@@ -93,6 +105,36 @@ struct SkyLineApp: App {
                         .transition(.opacity)
                         .zIndex(999)
                 }
+
+                // First-run onboarding.
+                //
+                // AFTER sign-in, never before: it is gated on
+                // `.isAuthenticated`, so an unauthenticated launch still lands
+                // on AuthenticationView exactly as it did.
+                //
+                // Layered ON TOP of ContentView rather than replacing it, so the
+                // WebKit globe boots while the user is reading. The GlobeReady
+                // notification therefore still arrives on its normal schedule
+                // and the user lands on a globe that is already spinning instead
+                // of on a loading screen.
+                if authService.authenticationState.isAuthenticated && showOnboarding {
+                    OnboardingView(startingAt: onboardingEntryPage) {
+                        // `App` is not a `View`, so there is no environment here
+                        // to read accessibilityReduceMotion from.
+                        let animation: Animation? = UIAccessibility.isReduceMotionEnabled
+                            ? nil
+                            : .easeInOut(duration: 0.35)
+                        withAnimation(animation) {
+                            showOnboarding = false
+                        }
+                    }
+                    .environmentObject(themeManager)
+                    .environmentObject(placeStore)
+                    .environmentObject(flightStore)
+                    .environmentObject(authService)
+                    .transition(.opacity)
+                    .zIndex(1000)
+                }
             }
             .preferredColorScheme(themeManager.currentTheme.colorScheme)
             .onAppear {
@@ -106,6 +148,46 @@ struct SkyLineApp: App {
                 // Update bar appearance when theme changes
                 configureImmersiveAppearance(for: theme)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .skyLineOnboardingRequested)) { note in
+                // Re-entry for the user who skipped. Posted by
+                // `OnboardingState.requestPresentation(startingAt:)`, which any
+                // later surface - the place log's empty state, the profile - can
+                // call so skipping the tour never strands them without photo
+                // permission or first-run detection.
+                onboardingEntryPage = (note.object as? OnboardingPage) ?? .detect
+                showOnboarding = true
+            }
+            .onChange(of: showOnboarding) { _, isShowing in
+                if isShowing {
+                    // ContentView's bottom sheet is a modal presentation and
+                    // sits above every zIndex in this stack, so it has to come
+                    // down before the flow is presented over it.
+                    isGlobeReady = false
+                } else {
+                    revealGlobeIfReady()
+                }
+            }
+        }
+    }
+
+    // MARK: - Splash Reveal
+
+    /// Lifts the splash once the globe has reported ready and nothing is
+    /// covering the app.
+    ///
+    /// `isGlobeReady` drives two things: the splash overlay, and the presentation
+    /// of ContentView's bottom sheet. A `.sheet` is a modal presentation that
+    /// renders ABOVE every zIndex in this stack, so letting it rise during
+    /// onboarding would slide the tab bar over the first-run flow. Holding this
+    /// false for the duration keeps ContentView mounted - the WebView keeps
+    /// loading, GlobeReady still arrives - while the sheet stays down.
+    ///
+    /// With no onboarding on screen this is the original behaviour unchanged:
+    /// the notification arrives, the splash fades on the same 0.5s easeOut.
+    private func revealGlobeIfReady() {
+        guard didReceiveGlobeReady, !showOnboarding, !isGlobeReady else { return }
+        withAnimation(.easeOut(duration: 0.5)) {
+            isGlobeReady = true
         }
     }
     

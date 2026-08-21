@@ -147,6 +147,14 @@ struct ThemeColors {
     /// Opaque stand-in for `.glassEffect` when Reduce Transparency is on.
     let glassFallback: Color
 
+    /// Ground for the user's OWN writing.
+    ///
+    /// Material as taxonomy: a note the user typed is a different class of thing
+    /// from generated metadata, and rendering both in the same glass makes the
+    /// one authored thing on the screen indistinguishable from four derived ones.
+    /// Paired with `accent` as its border.
+    let noteSurface: Color
+
     /// Shadow colour for a raised surface.
     ///
     /// Elevation reads differently per theme and cannot be one constant. On
@@ -195,6 +203,7 @@ struct ThemeColors {
         onAccent: Color.appHex(0xFFFFFF),            // 5.8:1 on primary 0x0B63C5
         scrim: Color.black.opacity(0.18),
         glassFallback: Color.appHex(0xF1F4FA),
+        noteSurface: Color.appHex(0xFDF6E8),        // warm cream, 14.9:1 with text
         elevation: Color.black.opacity(0.10)
     )
 
@@ -236,6 +245,7 @@ struct ThemeColors {
         onAccent: Color.appHex(0x08101F),            // 7.1:1 on primary 0x4DA3FF
         scrim: Color.black.opacity(0.35),
         glassFallback: Color.appHex(0x1B2438),
+        noteSurface: Color.appHex(0x241D10),        // warm dark, 11.2:1 with text
         elevation: Color.black.opacity(0.40)
     )
 }
@@ -286,6 +296,11 @@ struct AppTypography {
     // MARK: Place-log typography
     static let placeName = Font.system(.title3, design: .monospaced, weight: .semibold)
     static let placeMeta = Font.system(.caption, design: .monospaced, weight: .regular)
+    /// A whole sentence set at display size. Every other display token caps at
+    /// two lines because it carries a NAME; this one carries a claim and must be
+    /// allowed to wrap.
+    static let claim = Font.system(.title2, design: .monospaced, weight: .semibold)
+
     static let verdictLabel = Font.system(.caption, design: .monospaced, weight: .semibold)
 
     /// Escape hatch for one-off sizes. Always relative to a text style so it still scales.
@@ -327,6 +342,8 @@ enum AppTextStyle {
     case placeName
     case placeMeta
     case verdictLabel
+    /// One sentence, set large, stating a result rather than a measurement.
+    case claim
 
     var font: Font {
         switch self {
@@ -346,6 +363,7 @@ enum AppTextStyle {
         case .placeName: return AppTypography.placeName
         case .placeMeta: return AppTypography.placeMeta
         case .verdictLabel: return AppTypography.verdictLabel
+        case .claim: return AppTypography.claim
         }
     }
 
@@ -354,6 +372,7 @@ enum AppTextStyle {
     var minimumScaleFactor: CGFloat {
         switch self {
         case .titleLarge: return 0.55
+        case .claim: return 0.7
         case .title, .headline, .placeName: return 0.65
         case .flightNumber, .airportCode: return 0.7
         default: return 0.8
@@ -364,6 +383,9 @@ enum AppTextStyle {
     var defaultLineLimit: Int? {
         switch self {
         case .titleLarge, .title, .headline, .placeName: return 2
+        // A sentence, not a name: four lines so a long destination does not
+        // truncate the claim into nonsense.
+        case .claim: return 4
         case .body, .bodySmall: return nil
         default: return 1
         }
@@ -375,7 +397,7 @@ enum AppTextStyle {
         switch self {
         case .verdictLabel, .flightStatus, .footnote, .caption, .captionBold:
             return .accessibility1
-        case .titleLarge, .title:
+        case .titleLarge, .title, .claim:
             return .accessibility3
         default:
             return nil
