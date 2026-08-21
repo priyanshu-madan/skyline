@@ -17,8 +17,13 @@ struct PhotoFetchOutcome: Sendable {
     let totalInRange: Int
     let screenshotsExcluded: Int
     let recoveredFromEXIF: Int
+    /// Assets skipped because the window exceeded `fetchLimit`. Non-zero means
+    /// the result is a SAMPLE of the trip, and the UI must say so - a silent
+    /// sample looks identical to complete coverage.
+    let sampledOut: Int
 
     var located: [PhotoPoint] { points.filter(\.hasLocation) }
+    var wasSampled: Bool { sampledOut > 0 }
 }
 
 // MARK: - Fetcher
@@ -88,7 +93,11 @@ struct PhotoAssetFetcher: Sendable {
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
         options.includeHiddenAssets = false
         options.includeAllBurstAssets = false   // one representative frame per burst
-        options.fetchLimit = configuration.fetchLimit
+        // Deliberately NOT `options.fetchLimit`. Combined with an ascending sort,
+        // a fetch limit keeps the EARLIEST n assets, so a trip over the cap lost
+        // its final days entirely - and silently. Fetch the full range and thin
+        // it evenly below, so an over-cap trip is sampled across its whole span
+        // instead of amputated at one end.
         // Only the user's own library. Shared-album assets are excluded on
         // purpose: they are other people's photos and can be from other cities,
         // which would invent places the user never went.
@@ -101,12 +110,27 @@ struct PhotoAssetFetcher: Sendable {
         let result = PHAsset.fetchAssets(with: options)
         print("🔄 PhotoFetcher: \(result.count) image assets between \(windowStart) and \(windowEnd)")
 
+        // Even stride across the whole window when over the cap. Clustering needs
+        // coverage of the trip, not every frame of it: dropping every other photo
+        // at a place still finds the place, whereas dropping the last three days
+        // loses those places completely.
+        let limit = configuration.fetchLimit
+        let stride = result.count > limit ? Int(ceil(Double(result.count) / Double(limit))) : 1
+        var sampledOut = 0
+        if stride > 1 {
+            print("⚠️ PhotoFetcher: \(result.count) assets exceeds cap \(limit) - sampling every \(stride)th across the window")
+        }
+
         var points: [PhotoPoint] = []
         var screenshots = 0
         var assetsMissingLocation: [PHAsset] = []
-        points.reserveCapacity(result.count)
+        points.reserveCapacity(min(result.count, limit))
 
-        result.enumerateObjects { asset, _, _ in
+        result.enumerateObjects { asset, index, _ in
+            if stride > 1 && index % stride != 0 {
+                sampledOut += 1
+                return
+            }
             let isScreenshot = asset.mediaSubtypes.contains(.photoScreenshot)
             if isScreenshot {
                 screenshots += 1
@@ -172,9 +196,13 @@ struct PhotoAssetFetcher: Sendable {
 
         return PhotoFetchOutcome(
             points: points,
+            // Deliberately the count we KEPT, not the count in the window: the
+            // gap between this and `located.count` is what drives the no-GPS
+            // fallback, and sampled-out assets were never examined either way.
             totalInRange: points.count,
             screenshotsExcluded: screenshots,
-            recoveredFromEXIF: recovered
+            recoveredFromEXIF: recovered,
+            sampledOut: sampledOut
         )
     }
 

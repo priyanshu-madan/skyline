@@ -88,6 +88,7 @@
 		00A7BE41F53D7608D37E74DF /* CountryLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDF2BBF94DC982F63A40207 /* CountryLocator.swift */; };
 		BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1BA39554BEC67B5972698F /* CountryLocatorTests.swift */; };
 		BDA1BA7EC96F0C610F64901D /* TripPlacesSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C4F937D31B9112FB523A6AB /* TripPlacesSection.swift */; };
+		9E34CAE80C7EBA39D4D74B16 /* PhotoSamplingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCE31AC3836F7CCF81771313 /* PhotoSamplingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -194,6 +195,7 @@
 		FEDF2BBF94DC982F63A40207 /* CountryLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CountryLocator.swift; path = "SkyLine/Services/CountryLocator.swift"; sourceTree = SOURCE_ROOT; };
 		4F1BA39554BEC67B5972698F /* CountryLocatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CountryLocatorTests.swift; path = "SkyLineTests/CountryLocatorTests.swift"; sourceTree = SOURCE_ROOT; };
 		8C4F937D31B9112FB523A6AB /* TripPlacesSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripPlacesSection.swift; path = "SkyLine/Views/Places/TripPlacesSection.swift"; sourceTree = SOURCE_ROOT; };
+		FCE31AC3836F7CCF81771313 /* PhotoSamplingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhotoSamplingTests.swift; path = "SkyLineTests/PhotoSamplingTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -297,6 +299,7 @@
 				4DDCA7F5DD435E506DF47936 /* PlaceReviewViewModelTests.swift */,
 				FEDF2BBF94DC982F63A40207 /* CountryLocator.swift */,
 				4F1BA39554BEC67B5972698F /* CountryLocatorTests.swift */,
+				FCE31AC3836F7CCF81771313 /* PhotoSamplingTests.swift */,
 			);
 			path = SkyLine;
 			sourceTree = "<group>";
@@ -708,6 +711,7 @@
 				F23250AD87DAA47814B99E82 /* VerdictTests.swift in Sources */,
 				E83F4F887D997482CD797C56 /* PlaceReviewViewModelTests.swift in Sources */,
 				BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */,
+				9E34CAE80C7EBA39D4D74B16 /* PhotoSamplingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
