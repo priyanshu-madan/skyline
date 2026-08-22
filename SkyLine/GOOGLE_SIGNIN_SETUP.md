@@ -110,9 +110,11 @@ Build and run. On the sign-in screen:
 
 The same reason is printed to the console at launch, prefixed `⚠️ GoogleSignIn:`.
 
-Note that `DebugFlags.bypassAuthentication` is currently `true`, so a DEBUG build
-skips the sign-in screen entirely. Set it to `false` in
-`SkyLine/Configuration/DebugFlags.swift` to see it.
+Note that `DebugFlags.bypassAuthentication` is currently `false`, so a DEBUG
+build shows the sign-in screen normally. Set it to `true` in
+`SkyLine/Configuration/DebugFlags.swift` to skip straight into the app — useful
+when the sign-in path is not what you are working on, but remember that it also
+means the path is not being exercised.
 
 ---
 

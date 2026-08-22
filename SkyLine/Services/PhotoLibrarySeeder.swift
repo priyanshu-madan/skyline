@@ -83,6 +83,31 @@ final class PhotoLibrarySeeder {
             return .success(0)
         }
 
+        // `isSimulator` is NOT sufficient, and assuming it was caused real harm.
+        //
+        // A simulator signed into a real iCloud account is not a sandbox. On
+        // 2026-08-21, 108 synthetic Tokyo photos were written into a simulator
+        // whose iCloud session belonged to the developer; iCloud Photos synced
+        // every one of them up to the account and back down to their actual
+        // iPhone. The app then "found" a trip to Japan they had never taken,
+        // and the photos had to be deleted by hand from a personal library.
+        //
+        // `ubiquityIdentityToken` is non-nil exactly when the device is signed
+        // into iCloud, which is the condition under which anything written to
+        // Photos may leave this machine. Refuse then, whatever the target.
+        guard FileManager.default.ubiquityIdentityToken == nil else {
+            print("""
+            ❌ PhotoSeeder: This simulator is signed into iCloud.
+
+               Photos written here will sync to that account and appear on every
+               device attached to it. Seeding is refused.
+
+               Fix: Settings > [account] > Sign Out on this simulator, or use a
+               simulator that has never been signed in, then seed again.
+            """)
+            return .success(0)
+        }
+
         let access = await PhotoLibraryAuthorizationService.shared.requestAccess()
         guard access == .full else {
             print("❌ PhotoSeeder: Need full library access to seed (got \(access.rawValue))")

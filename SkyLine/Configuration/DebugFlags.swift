@@ -28,7 +28,7 @@ enum DebugFlags {
     /// the genuine sign-in flow.
     ///
     /// This has no effect on Release builds: the whole file is behind `#if DEBUG`.
-    static let bypassAuthentication = true
+    static let bypassAuthentication = false
 
     /// Prints a banner at launch when any flag above is active, so a bypassed
     /// build is never mistaken for a real one while reading the console.
