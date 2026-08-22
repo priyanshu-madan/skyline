@@ -8,6 +8,12 @@
 //  the app has a WebView-hosted globe and a CloudKit sync on the launch path,
 //  so "it launches and settles" is worth asserting.
 //
+//  It must not assert WHICH surface it settles on. The first version waited for
+//  the tab bar, which only appears when `DebugFlags.bypassAuthentication` is on
+//  — so flipping that flag off for device testing failed a suite that had
+//  nothing wrong with it. A launch test that breaks when a debug flag moves is
+//  testing the flag.
+//
 
 import XCTest
 
@@ -22,13 +28,23 @@ final class LaunchSmokeTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        // The DEBUG auth bypass means we land in the app shell rather than the
-        // sign-in wall. The tab bar is the first durable thing to appear; the
-        // globe behind it loads asynchronously in a WebView.
-        let trips = app.staticTexts["Trips"]
+        // Both legitimate destinations. Which one comes up depends on the auth
+        // bypass flag and on whether this simulator has an iCloud account —
+        // neither of which this test has an opinion about.
+        let signIn = app.staticTexts["Welcome to SkyLine"]
+        let shell = app.staticTexts["Trips"]
+
+        // Poll for whichever arrives first. `XCTWaiter` cannot express "any
+        // of these" — it waits for every expectation handed to it — so a plain
+        // deadline loop is both shorter and honest about what it does.
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline && !signIn.exists && !shell.exists {
+            _ = signIn.waitForExistence(timeout: 1)
+        }
+
         XCTAssertTrue(
-            trips.waitForExistence(timeout: 60),
-            "App did not reach its main shell within 60s of launch")
+            signIn.exists || shell.exists,
+            "App reached neither the sign-in wall nor the main shell within 60s")
 
         XCTAssertEqual(app.state, .runningForeground, "App left the foreground during launch")
     }
