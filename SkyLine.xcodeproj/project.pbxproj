@@ -95,6 +95,8 @@
 		B8B21A3D901A2C3DF8811384 /* OnboardingPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7C6136F03946AFB7D306C4 /* OnboardingPage.swift */; };
 		877D1D962DC21AC82CAEBB99 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE007FD8987DDA7084E5E684 /* OnboardingViewModel.swift */; };
 		DB6965288C99734686AB48B2 /* FirstRunDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF459F0CCD94725429D9F63 /* FirstRunDetectionView.swift */; };
+		CD02EFA997D74D63C05AB1F2 /* PendingReviewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */; };
+		8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -208,6 +210,8 @@
 		9C7C6136F03946AFB7D306C4 /* OnboardingPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingPage.swift; path = "SkyLine/Views/Onboarding/OnboardingPage.swift"; sourceTree = SOURCE_ROOT; };
 		EE007FD8987DDA7084E5E684 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = "SkyLine/Views/Onboarding/OnboardingViewModel.swift"; sourceTree = SOURCE_ROOT; };
 		AAF459F0CCD94725429D9F63 /* FirstRunDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirstRunDetectionView.swift; path = "SkyLine/Views/Places/FirstRunDetectionView.swift"; sourceTree = SOURCE_ROOT; };
+		B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStore.swift; path = "SkyLine/Services/PendingReviewStore.swift"; sourceTree = SOURCE_ROOT; };
+		3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStoreTests.swift; path = "SkyLineTests/PendingReviewStoreTests.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -315,6 +319,8 @@
 				A89931736E6DD1F6C18C16F8 /* GoogleSignInService.swift */,
 				51A7B04EF6400C8E82FBB6A0 /* LibraryPlaceDetectionService.swift */,
 				508401CEC80FD94F35289AA2 /* Onboarding */,
+				B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */,
+				3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */,
 			);
 			path = SkyLine;
 			sourceTree = "<group>";
@@ -731,6 +737,7 @@
 				B8B21A3D901A2C3DF8811384 /* OnboardingPage.swift in Sources */,
 				877D1D962DC21AC82CAEBB99 /* OnboardingViewModel.swift in Sources */,
 				DB6965288C99734686AB48B2 /* FirstRunDetectionView.swift in Sources */,
+				CD02EFA997D74D63C05AB1F2 /* PendingReviewStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -744,6 +751,7 @@
 				E83F4F887D997482CD797C56 /* PlaceReviewViewModelTests.swift in Sources */,
 				BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */,
 				9E34CAE80C7EBA39D4D74B16 /* PhotoSamplingTests.swift in Sources */,
+				8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

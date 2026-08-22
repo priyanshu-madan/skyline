@@ -36,6 +36,10 @@ struct PhotoGateAction: Identifiable {
 
     let id = UUID()
     let title: String
+    /// Optional second line, for a consequence the title should not carry.
+    /// Used where a primary action does less than its count implies - e.g.
+    /// reviewing one trip out of several, with the rest kept for later.
+    var subtitle: String? = nil
     var emphasis: Emphasis = .secondary
     let action: () -> Void
 }
@@ -131,10 +135,17 @@ struct PhotoGateActionStack: View {
                             impactFeedback.impactOccurred()
                             action.action()
                         } label: {
-                            Text(action.title)
-                                .appFont(.bodyBold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, AppSpacing.xs)
+                            VStack(spacing: 2) {
+                                Text(action.title)
+                                    .appFont(.bodyBold)
+                                if let subtitle = action.subtitle {
+                                    Text(subtitle)
+                                        .appFont(.caption)
+                                        .opacity(0.75)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, AppSpacing.xs)
                         }
                         .buttonStyle(.glassProminent)
                         .buttonBorderShape(.capsule)

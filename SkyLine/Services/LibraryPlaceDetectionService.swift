@@ -78,7 +78,7 @@ enum LibraryDetectionPhase: String, Sendable {
 /// nothing wrong and must still be offered a way forward. Modelling them as
 /// failures would put an error screen in front of the most fragile moment the
 /// product has.
-enum LibraryDetectionOutcome: String, Sendable {
+enum LibraryDetectionOutcome: String, Codable, Sendable {
     /// Places were found. The normal path.
     case places
     /// The library is empty, or nothing in it is visible to SkyLine.
@@ -103,7 +103,7 @@ enum LibraryDetectionOutcome: String, Sendable {
 /// way. Note that place identity does NOT depend on this: a `DetectedPlace`'s id
 /// comes from its photos, so a verdict survives even if an episode's boundaries
 /// shift by a day when new photos are added.
-struct LibraryEpisode: Identifiable, Hashable, Sendable {
+struct LibraryEpisode: Codable, Identifiable, Hashable, Sendable {
     let id: String
     /// Best-effort label — the locality MapKit returned for the episode's
     /// strongest place. Falls back to the date range, never to a guess.
@@ -159,7 +159,7 @@ struct LibraryEpisode: Identifiable, Hashable, Sendable {
 
 /// Everything needed to write an honest screen, and everything a bug report
 /// would ask for.
-struct LibraryDetectionDiagnostics: Sendable {
+struct LibraryDetectionDiagnostics: Codable, Sendable {
     var assetsInLibrary: Int = 0
     var assetsScanned: Int = 0
     var screenshotsExcluded: Int = 0
@@ -210,7 +210,7 @@ struct LibraryDetectionDiagnostics: Sendable {
 
 // MARK: - Result
 
-struct LibraryDetectionResult: Sendable {
+struct LibraryDetectionResult: Codable, Sendable {
     let outcome: LibraryDetectionOutcome
     let episodes: [LibraryEpisode]
     /// Every detected place across every episode. `tripId` is the episode id.

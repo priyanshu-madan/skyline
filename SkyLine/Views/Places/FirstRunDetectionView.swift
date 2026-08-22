@@ -484,14 +484,34 @@ struct FirstRunDetectionView: View {
         }
     }
 
+    /// "Review 6 places in Shibuya" beats "Review 120 places" when the button
+    /// only starts one trip.
+    private func reviewTitle(tripTitle: String?, count: Int) -> String {
+        let noun = count == 1 ? "1 place" : "\(count) places"
+        guard let tripTitle, !tripTitle.isEmpty else { return "Review \(noun)" }
+        return "Review \(noun) in \(tripTitle)"
+    }
+
     private func summaryActions(_ result: LibraryDetectionResult) -> [PhotoGateAction] {
         var actions: [PhotoGateAction] = []
         let places = result.places.count
 
         if places > 0 {
+            // Name what the button ACTUALLY does. It starts the newest trip, not
+            // all of them - handing someone a 120-card deck is not a review, it
+            // is a chore - but the label used to promise the full count and then
+            // deliver six, which reads as the app losing the rest. The remainder
+            // is kept and offered again from the place log.
+            let newest = result.episodes.first { !result.places(in: $0).isEmpty }
+            let firstCount = newest.map { result.places(in: $0).count } ?? places
+            let remaining = places - firstCount
+
             actions.append(
                 PhotoGateAction(
-                    title: places == 1 ? "Review 1 place" : "Review \(places) places",
+                    title: reviewTitle(tripTitle: newest?.title, count: firstCount),
+                    subtitle: remaining > 0
+                        ? "\(remaining) more kept for later"
+                        : nil,
                     emphasis: .primary
                 ) {
                     onFinish(result)

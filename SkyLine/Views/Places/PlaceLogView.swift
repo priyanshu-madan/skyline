@@ -94,6 +94,7 @@ struct PlaceLogView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @ObservedObject private var placeStore = PlaceStore.shared
+    @ObservedObject private var pendingReview = PendingReviewStore.shared
 
     /// Optional escape hatch for the empty state. When nil the empty state
     /// renders as copy only — `PlaceLogEmptyStateView` hides a button whose
@@ -104,6 +105,10 @@ struct PlaceLogView: View {
     @State private var verdictFilter: Verdict?
     @State private var grouping: PlaceLogGrouping = .country
     @State private var path: [Place] = []
+    /// The trip whose deck is open. A library scan can find twenty trips at
+    /// once; onboarding reviews one, and this is where the rest come back.
+    @State private var resumeEpisode: LibraryEpisode?
+    @State private var isConfirmingDiscard = false
 
     init(onAddTrip: (() -> Void)? = nil) {
         self.onAddTrip = onAddTrip
@@ -128,7 +133,33 @@ struct PlaceLogView: View {
                 }
         }
         .tint(themeManager.currentTheme.colors.primary)
-        .task { await placeStore.syncIfNeeded() }
+        .task {
+            await placeStore.syncIfNeeded()
+            // After the sync, so a verdict recorded on another device retires
+            // its episode here instead of being offered again.
+            pendingReview.pruneDecided()
+        }
+        .fullScreenCover(item: $resumeEpisode) { episode in
+            PlaceReviewView(
+                trip: episode.asTrip(),
+                detectedPlaces: pendingReview.undecidedPlaces(in: episode),
+                onFinish: { _ in pendingReview.markReviewed(episode) }
+            )
+            // A cover is its own presentation and inherits neither the theme
+            // object nor the colour scheme resolved further up.
+            .environmentObject(themeManager)
+            .preferredColorScheme(themeManager.currentTheme.colorScheme)
+        }
+        .confirmationDialog(
+            "Discard what the scan found?",
+            isPresented: $isConfirmingDiscard,
+            titleVisibility: .visible
+        ) {
+            Button("Discard", role: .destructive) { pendingReview.clear() }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text("Finding these took a full pass over your photo library. Getting them back means running it again.")
+        }
     }
 
     // MARK: - Content
@@ -137,10 +168,19 @@ struct PlaceLogView: View {
     private var content: some View {
         if placeStore.places.isEmpty {
             ScrollView {
-                PlaceLogEmptyStateView(
-                    state: .noTrips,
-                    onPrimaryAction: onAddTrip
-                )
+                // Before the empty state, not after it. A user who scanned and
+                // then judged nothing has an empty log AND a full queue, and
+                // "no places yet" is the wrong first thing to read when the
+                // app is holding a hundred of them.
+                VStack(spacing: AppSpacing.lg) {
+                    pendingReviewCard
+
+                    PlaceLogEmptyStateView(
+                        state: .noTrips,
+                        onPrimaryAction: onAddTrip
+                    )
+                }
+                .padding(.horizontal, AppSpacing.md)
                 .padding(.top, AppSpacing.xl)
             }
             .refreshable { await placeStore.forceSync() }
@@ -200,6 +240,11 @@ struct PlaceLogView: View {
     @ViewBuilder
     private func header(stats: PlaceLogStats) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
+            // Outside the `isFiltering` guard: the summary is dropped while
+            // filtering because it describes the log, but this describes work
+            // that is not in the log at all, so a filter cannot contradict it.
+            pendingReviewCard
+
             if !isFiltering {
                 summaryCard(stats: stats)
             }
@@ -215,6 +260,87 @@ struct PlaceLogView: View {
             }
         }
         .padding(.bottom, AppSpacing.md)
+    }
+
+    // MARK: - Resume
+
+    /// The way back into a scan that was never finished.
+    ///
+    /// Detecting places over a real library is a minutes-long pass, and it
+    /// routinely returns more than anyone will judge in one sitting — 120
+    /// places across 21 trips on the library this was built against. Onboarding
+    /// reviews the newest trip and stops, which is right; it used to then throw
+    /// the other twenty away, which was not. This card is the other half of
+    /// that decision.
+    @ViewBuilder
+    private var pendingReviewCard: some View {
+        if let episode = pendingReview.nextEpisode {
+            let theme = themeManager.currentTheme
+            let next = pendingReview.undecidedPlaces(in: episode).count
+            let trips = pendingReview.pendingEpisodes.count
+            let total = pendingReview.pendingPlaceCount
+
+            SkyLineGlassPanel(spacing: AppSpacing.sm) {
+                VStack(alignment: .leading, spacing: AppSpacing.md) {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                        Text("WAITING ON YOU")
+                            .appFont(.footnote, lineLimit: .exactly(1))
+                            .tracking(1.1)
+                            .foregroundStyle(theme.colors.accent)
+
+                        Text(pendingHeadline(trips: trips, places: total))
+                            .appFont(.bodyBold, lineLimit: .exactly(2))
+                            .foregroundStyle(theme.colors.text)
+
+                        Text("Found in your photos. Nothing joins your log until you say so.")
+                            .appFont(.footnote, lineLimit: .exactly(2))
+                            .foregroundStyle(theme.colors.textSecondary)
+                    }
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        resumeEpisode = episode
+                    } label: {
+                        VStack(spacing: 2) {
+                            Text(episode.title)
+                                .appFont(.bodyBold, lineLimit: .exactly(1))
+                            Text(next == 1 ? "1 place" : "\(next) places")
+                                .appFont(.caption, lineLimit: .exactly(1))
+                                .opacity(0.75)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, AppSpacing.xs)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .tint(theme.colors.primary)
+                    .accessibilityLabel(Text("Review \(next) places in \(episode.title)"))
+
+                    // Plain text, not a second capsule. Throwing the scan away
+                    // is a real option but never the one being offered.
+                    Button {
+                        isConfirmingDiscard = true
+                    } label: {
+                        Text("Discard these")
+                            .appFont(.caption, lineLimit: .exactly(1))
+                            .foregroundStyle(theme.colors.textSecondary)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(AppSpacing.md)
+                .frame(maxWidth: .infinity)
+                .skylineGlassCard(theme: theme)
+            }
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private func pendingHeadline(trips: Int, places: Int) -> String {
+        let placeNoun = places == 1 ? "place" : "places"
+        guard trips > 1 else { return "\(places) \(placeNoun) left to judge" }
+        return "\(places) \(placeNoun) across \(trips) trips left to judge"
     }
 
     /// The log as an object: a name, three numbers, then the whole thing as one

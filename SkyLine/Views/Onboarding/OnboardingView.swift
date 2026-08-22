@@ -217,7 +217,10 @@ struct OnboardingView: View {
                     detectedPlaces: detectionResult?.places(in: episode) ?? [],
                     // Fires when the deck runs out AND again from its Done
                     // button. `complete()` guards against the second call.
-                    onFinish: { _ in viewModel.finishDetection() }
+                    onFinish: { _ in
+                        PendingReviewStore.shared.markReviewed(episode)
+                        viewModel.finishDetection()
+                    }
                 )
             }
         }
@@ -231,9 +234,16 @@ struct OnboardingView: View {
         detectionResult = result
         // `episodes` arrives newest-first.
         guard let episode = result.episodes.first(where: { !result.places(in: $0).isEmpty }) else {
+            PendingReviewStore.shared.clear()
             viewModel.finishDetection()
             return
         }
+
+        // Everything this scan found that we are NOT about to review is kept.
+        // Reviewing one trip is right for onboarding; throwing away the minutes
+        // of scanning that produced the other twenty is not, and re-running the
+        // whole pass was previously the only way to get them back.
+        PendingReviewStore.shared.store(result, reviewed: episode)
         reviewEpisode = episode
     }
 
