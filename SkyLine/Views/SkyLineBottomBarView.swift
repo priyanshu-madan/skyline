@@ -133,7 +133,9 @@ struct SkyLineBottomBarView: View {
             
             VStack(spacing: 0) {
                 TabView(selection: $activeTab) {
-                    IndividualTabView(.places)
+                    // Places is built HERE, not through `IndividualTabView`.
+                    // See `PlacesTabPage`.
+                    PlacesTabPage()
                         .tag(SkyLineTab.places)
 
                     IndividualTabView(.trips)
@@ -145,7 +147,48 @@ struct SkyLineBottomBarView: View {
                     IndividualTabView(.profile)
                         .tag(SkyLineTab.profile)
                 }
-                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                // NO `.tabViewStyle(PageTabViewStyle(...))`, and its absence is
+                // load-bearing. Do not put it back.
+                //
+                // The page style backs this TabView with a UICollectionView
+                // (`SwiftUI.PagingCollectionView`) and hosts each tab in a
+                // RECYCLED `UIKitPagingCell`. The Places tab is `PlaceLogView`,
+                // which owns a `NavigationStack`, and SwiftUI bridges that to a
+                // real `UIKitNavigationController` + `UIKitNavigationBar` living
+                // inside that cell.
+                //
+                // This sheet resizes constantly - five detents, and tapping a
+                // tab animates the detent at the same moment as it changes the
+                // page. A resize makes the paging layout momentarily invalid
+                // ("the item height must be less than the height of the
+                // UICollectionView"), which resets the collection view's
+                // contentOffset and makes the pager write `activeTab` back to
+                // `.places` on its own, mid-layout. The Places cell is then
+                // rebuilt inside that same layout pass, and because the page's
+                // view IDENTITY has not changed SwiftUI reuses the existing root
+                // hosting controller - so a SECOND navigation controller adopts
+                // the SAME `UINavigationItem`. Two live `UIKitNavigationBar`s
+                // then claim one item; the first is still in the window, so the
+                // rest of the sheet resize walks the autoresizing chain into it
+                // (`-[UISheetPresentationController _updatePresentedViewFrame]`
+                // -> `-[UINavigationBar layoutSubviews]`), UIKit finds
+                // `topItem.navigationBar != self` and raises
+                // NSInternalInconsistencyException: "Layout requested for
+                // visible navigation bar ... when the top item belongs to a
+                // different navigation bar". SIGABRT, and the reason is only in
+                // the console - never in the .ips.
+                //
+                // The default style is backed by a UITabBarController, whose
+                // child view controllers are created once and RETAINED, so the
+                // navigation stack is hosted exactly once and can never be
+                // duplicated. `TabViewHelper` below was written for exactly that
+                // controller - it casts to `UITabBarController` and strips the
+                // system bar so the hand-rolled `CustomTabBar` is the only one on
+                // screen - and was silently a no-op while the page style was on.
+                //
+                // The cost is that tabs no longer respond to a horizontal swipe;
+                // they change on a tap of `CustomTabBar`, which is how the bar is
+                // driven everywhere else anyway.
                 .background {
                     TabViewHelper()
                 }
@@ -229,21 +272,57 @@ struct SkyLineBottomBarView: View {
         }
     }
     
-    /// Individual Tab View
+    /// The Places page, and the ONLY page not built by `IndividualTabView`.
+    ///
+    /// Splitting it out is not cosmetic. With the page style gone (see the
+    /// TabView above) the four tabs no longer need to share one type, and while
+    /// they DID share one - `_ConditionalContent<placesSubtree, AnyView>`, the
+    /// Places subtree inlined into the same type as the three legacy surfaces -
+    /// type-checking `body` did not terminate: xcodebuild sat in SwiftCompile on
+    /// this file for over ten minutes. Giving Places its own concrete type
+    /// leaves `IndividualTabView` returning a flat `AnyView` and the file
+    /// compiles in the usual couple of minutes.
+    ///
+    /// It also keeps `PlaceLogView` out of the erased branch, which matters for
+    /// a different reason: this view owns a `NavigationStack`, and erasing a
+    /// view that owns navigation destroys its structural identity and makes
+    /// SwiftUI rebuild the stack underneath it. Erase types that are DEEP, never
+    /// views that own navigation.
     @ViewBuilder
+    private func PlacesTabPage() -> some View {
+        // PlaceLogView owns its own NavigationStack, large title, search field
+        // and scroll view. Wrapping it in the shared ScrollView + header that the
+        // other tabs use would give it two titles and two scroll views, so it is
+        // hosted bare.
+        PlaceLogView(onAddTrip: { addTripView = true })
+            .environmentObject(themeManager)
+            .background(.clear)
+            .toolbarVisibility(.hidden, for: .tabBar)
+            .toolbarBackgroundVisibility(.hidden, for: .tabBar)
+    }
+
+    /// Individual Tab View - Trips, Flights and Profile.
+    ///
+    /// Returns `AnyView`, deliberately, and this is load-bearing rather than
+    /// laziness.
+    ///
+    /// Every surface in this file is a @ViewBuilder FUNCTION, and a function is
+    /// not a nominal type boundary the way a `struct: View` is - its whole view
+    /// tree is inlined into whatever calls it. The tabs, each expanding through
+    /// LegacyTabScroll into TripsTabContent / FlightsTabContent /
+    /// ModernFlightDetailContent / boardingPassCard and the eight builders under
+    /// that, all landed in ONE concrete type for `body`. Instantiating that
+    /// type's metadata at launch recursed through `decodeMangledType` until it
+    /// hit the stack guard page: EXC_BAD_ACCESS / SIGSEGV on a real device,
+    /// every launch, before a frame was drawn.
+    ///
+    /// Erasing here cuts those subtrees out of `body`'s type and lets each be
+    /// instantiated separately and shallowly. The real fix is to make these
+    /// surfaces their own `View` structs; until then, do not remove the erasure.
+    /// None of these three owns a navigation stack, so one shared erased type is
+    /// safe for them in a way it is not for Places.
     func IndividualTabView(_ tab: SkyLineTab) -> some View {
-        if tab == .places {
-            // PlaceLogView owns its own NavigationStack, large title, search field
-            // and scroll view. Wrapping it in the shared ScrollView + header below
-            // would give it two titles and two scroll views, so it is hosted bare.
-            PlaceLogView(onAddTrip: { addTripView = true })
-                .environmentObject(themeManager)
-                .background(.clear)
-                .toolbarVisibility(.hidden, for: .tabBar)
-                .toolbarBackgroundVisibility(.hidden, for: .tabBar)
-        } else {
-            LegacyTabScroll(tab)
-        }
+        AnyView(LegacyTabScroll(tab))
     }
 
     /// The Trips / Flights / Profile surfaces, which still share one scroll view
@@ -266,10 +345,10 @@ struct SkyLineBottomBarView: View {
                     // Unreachable: `.places` is routed to PlaceLogView above.
                     EmptyView()
                 case .trips:
-                    TripsTabContent()
+                    AnyView(TripsTabContent())
                 case .flights:
                     if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
-                        ModernFlightDetailContent(flight: selectedFlight, theme: themeManager)
+                        AnyView(ModernFlightDetailContent(flight: selectedFlight, theme: themeManager))
                         .id(flightDetailsViewKey)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                         .clipped()
@@ -284,10 +363,10 @@ struct SkyLineBottomBarView: View {
                             print("\u{1F50D} DEBUG: ViewKey: \(flightDetailsViewKey)")
                         }
                     } else {
-                        FlightsTabContent()
+                        AnyView(FlightsTabContent())
                     }
                 case .profile:
-                    ProfileTabContent()
+                    AnyView(ProfileTabContent())
                 }
             }
             // The tab bar floats over the globe below the slab, so content has to
@@ -797,7 +876,7 @@ struct SkyLineBottomBarView: View {
         return ScrollView {
             VStack(spacing: AppSpacing.lg) {
                 flightDetailHeader(flight: flight, colors: colors)
-                boardingPassCard(flight: flight, appTheme: appTheme)
+                AnyView(boardingPassCard(flight: flight, appTheme: appTheme))
                 flightDetailActions(colors: colors)
             }
             .padding(.top, AppSpacing.md)
@@ -1750,6 +1829,7 @@ private extension SkyLineBottomBarView {
     }
 
 }
+
 
 fileprivate struct TabViewHelper: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
