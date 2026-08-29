@@ -1,0 +1,168 @@
+<title>SkyLine As It Stands</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F7F8FC; --surface:#FFFFFF; --ink:#0E1626; --muted:#5A6480;
+  --line:#DCE2EF; --accent:#0B63C5;
+  --ok:#00727F; --ok-fill:#DCF0F2;
+  --warn:#9A6400; --warn-fill:#F6E9D2;
+  --bad:#8E1B2E; --bad-fill:#F7DFE4;
+  --shadow:rgba(14,22,38,.08);
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0A0F1C; --surface:#151D30; --ink:#E9EDF7; --muted:#99A3BC;
+  --line:#27324B; --accent:#4DA3FF;
+  --ok:#2FD1C4; --ok-fill:#123B3C;
+  --warn:#F2B33D; --warn-fill:#3D3018;
+  --bad:#FF7A6B; --bad-fill:#431F1C;
+  --shadow:rgba(0,0,0,.4);
+}}
+:root[data-theme="dark"]{
+  --ground:#0A0F1C; --surface:#151D30; --ink:#E9EDF7; --muted:#99A3BC;
+  --line:#27324B; --accent:#4DA3FF;
+  --ok:#2FD1C4; --ok-fill:#123B3C;
+  --warn:#F2B33D; --warn-fill:#3D3018;
+  --bad:#FF7A6B; --bad-fill:#431F1C;
+  --shadow:rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.55;
+  margin:0;padding:0 20px 80px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto}
+header{padding:56px 0 30px;border-bottom:1px solid var(--line)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 14px}
+h1{font-family:var(--mono);font-weight:600;font-size:clamp(30px,5vw,44px);line-height:1.12;
+  margin:0 0 18px;letter-spacing:-.02em;text-wrap:balance}
+.lede{font-size:18px;color:var(--muted);max-width:64ch;margin:0}
+.lede strong{color:var(--ink);font-weight:600}
+h2.sec{font-family:var(--mono);font-size:13px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);margin:52px 0 6px;font-weight:600}
+.sec-note{color:var(--muted);font-size:15px;margin:0 0 24px;max-width:66ch}
+
+.def{margin:30px 0 0;background:var(--surface);border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:12px;padding:22px 24px;box-shadow:0 1px 3px var(--shadow)}
+.def p{margin:0;font-size:17px}
+.def p + p{margin-top:12px;color:var(--muted);font-size:15px}
+
+.flow{list-style:none;margin:0;padding:0;counter-reset:s}
+.step{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:14px 0;
+  border-bottom:1px solid var(--line);align-items:start}
+.num{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--muted);
+  background:var(--surface);border:1px solid var(--line);border-radius:99px;
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  font-variant-numeric:tabular-nums}
+.step.bad .num{color:var(--bad);border-color:var(--bad);background:var(--bad-fill)}
+.step b{font-family:var(--mono);font-size:15px;font-weight:600;display:block;margin-bottom:3px}
+.step.bad b{color:var(--bad)}
+.step p{margin:0;color:var(--muted);font-size:15px;max-width:64ch}
+
+.grp{margin-top:34px}
+.grp h3{font-family:var(--mono);font-size:15px;font-weight:600;margin:0 0 12px}
+.stories{list-style:none;margin:0;padding:0}
+.story{display:grid;grid-template-columns:3px 1fr;background:var(--surface);
+  border-bottom:1px solid var(--line)}
+.rail{background:var(--line)}
+.story[data-s="works"] .rail{background:var(--ok)}
+.story[data-s="works, once"] .rail{background:var(--warn)}
+.story[data-s="partial"] .rail{background:var(--warn)}
+.story[data-s="broken"] .rail{background:var(--bad)}
+.sbody{padding:13px 18px}
+.stext{margin:0;font-size:15.5px;display:inline}
+.stext b{font-family:var(--mono);font-weight:600;font-size:13px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.06em;margin-right:6px}
+.badge{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;border-radius:99px;padding:3px 9px;margin-left:8px;white-space:nowrap;
+  display:inline-block;vertical-align:middle}
+.badge.works{background:var(--ok-fill);color:var(--ok)}
+.badge.partial{background:var(--warn-fill);color:var(--warn)}
+.badge[class~="works,"]{background:var(--warn-fill);color:var(--warn)}
+.badge.broken{background:var(--bad-fill);color:var(--bad)}
+.snote{margin:8px 0 0;font-size:14px;color:var(--muted);max-width:72ch}
+
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+.tw{overflow-x:auto}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--line);font-weight:600}
+td{padding:9px 12px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
+td:first-child{font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap}
+td.n{font-variant-numeric:tabular-nums;color:var(--muted);font-family:var(--mono);font-size:13px}
+footer{margin-top:56px;padding-top:24px;border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">What the app does today &middot; 29 Aug 2026</p>
+  <h1>SkyLine as it stands</h1>
+  <p class="lede">Not what it is meant to be &mdash; what it actually does right now, on a real phone.
+  <strong>38 screens, 44 user stories.</strong> Twenty-three work, eight have caveats, thirteen are broken.</p>
+
+  <div class="def">
+    <p><strong>What this app is today:</strong> it reads your photo library, works out the places you spent
+    time in, and deals them to you one card at a time to judge <em>Worth it</em>, <em>Fine</em> or <em>Skip</em>.
+    What you judge becomes a searchable log, grouped by country and year, sitting over a globe.</p>
+    <p>Wrapped around that is a second, older app &mdash; a flight tracker with trips, boarding passes and
+    itineraries. It is roughly half the code and it no longer serves the first thing.</p>
+  </div>
+</header>
+
+<h2 class="sec">The path a new user actually walks</h2>
+<p class="sec-note">Twelve steps from launch to a filled log. Five of them are broken, marked in red.</p>
+
+<ol class="flow">
+ <li class="step"><span class="num">1</span><div><b>Splash</b><p>Checks for a stored credential.</p></div></li>
+ <li class="step bad"><span class="num">2</span><div><b>Sign in</b><p>Usually skipped &mdash; iOS silently re-authenticates a cached Apple credential, so most launches never show this. Google is non-functional.</p></div></li>
+ <li class="step bad"><span class="num">3</span><div><b>Wait for the globe</b><p>The sheet holding the entire app cannot appear until a WebGL globe loads from a CDN. Three-second gate.</p></div></li>
+ <li class="step"><span class="num">4</span><div><b>Onboarding, page 1 &mdash; the premise</b><p>&ldquo;Everywhere you went, and whether it was worth it.&rdquo; Three verdicts shown as peers.</p></div></li>
+ <li class="step"><span class="num">5</span><div><b>Page 2 &mdash; practise a verdict</b><p>A real card and three real chips. Will not advance until you tap one.</p></div></li>
+ <li class="step"><span class="num">6</span><div><b>Page 3 &mdash; photo primer</b><p>Explains what it will read, then the system permission prompt.</p></div></li>
+ <li class="step"><span class="num">7</span><div><b>The scan</b><p>Clusters the whole library by GPS and time into episodes. On this phone: 25,936 photos, ~120 places across 21 trips.</p></div></li>
+ <li class="step"><span class="num">8</span><div><b>Scan summary</b><p>&ldquo;Review 6 places in Shibuya&rdquo;, with the rest kept for later.</p></div></li>
+ <li class="step"><span class="num">9</span><div><b>The deck</b><p>One place per card. Worth it / Fine / Skip, one tap. This part is good.</p></div></li>
+ <li class="step bad"><span class="num">10</span><div><b>Deck summary &mdash; never seen</b><p>The one screen that states the thesis in words is destroyed on the frame it appears, because onboarding advances on <em>deck finished</em> instead of on its Done button.</p></div></li>
+ <li class="step bad"><span class="num">11</span><div><b>The place log</b><p>Everything files under one &ldquo;Unknown&rdquo; country, padded with airports from four demo flights you never took.</p></div></li>
+ <li class="step bad"><span class="num">12</span><div><b>No way back</b><p>The scan cannot be run again. There is no re-entry point anywhere in the app.</p></div></li>
+</ol>
+
+
+<h2 class="sec">User stories</h2>
+<p class="sec-note">Phrased as what a person can do. Status is what the code actually supports &mdash;
+read, traced, and in the core loop&rsquo;s case unit-tested.</p>
+<section class="grp"><h3>Get in</h3><ul class="stories"><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> sign in with Apple so my places are stored in my own iCloud</p><span class="badge works">works</span><p class="snote">But you are almost never shown this screen: iOS silently re-authenticates a cached Apple credential. On a simulator it cannot complete at all, and the error alert is destroyed before it can render.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> sign in with Google</p><span class="badge broken">broken</span><p class="snote">No OAuth client ID is configured, so the button cannot work. It would buy nothing if it did &mdash; CloudKit is keyed to the device&rsquo;s iCloud account, not to who signed in.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> be warned when my device has no iCloud, so I know nothing will sync</p><span class="badge broken">broken</span><p class="snote">The check only guards the Google path, which nobody can complete. Apple sign-in skips it entirely.</p></div></li></ul></section>
+<section class="grp"><h3>Learn what this is</h3><ul class="stories"><li class="story" data-s="partial"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> read what the app is for</p><span class="badge partial">caveats</span><p class="snote">Three pages. The pitch is duplicated across two of them, the Skip idea is explained abstractly rather than shown, and it promises sharing that does not exist.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> practise by tapping a verdict on a sample place</p><span class="badge works">works</span><p class="snote">The strongest part of onboarding. A real card, three real chips, and it will not let you past until you tap one.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> skip onboarding and get on with it</p><span class="badge broken">broken</span><p class="snote">Skipping marks onboarding seen but never marks detection done &mdash; and nothing re-offers it. You are stranded on an empty map with no way to scan.</p></div></li></ul></section>
+<section class="grp"><h3>Find places</h3><ul class="stories"><li class="story" data-s="works, once"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> let SkyLine read my photo library and find everywhere I have been</p><span class="badge works, once">once per install</span><p class="snote">The core premise, and it works: 25,936 photos clustered into episodes by GPS and time. But it runs <em>exactly once per install</em>. The re-entry point is written, documented, and has zero call sites.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> understand what it is about to read before I grant access</p><span class="badge works">works</span><p class="snote">A four-point primer runs before the system prompt: it reads date and location, your whole history, nothing leaves the device.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> watch it work and stop it early</p><span class="badge works">works</span><p class="snote">Live count of photos, trips and places, with &ldquo;Stop and keep these&rdquo; that keeps what it found.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> be told honestly when it finds nothing</p><span class="badge works">works</span><p class="snote">Six distinct endings &mdash; no photos, no locations, no trips, nothing substantial, access denied &mdash; each with its own copy and its own way forward. None framed as an error.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> re-scan later when I have new photos</p><span class="badge broken">broken</span><p class="snote">There is no entry point anywhere in the app. Delete and reinstall is the only way.</p></div></li></ul></section>
+<section class="grp"><h3>Judge them</h3><ul class="stories"><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> judge a place Worth it, Fine or Skip in one tap</p><span class="badge works">works</span><p class="snote">Three 64pt stamps at thumb height, or swipe. The verdict writes immediately; nothing gates it. Well tested.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> undo a verdict I got wrong</p><span class="badge works">works</span><p class="snote">Four-second toast after every card, plus a persistent undo in the top bar.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> say why, at the moment I remember why</p><span class="badge works">works</span><p class="snote">&ldquo;Add a note&rdquo; on the undo toast, one tap away at the only moment you still remember.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> skip a card and decide later</p><span class="badge works">works</span><p class="snote">Deferrals write nothing and re-queue at the end of the deck.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> see what I concluded when the deck runs out</p><span class="badge broken">broken</span><p class="snote">The summary is the only screen that states the product&rsquo;s thesis in words. On the onboarding path it is torn down on the same frame it appears, because onboarding advances on <em>deck finished</em> rather than on the Done button. No first-time user has ever seen it.</p></div></li><li class="story" data-s="partial"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> come back to the places the scan found that I did not get to</p><span class="badge partial">caveats</span><p class="snote">The queue persists correctly and is unit-tested. But it reconciles on an identifier that the store&rsquo;s own dedup silently drops, so cards you already judged replay and their trip never retires.</p></div></li></ul></section>
+<section class="grp"><h3>Look back</h3><ul class="stories"><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> browse everywhere I have been, grouped by country</p><span class="badge broken">broken</span><p class="snote">Every photo-detected place has no country, so they all file under one &ldquo;Unknown&rdquo; heading, the summary card reads 0 countries, and no flags render.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> search my places by name, city or country</p><span class="badge works">works</span></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> filter to just the ones I loved, or just the ones to skip</p><span class="badge works">works</span><p class="snote">The filter chips double as the tally.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> see the whole log as one bar of colour</p><span class="badge works">works</span><p class="snote">And it doubles as the legend for the rails on every row.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> open a place and see every time I went</p><span class="badge works">works</span><p class="snote">Repeat visits get a trajectory card showing how my verdict changed between them.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> read dates in the timezone of the place, not mine</p><span class="badge broken">broken</span><p class="snote">The timezone is never set on photo-detected places, so a 1am Tokyo photo shows in your own timezone.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> write and edit a note on any visit</p><span class="badge works">works</span></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> get directions to a place</p><span class="badge works">works</span></div></li></ul></section>
+<section class="grp"><h3>See it on a globe</h3><ul class="stories"><li class="story" data-s="partial"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> see my logged places on a rotating globe</p><span class="badge partial">caveats</span><p class="snote">Up to 16 name pills and coloured dots. Everything else on the globe is flight-tracker leftovers &mdash; arcs, airport codes, country tinting.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> tap a place on the globe to open it</p><span class="badge broken">broken</span><p class="snote">The tap is received and printed to the console. Nothing else happens.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> reach my log quickly</p><span class="badge broken">broken</span><p class="snote">The sheet the entire app lives in cannot appear until the globe reports ready &mdash; a three-second gate on a WebGL scene fetched from a CDN.</p></div></li></ul></section>
+<section class="grp"><h3>Trips, flights, boarding passes</h3><ul class="stories"><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> create a trip by hand with dates and a destination</p><span class="badge works">works</span><p class="snote">Vestigial: photo episodes already are trips, detected automatically.</p></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> find the places from one trip&rsquo;s photos</p><span class="badge works">works</span><p class="snote">But it requires you to hand-type the trip first &mdash; a leftover concept as a prerequisite for the core loop.</p></div></li><li class="story" data-s="partial"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> keep a day-by-day timeline of what I did</p><span class="badge partial">caveats</span><p class="snote">Attachments are dropped on save, editing an entry erases its coordinates and region, and Edit / Share / Delete on the trip menu are all no-ops.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> scan a boarding pass with my camera</p><span class="badge broken">broken</span><p class="snote">There is no camera code in the app. The button opens a photo picker.</p></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> have a scanned pass read automatically</p><span class="badge broken">broken</span><p class="snote">The default path uploads the photo and your user id to a personal OpenRouter proxy for GPT-4o. The confirmation screen then refuses any pass more than 24 hours old, so past trips can never be logged.</p></div></li><li class="story" data-s="partial"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> see my flights</p><span class="badge partial">caveats</span><p class="snote">Four fabricated demo flights are seeded on first run and imported into your log as airports you have visited.</p></div></li></ul></section>
+<section class="grp"><h3>Account</h3><ul class="stories"><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> switch between light and dark</p><span class="badge works">works</span></div></li><li class="story" data-s="works"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> sign out</p><span class="badge works">works</span></div></li><li class="story" data-s="broken"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> change my display name and photo</p><span class="badge broken">broken</span><p class="snote">The name lives only in UserDefaults and is wiped by sign-out or the next Apple sign-in.</p></div></li><li class="story" data-s="partial"><div class="rail"></div><div class="sbody"><p class="stext"><b>I can</b> see my totals</p><span class="badge partial">caveats</span><p class="snote">Counts trips, countries and flights &mdash; three numbers that read 0 / 0 / 0 for a user who only ever scanned their photos.</p></div></li></ul></section>
+
+<h2 class="sec">Screens</h2>
+<p class="sec-note">Thirty-eight, by area. The count in the third column is how many distinct states
+each one renders &mdash; empty, loading, error, populated &mdash; which is where most of the surface area lives.</p>
+<div class="tw">
+<table>
+<thead><tr><th>Area</th><th>Screens</th><th>States</th></tr></thead>
+<tbody>
+<tr><td>Core loop</td><td>Place log, place detail, verdict deck, deck summary, note composer, visit note editor, empty state</td><td class="n">44</td></tr>
+<tr><td>Finding places</td><td>First-run scan, photo access gate, photo gate notice, per-trip detection</td><td class="n">30</td></tr>
+<tr><td>Getting in</td><td>Splash, sign in, iCloud warning, onboarding</td><td class="n">17</td></tr>
+<tr><td>Shell &amp; globe</td><td>Globe shell, WebView globe, tab bar</td><td class="n">19</td></tr>
+<tr><td>Trips</td><td>Trip list, trip detail, add trip, add entry, edit entry, expanded map, region picker, trip places, empty state, loading</td><td class="n">56</td></tr>
+<tr><td>Flights</td><td>Flight list, boarding pass detail, scan menu, confirm details, empty state, add to trip</td><td class="n">30</td></tr>
+<tr><td>Account</td><td>Profile, settings, edit profile, avatar cropper</td><td class="n">15</td></tr>
+</tbody>
+</table>
+</div>
+
+<footer>
+  Compiled from three passes over the source: a screen and flow inventory, a 70-feature audit, and a
+  challenge pass. Nothing here is inferred from the UI &mdash; every status was traced in code.
+</footer>
+</div>
