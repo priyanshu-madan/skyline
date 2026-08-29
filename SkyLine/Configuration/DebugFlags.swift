@@ -30,9 +30,31 @@ enum DebugFlags {
     /// This has no effect on Release builds: the whole file is behind `#if DEBUG`.
     static let bypassAuthentication = false
 
+    /// Deletes EVERY SkyLine record in the signed-in iCloud account's private
+    /// database at launch, then the local caches. Irreversible.
+    ///
+    /// Exists because there is no other way to get an empty account to test
+    /// first-run behaviour against: a developer cannot reach a user's private
+    /// database, and the Settings entry that would clear it does not reliably
+    /// appear. Turn on, launch once, turn off, reinstall.
+    ///
+    /// Leave this `false` in every commit.
+    static let wipeAllDataOnLaunch = false
+
     /// Prints a banner at launch when any flag above is active, so a bypassed
     /// build is never mistaken for a real one while reading the console.
     static func announceIfActive() {
+        if wipeAllDataOnLaunch {
+            print("""
+
+            ┌──────────────────────────────────────────────────────────┐
+            │  DEBUG BUILD - DATA WIPE ARMED                            │
+            │  This launch deletes the account's SkyLine records.       │
+            │  DebugFlags.wipeAllDataOnLaunch                           │
+            └──────────────────────────────────────────────────────────┘
+
+            """)
+        }
         guard bypassAuthentication else { return }
         print("""
 

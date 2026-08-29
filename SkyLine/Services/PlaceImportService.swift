@@ -61,7 +61,10 @@ class PlaceImportService: ObservableObject {
     ///   3: repair pass - backfills country on places imported before v2
     ///   4: re-run after fixing the race that imported flights before they loaded
     ///   5: treat a blank trip.country as absent so the resolved one is used
-    private let currentImportVersion = 5
+    /// The single source of truth. A second constant here would drift the first
+    /// time this is bumped, and a wipe writing the stale number would re-arm the
+    /// backfill it exists to suppress.
+    static let currentImportVersion = 5
 
     private init() {}
 
@@ -73,14 +76,14 @@ class PlaceImportService: ObservableObject {
     @discardableResult
     func runIfNeeded(flights: [Flight]) async -> Result<PlaceImportSummary, PlaceStoreError> {
         let completedVersion = UserDefaults.standard.integer(forKey: importVersionKey)
-        guard completedVersion < currentImportVersion else {
+        guard completedVersion < Self.currentImportVersion else {
             print("🔄 PlaceImport: Already ran (version \(completedVersion)) - skipping")
             return .success(.empty)
         }
 
         let result = await runImport(flights: flights)
         if case .success = result {
-            UserDefaults.standard.set(currentImportVersion, forKey: importVersionKey)
+            UserDefaults.standard.set(Self.currentImportVersion, forKey: importVersionKey)
         }
         return result
     }

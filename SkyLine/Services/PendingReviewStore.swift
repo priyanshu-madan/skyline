@@ -40,6 +40,23 @@ final class PendingReviewStore: ObservableObject {
 
     private let fileName: String
 
+    /// The file `shared` reads at launch.
+    ///
+    /// Exposed - along with the URL below - so a caller that has to guarantee
+    /// this store is empty can reach the file itself. `DebugDataWipe` is the
+    /// one that needs it: clearing the live instance without removing the file
+    /// leaves a scan's remainder to reload on the next launch, and removing the
+    /// file without clearing the instance leaves it publishing places the
+    /// account no longer has. Both halves, or neither.
+    nonisolated static let defaultFileName = "pending-review.json"
+
+    nonisolated static var defaultFileURL: URL? {
+        FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent(defaultFileName)
+    }
+
     private var fileURL: URL? {
         FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -48,7 +65,7 @@ final class PendingReviewStore: ObservableObject {
     }
 
     private init() {
-        self.fileName = "pending-review.json"
+        self.fileName = Self.defaultFileName
         load()
     }
 

@@ -137,6 +137,15 @@ struct SkyLineApp: App {
                 }
             }
             .preferredColorScheme(themeManager.currentTheme.colorScheme)
+            .task {
+                // Before anything else touches CloudKit, so the wipe is not
+                // racing a sync that would write records straight back.
+                #if DEBUG
+                if DebugFlags.wipeAllDataOnLaunch {
+                    await DebugDataWipe.wipeEverything()
+                }
+                #endif
+            }
             .onAppear {
                 // Enable CloudKit background sync
                 CloudKitService.shared.enableBackgroundSync()
