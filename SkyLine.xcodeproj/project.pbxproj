@@ -96,7 +96,12 @@
 		877D1D962DC21AC82CAEBB99 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE007FD8987DDA7084E5E684 /* OnboardingViewModel.swift */; };
 		DB6965288C99734686AB48B2 /* FirstRunDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF459F0CCD94725429D9F63 /* FirstRunDetectionView.swift */; };
 		CD02EFA997D74D63C05AB1F2 /* PendingReviewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */; };
+		B8ADFC5385F04D958BEB40BF /* BoardingPassPrintedFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54781DF85B44D0C80B18CD5 /* BoardingPassPrintedFields.swift */; };
+		376691BCF8094FB1889A3B7A /* BoardingPassBarcodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */; };
+		817C92F383BC4271A212C465 /* BCBPParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3424C9E463B44E3AB86AD41D /* BCBPParser.swift */; };
 		8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */; };
+		FAF3C30A0F9D42E2BFD5288B /* BoardingPassScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */; };
+		8F2BB947BF0A4CC1BFEAE998 /* BCBPParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */; };
 		A0A9C8029A704EDF8D99451B /* DebugDataWipeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7EA5DBBC94B2793D79971 /* DebugDataWipeTests.swift */; };
 		FA545BE915170894DFB996F3 /* DebugDataWipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383D1A2CC8EA1117A26B2612 /* DebugDataWipe.swift */; };
 /* End PBXBuildFile section */
@@ -213,7 +218,12 @@
 		EE007FD8987DDA7084E5E684 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = "SkyLine/Views/Onboarding/OnboardingViewModel.swift"; sourceTree = SOURCE_ROOT; };
 		AAF459F0CCD94725429D9F63 /* FirstRunDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirstRunDetectionView.swift; path = "SkyLine/Views/Places/FirstRunDetectionView.swift"; sourceTree = SOURCE_ROOT; };
 		B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStore.swift; path = "SkyLine/Services/PendingReviewStore.swift"; sourceTree = SOURCE_ROOT; };
+		F54781DF85B44D0C80B18CD5 /* BoardingPassPrintedFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassPrintedFields.swift; path = "SkyLine/Services/BoardingPassPrintedFields.swift"; sourceTree = SOURCE_ROOT; };
+		43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassBarcodeService.swift; path = "SkyLine/Services/BoardingPassBarcodeService.swift"; sourceTree = SOURCE_ROOT; };
+		3424C9E463B44E3AB86AD41D /* BCBPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BCBPParser.swift; path = "SkyLine/Services/BCBPParser.swift"; sourceTree = SOURCE_ROOT; };
 		3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStoreTests.swift; path = "SkyLineTests/PendingReviewStoreTests.swift"; sourceTree = SOURCE_ROOT; };
+		3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassScanTests.swift; path = "SkyLineTests/BoardingPassScanTests.swift"; sourceTree = SOURCE_ROOT; };
+		AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BCBPParserTests.swift; path = "SkyLineTests/BCBPParserTests.swift"; sourceTree = SOURCE_ROOT; };
 		57E7EA5DBBC94B2793D79971 /* DebugDataWipeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugDataWipeTests.swift; path = "SkyLineTests/DebugDataWipeTests.swift"; sourceTree = SOURCE_ROOT; };
 		383D1A2CC8EA1117A26B2612 /* DebugDataWipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugDataWipe.swift; path = "SkyLine/Services/DebugDataWipe.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -324,7 +334,12 @@
 				51A7B04EF6400C8E82FBB6A0 /* LibraryPlaceDetectionService.swift */,
 				508401CEC80FD94F35289AA2 /* Onboarding */,
 				B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */,
+				F54781DF85B44D0C80B18CD5 /* BoardingPassPrintedFields.swift */,
+				43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */,
+				3424C9E463B44E3AB86AD41D /* BCBPParser.swift */,
 				3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */,
+				3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */,
+				AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */,
 				57E7EA5DBBC94B2793D79971 /* DebugDataWipeTests.swift */,
 				383D1A2CC8EA1117A26B2612 /* DebugDataWipe.swift */,
 			);
@@ -744,6 +759,9 @@
 				877D1D962DC21AC82CAEBB99 /* OnboardingViewModel.swift in Sources */,
 				DB6965288C99734686AB48B2 /* FirstRunDetectionView.swift in Sources */,
 				CD02EFA997D74D63C05AB1F2 /* PendingReviewStore.swift in Sources */,
+				B8ADFC5385F04D958BEB40BF /* BoardingPassPrintedFields.swift in Sources */,
+				376691BCF8094FB1889A3B7A /* BoardingPassBarcodeService.swift in Sources */,
+				817C92F383BC4271A212C465 /* BCBPParser.swift in Sources */,
 				FA545BE915170894DFB996F3 /* DebugDataWipe.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -759,6 +777,8 @@
 				BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */,
 				9E34CAE80C7EBA39D4D74B16 /* PhotoSamplingTests.swift in Sources */,
 				8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */,
+				FAF3C30A0F9D42E2BFD5288B /* BoardingPassScanTests.swift in Sources */,
+				8F2BB947BF0A4CC1BFEAE998 /* BCBPParserTests.swift in Sources */,
 				A0A9C8029A704EDF8D99451B /* DebugDataWipeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
