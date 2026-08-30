@@ -118,7 +118,7 @@ struct BoardingPassConfirmationView: View {
         self.boardingPassData = boardingPassData
         self.onConfirm = onConfirm
         self.onCancel = onCancel
-        self._editedData = State(initialValue: boardingPassData)
+        self._editedData = State(initialValue: Self.normalizedCodes(in: boardingPassData))
 
         // Initialize time picker values from boarding pass data
         let parsedDepartureTime = Self.parseTimeString(boardingPassData.departureTime)
@@ -839,11 +839,21 @@ struct BoardingPassConfirmationView: View {
     /// on dark: 5.8:1 and 7.1:1.
     private func saveButton(theme: AppTheme) -> some View {
         Button {
+            print("💾 Confirm: Save tapped — flight='\(editedData.flightNumber ?? "nil")' dep='\(editedData.departureCode ?? "nil")' arr='\(editedData.arrivalCode ?? "nil")' date=\(String(describing: editedData.departureDate))")
             if validateData() {
+                print("✅ Confirm: validation passed, saving")
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
                 onConfirm(editedData)
             } else {
+                print("""
+                ❌ Confirm: validation FAILED
+                   flightNumber: \(flightNumberError ?? "ok")
+                   departureCode: \(departureCodeError ?? "ok")
+                   arrivalCode: \(arrivalCodeError ?? "ok")
+                   dateTime: \(dateTimeError ?? "ok")
+                   seat: \(seatError ?? "ok")  gate: \(gateError ?? "ok")  terminal: \(terminalError ?? "ok")
+                """)
                 showingValidationErrors = true
             }
         } label: {
@@ -977,6 +987,35 @@ struct BoardingPassConfirmationView: View {
 
     // MARK: - Helper Functions
 
+    /// Puts the machine-readable fields into the form the validators expect.
+    ///
+    /// A confirmation prints a flight number the way a person reads it - "UA 323"
+    /// - but `flightNumberPattern` is `^[A-Z]{2,3}[0-9]{1,4}$`, which has no room
+    /// for a space. The scan was reading United 323 PHL->DEN perfectly and then
+    /// the Save button sat disabled behind "flight number is invalid", which
+    /// reads to the user as the scan having failed.
+    ///
+    /// Applied on the way IN rather than only inside the validator, so the field
+    /// shows the canonical value and whatever is saved matches what was checked.
+    static func normalizedCodes(in data: BoardingPassData) -> BoardingPassData {
+        func squashed(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let cleaned = value
+                .components(separatedBy: .whitespacesAndNewlines)
+                .joined()
+                .uppercased()
+            return cleaned.isEmpty ? nil : cleaned
+        }
+
+        var normalized = data
+        normalized.flightNumber = squashed(data.flightNumber)
+        normalized.departureCode = squashed(data.departureCode)
+        normalized.arrivalCode = squashed(data.arrivalCode)
+        normalized.confirmationCode = squashed(data.confirmationCode)
+        normalized.seat = squashed(data.seat)
+        return normalized
+    }
+
     private func validateData() -> Bool {
         // Clear all errors first
         flightNumberError = nil
@@ -1100,7 +1139,7 @@ struct BoardingPassConfirmationView: View {
 
     private func resetToOriginal() {
         // Reset all data to original boarding pass data
-        editedData = boardingPassData
+        editedData = Self.normalizedCodes(in: boardingPassData)
 
         // Clear all errors
         flightNumberError = nil
@@ -1149,11 +1188,17 @@ struct BoardingPassConfirmationView: View {
         let departureDateTime = Self.combineDateAndTime(date: departureDate, time: departureTime)
         let arrivalDateTime = Self.combineDateAndTime(date: arrivalDate, time: arrivalTime)
 
-        // Check if departure is in the past (more than 24 hours ago)
-        let dayAgo = Date().addingTimeInterval(-24 * 60 * 60)
-        if departureDateTime < dayAgo {
-            return "Departure date seems too far in the past"
-        }
+        // NO "departure is too far in the past" CHECK, and its absence is the
+        // point. It used to reject any pass whose departure was more than 24
+        // hours old, which made logging a flight you had already taken
+        // impossible — you would scan the pass in your pocket on landing and be
+        // told the date "seems too far in the past". Logging past flights is
+        // what this app is for.
+        //
+        // `BusinessRules.allowPastDatesHours` and
+        // `ErrorMessages.departureTooOld` in BoardingPassConfig, and
+        // `ValidationError.departureTooOld`, are left in place: nothing reads
+        // them now, and they are the hook if a bound is ever wanted back.
 
         // Check if arrival is before departure
         if arrivalDateTime <= departureDateTime {

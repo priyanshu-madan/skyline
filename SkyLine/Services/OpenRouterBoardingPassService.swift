@@ -736,6 +736,47 @@ class OpenRouterBoardingPassService: ObservableObject {
         return boardingPassData
     }
     
+    /// Removes a leading weekday so the date formats below have a clean string.
+    ///
+    /// Handles "THU, 26 NOV", "THURSDAY 26 NOV" and "Thu. 26 Nov". Anything that
+    /// does not start with a weekday is returned untouched, so this can run
+    /// unconditionally.
+    static func strippingWeekday(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let upper = trimmed.uppercased()
+        let weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY",
+                        "MON", "TUE", "TUES", "WED", "THU", "THUR", "THURS", "FRI", "SAT", "SUN"]
+        for day in weekdays where upper.hasPrefix(day) {
+            let rest = trimmed.dropFirst(day.count)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " ,.-"))
+            // Only strip when something is left; "SAT" alone is not a date, but
+            // neither is it a weekday we should turn into an empty string.
+            if !rest.isEmpty { return rest }
+        }
+        return trimmed
+    }
+
+    /// Puts a yearless date on the year that lands it closest to today.
+    ///
+    /// A flight in late December scanned in early January belongs to the year
+    /// just gone, not the one just started, so simply stamping the current year
+    /// is wrong for exactly the bookings people scan late.
+    static func anchoringToNearestYear(_ date: Date, now: Date = Date()) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        let parts = calendar.dateComponents([.month, .day, .hour, .minute], from: date)
+        let thisYear = calendar.component(.year, from: now)
+
+        let candidates = [thisYear - 1, thisYear, thisYear + 1].compactMap { year -> Date? in
+            var components = parts
+            components.year = year
+            return calendar.date(from: components)
+        }
+        return candidates.min {
+            abs($0.timeIntervalSince(now)) < abs($1.timeIntervalSince(now))
+        } ?? date
+    }
+
     private func parseDateString(_ primary: String?, fallback: String?, source: String) -> Date? {
         var dateStringToUse: String?
         var dateSource = ""
@@ -753,12 +794,19 @@ class OpenRouterBoardingPassService: ObservableObject {
         }
         
         print("🗓️ OpenRouter: Attempting to parse \(source) date string: '\(dateString)' from \(dateSource)")
-        
+
+        // A booking confirmation writes the date the way a person reads it, and
+        // that almost always leads with a weekday: "THU, 26 NOV". Every format
+        // below describes the date alone, so the weekday has to come off first
+        // or none of them can match - which is exactly how a correctly-read
+        // United flight was thrown away for having an unparseable date.
+        let normalized = Self.strippingWeekday(from: dateString)
+
         var parsedDate: Date?
         
         // Try ISO8601 first
         let iso8601Formatter = ISO8601DateFormatter()
-        parsedDate = iso8601Formatter.date(from: dateString)
+        parsedDate = iso8601Formatter.date(from: normalized)
         
         if parsedDate != nil {
             print("✅ OpenRouter: Successfully parsed \(source) date with ISO8601 format")
@@ -783,7 +831,11 @@ class OpenRouterBoardingPassService: ObservableObject {
                 "MMM-dd",       // APR-08
                 "MMMdd",        // APR08
                 "dd/MMM",       // 08/APR
-                "MMM/dd"        // APR/08
+                "MMM/dd",       // APR/08
+                "d MMM",        // 8 APR - a confirmation does not zero-pad
+                "MMM d",        // APR 8
+                "d MMMM",       // 8 APRIL
+                "MMMM d"        // APRIL 8
             ]
             
             let formatter = DateFormatter()
@@ -791,21 +843,26 @@ class OpenRouterBoardingPassService: ObservableObject {
             
             for format in dateFormats {
                 formatter.dateFormat = format
-                if let date = formatter.date(from: dateString) {
-                    parsedDate = date
+                if let date = formatter.date(from: normalized) {
+                    // A format with no `y` parses into year 2000, because that is
+                    // DateFormatter's reference era - so the flight lands 26 years
+                    // in the past and every downstream date check fails. Re-anchor
+                    // it to the year that puts the flight closest to today, which
+                    // is also what the BCBP parser does with its yearless Julian day.
+                    parsedDate = format.contains("y") ? date : Self.anchoringToNearestYear(date)
                     print("✅ OpenRouter: Successfully parsed \(source) date with format: \(format)")
                     break
                 }
             }
             
             // If we still don't have a date and the string looks like it might need a year
-            if parsedDate == nil && (dateString.contains("APR") || dateString.contains("JAN") || dateString.contains("FEB") || 
-                                   dateString.contains("MAR") || dateString.contains("MAY") || dateString.contains("JUN") ||
-                                   dateString.contains("JUL") || dateString.contains("AUG") || dateString.contains("SEP") ||
-                                   dateString.contains("OCT") || dateString.contains("NOV") || dateString.contains("DEC")) {
+            if parsedDate == nil && (normalized.contains("APR") || normalized.contains("JAN") || normalized.contains("FEB") || 
+                                   normalized.contains("MAR") || normalized.contains("MAY") || normalized.contains("JUN") ||
+                                   normalized.contains("JUL") || normalized.contains("AUG") || normalized.contains("SEP") ||
+                                   normalized.contains("OCT") || normalized.contains("NOV") || normalized.contains("DEC")) {
                 // Try adding current year for partial dates like "08APR"
                 let currentYear = Calendar.current.component(.year, from: Date())
-                let dateStringWithYear = "\(dateString)\(currentYear)"
+                let dateStringWithYear = "\(normalized)\(currentYear)"
                 
                 let yearFormats = ["ddMMMMyyyy", "MMMddyyyy"]
                 for format in yearFormats {
