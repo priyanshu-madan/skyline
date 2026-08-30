@@ -178,11 +178,15 @@ struct ContentView: View {
     // MARK: - Tab Selection Handler
 
     private func handleTabSelection() {
-        // Expand the sheet when a tab button is tapped. Places opens further than
-        // the rest: it is the product surface, and a large title plus a search
-        // field plus a row of places does not fit in 20% of the screen.
+        // Expand the sheet when a tab button is tapped. The PRODUCT surface opens
+        // further than the rest: a large title plus a filter control plus a list
+        // does not fit in 20% of the screen.
+        //
+        // Which tab that is comes from `SkyLineTab.primary`, not a literal. The
+        // app is scoped to boarding-pass scanning, so it is Flights today and it
+        // was Places before; reverting `SkyLineTab.barTabs` reverts this too.
         // `onTabChanged` fires before this, so `currentActiveTab` is already correct.
-        let target: PresentationDetent = currentActiveTab == .places ? .fraction(0.6) : .fraction(0.2)
+        let target: PresentationDetent = currentActiveTab == SkyLineTab.primary ? .fraction(0.6) : .fraction(0.2)
 
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
             if selectedDetent == .height(80) {

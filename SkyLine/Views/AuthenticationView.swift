@@ -29,6 +29,10 @@ struct AuthenticationView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var markGlyph: CGFloat = 56
     @ScaledMetric(relativeTo: .largeTitle) private var markWell: CGFloat = 120
 
+    /// Whether the Google provider appears at all. Off while the app is scoped
+    /// to boarding-pass scanning - see the call site for why.
+    static let showsGoogleSignIn = false
+
     /// `GoogleSignInService` is main-actor isolated, so the properties that read it
     /// are annotated rather than being reached from a nonisolated context.
     @MainActor
@@ -174,27 +178,37 @@ struct AuthenticationView: View {
                         authService.signInWithApple()
                     }
 
-                    SignInProviderButton(
-                        systemImage: "g.circle",
-                        title: "Sign in with Google",
-                        ground: .surface,
-                        isEnabled: googleProblem == nil
-                    ) {
-                        Task { await authService.signInWithGoogle() }
-                    }
-
-                    if let problem = googleProblem {
-                        // The button explains itself while disabled. A tap that
-                        // silently did nothing would read as a broken app.
-                        VStack(spacing: AppSpacing.xs) {
-                            Text(problem.explanation)
-                            Text(problem.remedy)
+                    // Google sign-in is hidden while the app is scoped to
+                    // boarding-pass scanning. No OAuth client ID has ever been
+                    // configured, so the button could only ever render disabled
+                    // with an explanation of its own brokenness - and it buys no
+                    // capability even when it works, because CloudKit's private
+                    // database belongs to the DEVICE's iCloud account, not to
+                    // whoever signed in. Flip this to true to bring it back;
+                    // nothing else was removed.
+                    if Self.showsGoogleSignIn {
+                        SignInProviderButton(
+                            systemImage: "g.circle",
+                            title: "Sign in with Google",
+                            ground: .surface,
+                            isEnabled: googleProblem == nil
+                        ) {
+                            Task { await authService.signInWithGoogle() }
                         }
-                        .appFont(.footnote, lineLimit: .unlimited)
-                        .foregroundStyle(theme.colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 340)
-                        .padding(.top, AppSpacing.xs)
+
+                        if let problem = googleProblem {
+                            // The button explains itself while disabled. A tap
+                            // that silently did nothing would read as broken.
+                            VStack(spacing: AppSpacing.xs) {
+                                Text(problem.explanation)
+                                Text(problem.remedy)
+                            }
+                            .appFont(.footnote, lineLimit: .unlimited)
+                            .foregroundStyle(theme.colors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 340)
+                            .padding(.top, AppSpacing.xs)
+                        }
                     }
                 }
                 .frame(maxWidth: 360)

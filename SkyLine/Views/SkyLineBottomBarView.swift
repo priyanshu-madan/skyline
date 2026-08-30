@@ -42,27 +42,50 @@ extension DateFormatter {
 
 /// Tab Enum for SkyLine
 ///
-/// Places is the product, so it is first and it is the launch tab. Trips stay
-/// because they group places and hold the dates that drive photo clustering.
+/// SCOPED TO BOARDING PASSES. The app is back to its original idea — scan a
+/// boarding pass, store the flight, draw its path on the globe — so Flights is
+/// the product surface and it is the launch tab. Profile stays because settings
+/// and sign-out live there.
 ///
-/// Flights folded into Trips: they are metadata about how you got somewhere, not
-/// a thing you keep a log of, and a fourth slot spent on them would have pushed
-/// Places into a corner of the bar. The case survives — the flight detail screen,
-/// the boarding-pass import and `handleFlightSelectedFromTrip` all route through
-/// it — but it no longer owns a slot. It is reached from the Trips header and
-/// from a trip's flight list, and it lights up the Trips slot while showing.
+/// Places and Trips are HIDDEN AND INERT, not removed: every case, view and
+/// service behind them is still here and still compiles. `barTabs` below is the
+/// single switch — it decides which surfaces get a bar slot, which pages the
+/// TabView builds at all, and where a request for a slot-less surface lands.
+///
+/// TO RESTORE: put `.places` and `.trips` back into `barTabs`. Nothing else in
+/// this file needs changing; the page gating, `barRepresentative`, the default
+/// tab and the Trips back-chevron are all derived from that one array.
 enum SkyLineTab: String, CaseIterable {
     case places = "Places"
     case trips = "Trips"
     case flights = "Flights"
     case profile = "Profile"
 
-    /// The tabs that get a slot in the bar. `flights` is deliberately absent.
-    static let barTabs: [SkyLineTab] = [.places, .trips, .profile]
+    /// The tabs that get a slot in the bar, and — because everything else is
+    /// derived from it — the tabs that exist at all. Scoped to boarding passes:
+    /// `places` and `trips` are deliberately absent. Was `[.places, .trips, .profile]`.
+    static let barTabs: [SkyLineTab] = [.flights, .profile]
+
+    /// The surface the app opens on, and where a request for a hidden surface
+    /// lands. Always a member of `barTabs`.
+    static var primary: SkyLineTab { barTabs.first ?? .flights }
+
+    /// Where a request to show `self` should actually go. A surface with no bar
+    /// slot is disabled for now, so it falls back to the primary surface rather
+    /// than selecting a page the TabView is not building.
+    var resolved: SkyLineTab {
+        SkyLineTab.barTabs.contains(self) ? self : SkyLineTab.primary
+    }
 
     /// The bar slot that should read as selected while this surface is showing.
+    ///
+    /// A surface with a slot lights its own. A slot-less one lights the slot of
+    /// whatever it is a sub-surface of: Flights used to hang off Trips, so when
+    /// Trips has a slot it still does — which is what makes reverting `barTabs`
+    /// restore the previous behaviour here for free.
     var barRepresentative: SkyLineTab {
-        self == .flights ? .trips : self
+        guard !SkyLineTab.barTabs.contains(self) else { return self }
+        return SkyLineTab.barTabs.contains(.trips) ? .trips : SkyLineTab.primary
     }
 
     var symbolImage: String {
@@ -86,7 +109,9 @@ struct SkyLineBottomBarView: View {
     @StateObject private var tripStore = TripStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var tabSelectionNamespace
-    @State private var activeTab: SkyLineTab = .places
+    // Launch tab. Derived from `SkyLineTab.barTabs`, so it follows the scoping
+    // decision instead of being a second place to remember. Was `.places`.
+    @State private var activeTab: SkyLineTab = .primary
     @State private var addTripView: Bool = false
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
@@ -133,13 +158,26 @@ struct SkyLineBottomBarView: View {
             
             VStack(spacing: 0) {
                 TabView(selection: $activeTab) {
+                    // Places and Trips are gated on `SkyLineTab.barTabs` because
+                    // the app is scoped to boarding-pass scanning. Gating the
+                    // PAGE and not just the bar slot is deliberate: an
+                    // unreachable page is still built, and `PlaceLogView` is the
+                    // one that owns a `NavigationStack` + `.searchable` inside
+                    // this constantly-resizing sheet. Keeping it out of the
+                    // shell keeps its store queries and its navigation bar out
+                    // of the shell too. Restore by editing `barTabs` alone.
+                    //
                     // Places is built HERE, not through `IndividualTabView`.
                     // See `PlacesTabPage`.
-                    PlacesTabPage()
-                        .tag(SkyLineTab.places)
+                    if SkyLineTab.barTabs.contains(.places) {
+                        PlacesTabPage()
+                            .tag(SkyLineTab.places)
+                    }
 
-                    IndividualTabView(.trips)
-                        .tag(SkyLineTab.trips)
+                    if SkyLineTab.barTabs.contains(.trips) {
+                        IndividualTabView(.trips)
+                            .tag(SkyLineTab.trips)
+                    }
 
                     IndividualTabView(.flights)
                         .tag(SkyLineTab.flights)
@@ -390,8 +428,11 @@ struct SkyLineBottomBarView: View {
         let theme = themeManager.currentTheme
 
         return VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            // Flights is a sub-surface of Trips now, so it needs a way back.
-            if tab == .flights {
+            // Flights used to be a sub-surface of Trips and needed a way back.
+            // Scoped to boarding-pass scanning, Flights IS the surface and Trips
+            // has no slot to go back to, so the chevron is gated on the same
+            // `barTabs` array — it returns the moment Trips does.
+            if tab == .flights && SkyLineTab.barTabs.contains(.trips) {
                 Button {
                     returnToTrips()
                 } label: {
@@ -501,17 +542,23 @@ struct SkyLineBottomBarView: View {
     }
 
     /// Flights -> Trips, the matching way back out.
+    ///
+    /// Unreachable while the app is scoped to boarding passes (its only caller,
+    /// the header chevron, is gated on `barTabs`). Routed through `.resolved`
+    /// anyway so it can never select a page the TabView is not building.
     private func returnToTrips() {
         let impactFeedback = UIImpactFeedbackGenerator(style: .light)
         impactFeedback.impactOccurred()
+
+        let destination = SkyLineTab.trips.resolved
 
         onGlobeReset?()
         withAnimation(chromeAnimation) {
             selectedFlightForDetails = nil
             flightNavigationContext = .flights
-            activeTab = .trips
+            activeTab = destination
         }
-        onTabChanged?(.trips)
+        onTabChanged?(destination)
     }
 
     // MARK: - Tab Bar
@@ -938,7 +985,10 @@ struct SkyLineBottomBarView: View {
                 selectedDetent = .fraction(0.2)
             case .trip(let trip):
                 selectedFlightForDetails = nil
-                activeTab = .trips
+                // `.resolved` because Trips is hidden while the app is scoped to
+                // boarding passes; this lands back on Flights instead of on a
+                // page the TabView is not building.
+                activeTab = SkyLineTab.trips.resolved
                 selectedDetent = .fraction(0.2)
 
                 tripToReopen = trip
@@ -2004,7 +2054,13 @@ struct BoardingPassMenuContent: View {
                     }
                 }
 
-                if unifiedService.lastResult?.error != nil {
+                // A scan failed only if it produced NO pass. Testing `error != nil`
+                // reported failure on every successful scan of a booking
+                // confirmation: the barcode step always errors for a pass that
+                // was never checked in, and that error outlived the fallback
+                // that went on to read the flight correctly.
+                if unifiedService.lastResult?.data == nil,
+                   unifiedService.lastResult?.error != nil {
                     // Inline, not a filled 10%-error banner. A tinted block reads
                     // as warm mud on navy and as a Post-it on paper; an icon plus
                     // `error`-coloured text reads correctly in both.

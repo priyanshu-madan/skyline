@@ -9,6 +9,22 @@ import SwiftUI
 import CloudKit
 import AuthenticationServices
 
+/// Whether the first-run onboarding flow runs at all.
+///
+/// OFF because the app is scoped back to its original idea: scan a boarding
+/// pass, store the flight, draw its path on the globe. Onboarding's third page
+/// hands off to `FirstRunDetectionView`, which scans the user's WHOLE photo
+/// library looking for places — nothing to do with boarding passes, and not
+/// something to run on first launch of a flight logger.
+///
+/// Nothing is deleted: `OnboardingView`, `OnboardingViewModel`, `OnboardingPage`
+/// and `FirstRunDetectionView` all still exist and still compile, and
+/// `OnboardingState`'s two flags are untouched in UserDefaults. This constant
+/// gates the only two places `showOnboarding` can become true — the first-run
+/// read below, and the `.skyLineOnboardingRequested` re-entry — so flipping it
+/// to `true` restores the flow exactly as it was.
+private let skyLineFirstRunOnboardingEnabled = false
+
 @main
 struct SkyLineApp: App {
     @StateObject private var themeManager = ThemeManager()
@@ -23,7 +39,7 @@ struct SkyLineApp: App {
     // already the right one. `OnboardingState` is a plain namespace rather than
     // a member of the (main-actor isolated) view model precisely so it can be
     // touched from a `@State` initialiser.
-    @State private var showOnboarding = !OnboardingState.hasSeenOnboarding
+    @State private var showOnboarding = skyLineFirstRunOnboardingEnabled && !OnboardingState.hasSeenOnboarding
     @State private var onboardingEntryPage: OnboardingPage = .premise
     /// The globe has reported ready. Kept separately from `isGlobeReady`, which
     /// is when we ACT on it. See `revealGlobeIfReady()`.
@@ -117,6 +133,9 @@ struct SkyLineApp: App {
                 // notification therefore still arrives on its normal schedule
                 // and the user lands on a globe that is already spinning instead
                 // of on a loading screen.
+                // `showOnboarding` can only be true when
+                // `skyLineFirstRunOnboardingEnabled` is — see the two sites that
+                // set it. The view below is intact and unreferenced-but-alive.
                 if authService.authenticationState.isAuthenticated && showOnboarding {
                     OnboardingView(startingAt: onboardingEntryPage) {
                         // `App` is not a `View`, so there is no environment here
@@ -158,6 +177,12 @@ struct SkyLineApp: App {
                 configureImmersiveAppearance(for: theme)
             }
             .onReceive(NotificationCenter.default.publisher(for: .skyLineOnboardingRequested)) { note in
+                // Scoped to boarding-pass scanning: the flow is off, so a
+                // re-entry request is ignored rather than raising an overlay
+                // that will not draw. Without this guard `showOnboarding` would
+                // go true, `onChange` would pull `isGlobeReady` down, and the
+                // sheet would never come back up.
+                guard skyLineFirstRunOnboardingEnabled else { return }
                 // Re-entry for the user who skipped. Posted by
                 // `OnboardingState.requestPresentation(startingAt:)`, which any
                 // later surface - the place log's empty state, the profile - can
