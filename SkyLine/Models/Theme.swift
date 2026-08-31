@@ -251,9 +251,9 @@ struct ThemeColors {
 }
 
 // MARK: - Typography
-/// Every token keeps its original NAME and near-original optical size, but is now
-/// expressed against a `Font.TextStyle` so it scales with Dynamic Type instead of
-/// being frozen at a point size.
+/// Every token keeps its original NAME and near-original optical size. The face is
+/// Geist Mono, bundled with the app; the size is always declared `relativeTo:` a
+/// `Font.TextStyle` so it scales with Dynamic Type instead of being frozen.
 ///
 /// Fixed-size monospaced type is what caused "Welcome to SkyLine" to render as
 /// "Welcome to SkyLi…" (AuthenticationView.swift:48): monospaced advance width is
@@ -261,51 +261,115 @@ struct ThemeColors {
 /// Fonts alone cannot fix that — use the `.appFont(_:)` modifier below, which pairs
 /// each token with a line limit, a minimum scale factor and tightening.
 ///
-/// Size mapping (at Dynamic Type "Large", the default):
-///   titleLarge   34 -> .largeTitle   34    exact
-///   title        28 -> .title        28    exact
-///   headline     20 -> .title3       20    exact
-///   body         16 -> .callout      16    exact
-///   bodyBold     16 -> .callout      16    exact
-///   bodySmall    14 -> .subheadline  15    +1
-///   caption      12 -> .caption      12    exact
-///   captionBold  12 -> .caption      12    exact
-///   footnote     10 -> .caption2     11    +1
-///   flightNumber 18 -> .headline     17    -1
-///   airportCode  16 -> .callout      16    exact
-///   flightTime   14 -> .subheadline  15    +1
-///   flightStatus 12 -> .caption      12    exact
+/// Size mapping (at Dynamic Type "Large", the default). The point size is now
+/// stated outright from `Metrics` rather than inherited from a system text style,
+/// so the nominal size a token advertises and the size it actually renders at are
+/// the same number — which is what `@ScaledMetric(relativeTo:)` has always assumed.
+/// The `relativeTo:` column is unchanged and is what keeps Dynamic Type working.
+///
+///   token         size   relativeTo     was (system)
+///   titleLarge     34 -> .largeTitle    34   same
+///   title          28 -> .title         28   same
+///   headline       20 -> .title3        20   same
+///   body           16 -> .callout       16   same
+///   bodyBold       16 -> .callout       16   same
+///   bodySmall      14 -> .subheadline   15   -1, now matches Metrics.bodySmall
+///   caption        12 -> .caption       12   same
+///   captionBold    12 -> .caption       12   same
+///   footnote       10 -> .caption2      11   -1, now matches Metrics.footnote
+///   flightNumber   16 -> .headline      17   -1
+///   airportCode    16 -> .callout       16   same
+///   flightTime     14 -> .subheadline   15   -1
+///   flightStatus   12 -> .caption       12   same
+///   placeName      20 -> .title3        20   same
+///   placeMeta      12 -> .caption       12   same
+///   claim          20 -> .title2        22   -2
+///   verdictLabel   12 -> .caption       12   same
 struct AppTypography {
+    // MARK: Faces
+    // The four bundled Geist Mono faces, by the weight each one stands in for.
+    //
+    // These are POSTSCRIPT names, not filenames, and every one of them must also
+    // be listed under `UIAppFonts` in Info.plist and ship in the target's
+    // Resources build phase. `Font.custom` never fails loudly: a name that is
+    // missing, unregistered or misspelled silently resolves to the system font,
+    // so the swap looks like it worked and you get SF Mono forever.
+    //
+    // A custom family also carries no synthetic weights. Asking for `.heavy`
+    // does not embolden Bold, it hands back Regular. Shipping a fifth weight is
+    // one .ttf, one Info.plist entry, and one line here — this is the only place
+    // in the app that names a face.
+    private static let faces: [Font.Weight: String] = [
+        .regular:  "GeistMono-Regular",
+        .medium:   "GeistMono-Medium",
+        .semibold: "GeistMono-SemiBold",
+        .bold:     "GeistMono-Bold"
+    ]
+
+    /// Geist Mono at a fixed point size that still tracks Dynamic Type.
+    ///
+    /// `relativeTo:` is load-bearing. `Font.custom(_:size:)` without it is frozen
+    /// at that size forever, so every accessibility text size in the app would
+    /// silently stop working — the one regression a face swap can cause that a
+    /// screenshot will never show.
+    private static func geist(
+        _ size: CGFloat,
+        relativeTo style: Font.TextStyle,
+        weight: Font.Weight
+    ) -> Font {
+        // `.regular` is always present above; the literal only keeps this total.
+        let face = faces[weight] ?? faces[.regular] ?? "GeistMono-Regular"
+        return Font.custom(face, size: size, relativeTo: style)
+    }
+
     // MARK: Core Scale
-    static let titleLarge = Font.system(.largeTitle, design: .monospaced, weight: .bold)
-    static let title = Font.system(.title, design: .monospaced, weight: .bold)
-    static let headline = Font.system(.title3, design: .monospaced, weight: .medium)
-    static let body = Font.system(.callout, design: .monospaced, weight: .regular)
-    static let bodyBold = Font.system(.callout, design: .monospaced, weight: .medium)
-    static let bodySmall = Font.system(.subheadline, design: .monospaced, weight: .regular)
-    static let caption = Font.system(.caption, design: .monospaced, weight: .regular)
-    static let captionBold = Font.system(.caption, design: .monospaced, weight: .medium)
-    static let footnote = Font.system(.caption2, design: .monospaced, weight: .regular)
+    static let titleLarge = geist(Metrics.titleLarge, relativeTo: .largeTitle, weight: .bold)
+    static let title = geist(Metrics.title, relativeTo: .title, weight: .bold)
+    static let headline = geist(Metrics.headline, relativeTo: .title3, weight: .medium)
+    static let body = geist(Metrics.body, relativeTo: .callout, weight: .regular)
+    static let bodyBold = geist(Metrics.body, relativeTo: .callout, weight: .medium)
+    static let bodySmall = geist(Metrics.bodySmall, relativeTo: .subheadline, weight: .regular)
+    static let caption = geist(Metrics.caption, relativeTo: .caption, weight: .regular)
+    static let captionBold = geist(Metrics.caption, relativeTo: .caption, weight: .medium)
+    static let footnote = geist(Metrics.footnote, relativeTo: .caption2, weight: .regular)
 
     // MARK: Flight-specific typography
-    static let flightNumber = Font.system(.headline, design: .monospaced, weight: .bold)
-    static let airportCode = Font.system(.callout, design: .monospaced, weight: .bold)
-    static let flightTime = Font.system(.subheadline, design: .monospaced, weight: .medium)
-    static let flightStatus = Font.system(.caption, design: .monospaced, weight: .medium)
+    static let flightNumber = geist(Metrics.body, relativeTo: .headline, weight: .bold)
+    static let airportCode = geist(Metrics.body, relativeTo: .callout, weight: .bold)
+    static let flightTime = geist(Metrics.bodySmall, relativeTo: .subheadline, weight: .medium)
+    static let flightStatus = geist(Metrics.caption, relativeTo: .caption, weight: .medium)
 
     // MARK: Place-log typography
-    static let placeName = Font.system(.title3, design: .monospaced, weight: .semibold)
-    static let placeMeta = Font.system(.caption, design: .monospaced, weight: .regular)
+    static let placeName = geist(Metrics.headline, relativeTo: .title3, weight: .semibold)
+    static let placeMeta = geist(Metrics.caption, relativeTo: .caption, weight: .regular)
     /// A whole sentence set at display size. Every other display token caps at
     /// two lines because it carries a NAME; this one carries a claim and must be
     /// allowed to wrap.
-    static let claim = Font.system(.title2, design: .monospaced, weight: .semibold)
+    static let claim = geist(Metrics.headline, relativeTo: .title2, weight: .semibold)
 
-    static let verdictLabel = Font.system(.caption, design: .monospaced, weight: .semibold)
+    static let verdictLabel = geist(Metrics.caption, relativeTo: .caption, weight: .semibold)
 
     /// Escape hatch for one-off sizes. Always relative to a text style so it still scales.
     static func mono(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
-        Font.system(style, design: .monospaced, weight: weight)
+        geist(nominalSize(for: style), relativeTo: style, weight: weight)
+    }
+
+    /// The point size this scale uses for a given system text style. Every value
+    /// comes from `Metrics`: the scale has seven steps and no eighth, so a style
+    /// with no exact counterpart takes the nearest step rather than inventing one.
+    private static func nominalSize(for style: Font.TextStyle) -> CGFloat {
+        switch style {
+        case .largeTitle: return Metrics.titleLarge          // 34
+        case .title: return Metrics.title                    // 28
+        case .title2, .title3: return Metrics.headline       // 20
+        case .headline, .body, .callout: return Metrics.body // 16
+        case .subheadline: return Metrics.bodySmall          // 14
+        case .footnote, .caption: return Metrics.caption     // 12
+        case .caption2: return Metrics.footnote              // 10
+        // Covers `.extraLargeTitle` and anything a future SDK adds. These read
+        // as display type, so they take the top of the scale rather than body.
+        default: return Metrics.titleLarge
+        }
     }
 
     // MARK: Nominal point sizes

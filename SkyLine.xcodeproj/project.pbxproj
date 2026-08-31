@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		614256E4DDB74B3CB406DE96 /* GeistMono-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = EF2D0C3FF4914AFAB468114C /* GeistMono-OFL.txt */; };
+		3F58B11B5DF6499593A8E5AB /* GeistMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0935B45E2F8E4176B29563EE /* GeistMono-Bold.ttf */; };
+		FF2ACA1171924D17BF745BF8 /* GeistMono-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B1E2609A9CFA43B8A6B64C80 /* GeistMono-SemiBold.ttf */; };
+		DC1D9DDAEB3140C1A04F4D59 /* GeistMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0D84AB2A25A545FCAB621A8F /* GeistMono-Medium.ttf */; };
+		4E9D5DC6995B4B108FD98198 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B5F35E2E0ED247AB8AD127D7 /* GeistMono-Regular.ttf */; };
 		468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */ = {isa = PBXBuildFile; fileRef = CCE42A62B909487098B269AA /* countries.geojson */; };
 		A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */; };
 		A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */; };
@@ -100,6 +105,7 @@
 		376691BCF8094FB1889A3B7A /* BoardingPassBarcodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */; };
 		817C92F383BC4271A212C465 /* BCBPParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3424C9E463B44E3AB86AD41D /* BCBPParser.swift */; };
 		8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */; };
+		40058E034A884DBD8E974B71 /* BoardingPassIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B844136FFFB4AD2B0D8D55C /* BoardingPassIdentityTests.swift */; };
 		FAF3C30A0F9D42E2BFD5288B /* BoardingPassScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */; };
 		8F2BB947BF0A4CC1BFEAE998 /* BCBPParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */; };
 		A0A9C8029A704EDF8D99451B /* DebugDataWipeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57E7EA5DBBC94B2793D79971 /* DebugDataWipeTests.swift */; };
@@ -125,6 +131,11 @@
 
 /* Begin PBXFileReference section */
 		46212D90C2D741E181908E6A /* RouteCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteCache.swift; sourceTree = "<group>"; };
+		EF2D0C3FF4914AFAB468114C /* GeistMono-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; name = GeistMono-OFL.txt; path = "SkyLine/Resources/Fonts/GeistMono-OFL.txt"; sourceTree = SOURCE_ROOT; };
+		0935B45E2F8E4176B29563EE /* GeistMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file.ttf; name = GeistMono-Bold.ttf; path = "SkyLine/Resources/Fonts/GeistMono-Bold.ttf"; sourceTree = SOURCE_ROOT; };
+		B1E2609A9CFA43B8A6B64C80 /* GeistMono-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file.ttf; name = GeistMono-SemiBold.ttf; path = "SkyLine/Resources/Fonts/GeistMono-SemiBold.ttf"; sourceTree = SOURCE_ROOT; };
+		0D84AB2A25A545FCAB621A8F /* GeistMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file.ttf; name = GeistMono-Medium.ttf; path = "SkyLine/Resources/Fonts/GeistMono-Medium.ttf"; sourceTree = SOURCE_ROOT; };
+		B5F35E2E0ED247AB8AD127D7 /* GeistMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file.ttf; name = GeistMono-Regular.ttf; path = "SkyLine/Resources/Fonts/GeistMono-Regular.ttf"; sourceTree = SOURCE_ROOT; };
 		A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationSearchManager.swift; sourceTree = "<group>"; };
 		A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationPickerView.swift; sourceTree = "<group>"; };
 		A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripImageGenerationService.swift; sourceTree = "<group>"; };
@@ -222,6 +233,7 @@
 		43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassBarcodeService.swift; path = "SkyLine/Services/BoardingPassBarcodeService.swift"; sourceTree = SOURCE_ROOT; };
 		3424C9E463B44E3AB86AD41D /* BCBPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BCBPParser.swift; path = "SkyLine/Services/BCBPParser.swift"; sourceTree = SOURCE_ROOT; };
 		3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStoreTests.swift; path = "SkyLineTests/PendingReviewStoreTests.swift"; sourceTree = SOURCE_ROOT; };
+		2B844136FFFB4AD2B0D8D55C /* BoardingPassIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassIdentityTests.swift; path = "SkyLineTests/BoardingPassIdentityTests.swift"; sourceTree = SOURCE_ROOT; };
 		3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassScanTests.swift; path = "SkyLineTests/BoardingPassScanTests.swift"; sourceTree = SOURCE_ROOT; };
 		AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BCBPParserTests.swift; path = "SkyLineTests/BCBPParserTests.swift"; sourceTree = SOURCE_ROOT; };
 		57E7EA5DBBC94B2793D79971 /* DebugDataWipeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugDataWipeTests.swift; path = "SkyLineTests/DebugDataWipeTests.swift"; sourceTree = SOURCE_ROOT; };
@@ -295,6 +307,11 @@
 				A99F90F42E66699A00BE96FE /* Fonts */,
 				A99F90E92E65027900BE96FE /* SkyLine.entitlements */,
 				A99F90E82E64F8F600BE96FE /* Info.plist */,
+				EF2D0C3FF4914AFAB468114C /* GeistMono-OFL.txt */,
+				0935B45E2F8E4176B29563EE /* GeistMono-Bold.ttf */,
+				B1E2609A9CFA43B8A6B64C80 /* GeistMono-SemiBold.ttf */,
+				0D84AB2A25A545FCAB621A8F /* GeistMono-Medium.ttf */,
+				B5F35E2E0ED247AB8AD127D7 /* GeistMono-Regular.ttf */,
 				A99F90B32E5BAE8B00BE96FE /* Assets.xcassets */,
 				A99F90C12E5BAE8B00BE96FE /* Models */,
 				A99F90B12E5BAE8B00BE96FE /* Preview Content */,
@@ -338,6 +355,7 @@
 				43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */,
 				3424C9E463B44E3AB86AD41D /* BCBPParser.swift */,
 				3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */,
+				2B844136FFFB4AD2B0D8D55C /* BoardingPassIdentityTests.swift */,
 				3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */,
 				AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */,
 				57E7EA5DBBC94B2793D79971 /* DebugDataWipeTests.swift */,
@@ -654,6 +672,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */,
+				614256E4DDB74B3CB406DE96 /* GeistMono-OFL.txt in Resources */,
+				3F58B11B5DF6499593A8E5AB /* GeistMono-Bold.ttf in Resources */,
+				FF2ACA1171924D17BF745BF8 /* GeistMono-SemiBold.ttf in Resources */,
+				DC1D9DDAEB3140C1A04F4D59 /* GeistMono-Medium.ttf in Resources */,
+				4E9D5DC6995B4B108FD98198 /* GeistMono-Regular.ttf in Resources */,
 				A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */,
 				468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */,
 				A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */,
@@ -777,6 +800,7 @@
 				BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */,
 				9E34CAE80C7EBA39D4D74B16 /* PhotoSamplingTests.swift in Sources */,
 				8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */,
+				40058E034A884DBD8E974B71 /* BoardingPassIdentityTests.swift in Sources */,
 				FAF3C30A0F9D42E2BFD5288B /* BoardingPassScanTests.swift in Sources */,
 				8F2BB947BF0A4CC1BFEAE998 /* BCBPParserTests.swift in Sources */,
 				A0A9C8029A704EDF8D99451B /* DebugDataWipeTests.swift in Sources */,

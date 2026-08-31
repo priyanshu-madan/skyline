@@ -22,5 +22,12 @@
 	<array>
 		<string>comgooglemaps</string>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>GeistMono-Regular.ttf</string>
+		<string>GeistMono-Medium.ttf</string>
+		<string>GeistMono-SemiBold.ttf</string>
+		<string>GeistMono-Bold.ttf</string>
+	</array>
 </dict>
 </plist>
