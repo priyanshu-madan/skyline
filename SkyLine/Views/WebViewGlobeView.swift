@@ -146,48 +146,45 @@ struct WebViewGlobeView: View {
     // MARK: - Control Panel
     
     private var controlPanel: some View {
-        VStack(spacing: 12) {
-            // Theme Toggle
-            Button(action: {
-                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                impactFeedback.impactOccurred()
-                themeManager.toggleTheme()
-            }) {
-                Image(systemName: themeManager.currentTheme == .light ? "moon.fill" : "sun.max.fill")
-                    .font(AppTypography.flightNumber)
-                    .foregroundColor(themeManager.currentTheme.colors.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(themeManager.currentTheme.colors.primary)
-                    .clipShape(Circle())
-                    .appElevation(.md, theme: themeManager.currentTheme)
-            }
-            
-            // Auto-Rotation Toggle
-            Button(action: toggleAutoRotation) {
-                Image(systemName: isAutoRotating ? "pause.circle.fill" : "play.circle.fill")
-                    .font(AppTypography.flightNumber)
-                    .foregroundColor(themeManager.currentTheme.colors.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(isAutoRotating ? themeManager.currentTheme.colors.success : themeManager.currentTheme.colors.primary)
-                    .clipShape(Circle())
-                    .appElevation(.md, theme: themeManager.currentTheme)
-            }
-            
-            
-            
-            // Reset Globe View
-            Button(action: resetGlobe) {
-                Image(systemName: "globe")
-                    .font(AppTypography.flightNumber)
-                    .foregroundColor(themeManager.currentTheme.colors.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(themeManager.currentTheme.colors.textSecondary)
-                    .clipShape(Circle())
-                    .appElevation(.md, theme: themeManager.currentTheme)
+        // Glass, not three filled discs.
+        //
+        // These were solid `primary` / `success` / `textSecondary` circles: on a
+        // near-black globe a saturated blue and a saturated green read as the
+        // loudest objects on the screen, louder than the flight path they sit
+        // over. They are utilities, not content. `SkyLineGlassIconButton` is the
+        // app's own 44pt glass control and already carries the Reduce
+        // Transparency fallback and the hit target - this panel simply predated
+        // it and never adopted it.
+        //
+        // One `GlassEffectContainer` around all three so they render as one
+        // piece of glass rather than three unrelated lenses.
+        SkyLineGlassPanel(spacing: AppSpacing.sm) {
+            VStack(spacing: AppSpacing.sm) {
+                SkyLineGlassIconButton(
+                    systemImage: themeManager.currentTheme == .light ? "moon.fill" : "sun.max.fill",
+                    accessibilityLabel: themeManager.currentTheme == .light
+                        ? "Switch to dark appearance"
+                        : "Switch to light appearance"
+                ) {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    themeManager.toggleTheme()
+                }
+
+                SkyLineGlassIconButton(
+                    systemImage: isAutoRotating ? "pause.fill" : "play.fill",
+                    accessibilityLabel: isAutoRotating ? "Pause rotation" : "Resume rotation",
+                    action: toggleAutoRotation
+                )
+
+                SkyLineGlassIconButton(
+                    systemImage: "arrow.counterclockwise",
+                    accessibilityLabel: "Reset the globe",
+                    action: resetGlobe
+                )
             }
         }
     }
-    
+
     // MARK: - Data Change Detection
     
     private func createFlightDataHash(flights: [Flight]) -> String {
@@ -611,6 +608,64 @@ struct WebViewGlobeView: View {
     }
 }
 
+// MARK: - Globe Web Font
+
+/// Geist Mono, encoded once, for the globe's `WKWebView`.
+///
+/// A font registered through `UIAppFonts` is available to UIKit and SwiftUI but
+/// NOT to a `WKWebView`: the web view resolves families through its own stack and
+/// cannot see the ones the app registered. So `font-family: 'GeistMono-Regular'`
+/// in the injected CSS never matched anything, and every globe label has been
+/// silently rendering in `ui-monospace` (SF Mono) since the day it was written.
+/// Nothing warns you about this — the labels just quietly are not the app's face.
+///
+/// The page is loaded with `loadHTMLString(_:baseURL: nil)`, so its origin is
+/// about:blank and a relative `url('GeistMono-Regular.ttf')` has nothing to
+/// resolve against. Re-pointing `baseURL` into the bundle would make relative
+/// URLs work but changes the page's origin and read permissions for the sake of
+/// a font, so this uses a `data:` URI instead: self-contained, origin-independent,
+/// and it cannot be broken by a later change to how the page is loaded.
+///
+/// Roughly 300 KB of base64 across two faces. `static let` is lazy and evaluated
+/// once per process, so the encode never runs on a globe rebuild or a reload.
+private enum GlobeWebFont {
+    /// The family name the injected CSS asks for. One family, two weights — the
+    /// weight is chosen by `font-weight`, not by naming a second family.
+    static let family = "GeistMono"
+
+    /// The faces the globe actually uses: body copy at 400, labels at 600.
+    /// A web font gets no synthetic weights either, so a 600 rule with only the
+    /// 400 face loaded would be faux-bolded by WebKit — smeared, not semibold.
+    private static let bundled: [(file: String, weight: Int)] = [
+        ("GeistMono-Regular", 400),
+        ("GeistMono-SemiBold", 600)
+    ]
+
+    /// `@font-face` rules ready to drop into the page's `<style>`. Empty if the
+    /// files are missing from the bundle, in which case the CSS falls straight
+    /// through to `ui-monospace` — today's behaviour, not a serif.
+    static let faceCSS: String = bundled.compactMap { face in
+        guard let url = Bundle.main.url(forResource: face.file, withExtension: "ttf"),
+              let data = try? Data(contentsOf: url) else {
+            print("⚠️ Globe: \(face.file).ttf is not in the bundle — labels fall back to ui-monospace")
+            return nil
+        }
+        return """
+            @font-face {
+              font-family: '\(family)';
+              src: url("data:font/ttf;base64,\(data.base64EncodedString())") format('truetype');
+              font-weight: \(face.weight);
+              font-style: normal;
+            }
+        """
+    }.joined(separator: "\n")
+
+    /// The stack every rule on the globe should use. Geist Mono first, then the
+    /// same fallback the page has been getting all along, so a failure to decode
+    /// degrades to exactly what shipped yesterday.
+    static let stack = "'\(family)', ui-monospace, 'Menlo', monospace"
+}
+
 // MARK: - WebView Coordinator
 
 class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKScriptMessageHandler {
@@ -657,6 +712,10 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     window.COUNTRIES_DATA = \(countriesJSON);
   </script>
   <style>
+    /* Geist Mono, inlined as a data: URI. See GlobeWebFont — a UIAppFonts
+       registration does not reach a WKWebView, so the font has to travel with
+       the page. */
+\(GlobeWebFont.faceCSS)
     body {
       margin: 0;
       padding: 0;
@@ -664,7 +723,9 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
       overflow: hidden;
       width: 100vw;
       height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+      /* Was -apple-system/Helvetica: the one block in the app set in a
+         proportional sans, on the surface everything else is monospaced. */
+      font-family: \(GlobeWebFont.stack);
     }
     #globeViz {
       width: 100vw;
@@ -731,9 +792,9 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               tripActive: 'rgba(40, 160, 89, 0.85)',      // #28A059, 60% sat
               tripUpcoming: 'rgba(204, 150, 51, 0.85)',   // #CC9633, 60% sat
               tripCompleted: 'rgba(51, 115, 204, 0.85)',  // #3373CC, 60% sat
-              arc: ['rgba(51, 115, 204, 0.55)', 'rgba(51, 115, 204, 0.20)'],
+              arc: ['rgba(97, 170, 255, 0.95)', 'rgba(97, 170, 255, 0.55)'],
               arcMuted: ['rgba(128, 128, 128, 0.16)', 'rgba(128, 128, 128, 0.08)'],
-              label: 'rgba(255, 255, 255, 0.82)',
+              label: 'rgba(255, 255, 255, 0.96)',
               labelShadow: '0 0 3px rgba(0, 0, 0, 0.95), 0 1px 4px rgba(0, 0, 0, 0.8)'
             },
             light: {
@@ -745,9 +806,9 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               tripActive: 'rgba(31, 122, 68, 0.85)',
               tripUpcoming: 'rgba(154, 113, 38, 0.85)',
               tripCompleted: 'rgba(38, 87, 153, 0.85)',
-              arc: ['rgba(38, 87, 153, 0.50)', 'rgba(38, 87, 153, 0.18)'],
+              arc: ['rgba(11, 99, 197, 0.95)', 'rgba(11, 99, 197, 0.55)'],
               arcMuted: ['rgba(90, 90, 96, 0.16)', 'rgba(90, 90, 96, 0.08)'],
-              label: 'rgba(18, 18, 24, 0.88)',
+              label: 'rgba(12, 12, 18, 0.98)',
               labelShadow: '0 0 3px rgba(255, 255, 255, 0.95), 0 1px 4px rgba(255, 255, 255, 0.85)'
             }
           };
@@ -834,13 +895,19 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             return Math.max(0.02, Math.min(3.0, 0.9 * Math.pow(altitude / 3.0, 1.2)));
           }
           function arcStrokeFor(altitude) {
-            // Holds ~2.4px. The flight tracker drew these at 2.0deg, three
-            // times heavier than this, in the same blue as the UI accent.
-            return Math.max(0.03, Math.min(1.2, altitude * 0.16));
+            // This was tuned down to a third of the old flight tracker's weight
+            // so the arcs would read as a wash BEHIND the place pills. With the
+            // pills gone the arcs are the only content on the sphere, and at
+            // that weight a transatlantic flight was a hairline you had to hunt
+            // for. Still well under the original 2.0deg, which was a solid rope.
+            return Math.max(0.10, Math.min(1.2, altitude * 0.34));
           }
           function labelSpacingFor(altitude) {
-            // Roughly 45px of clear space between two labels at any zoom.
-            return Math.max(0.05, Math.min(14.0, altitude * 3.0));
+            // A label is a ~3-character word, not a point, so it needs clearance
+            // for its own width plus the neighbour's. 3.0 was tuned when the
+            // comparison was still measuring raw longitude and therefore
+            // overestimating every east-west gap.
+            return Math.max(0.05, Math.min(20.0, altitude * 5.0));
           }
 
           // ── Places: the one saturated layer ────────────────────────────
@@ -880,10 +947,19 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             .arcLabel(d => d.flightNumber + ': ' + (d.status || 'Unknown'))
             .arcColor(() => palette().arc)
             .arcStroke(arcStrokeFor(4.0))
-            .arcAltitudeAutoScale(0.35)  // hug the surface: arcs sit behind places
-            .arcDashLength(0.35)
-            .arcDashGap(0.35)
-            .arcDashAnimateTime(6000)
+            .arcAltitudeAutoScale(0.55)  // lift off the surface now nothing sits above them
+            // Near-solid, with one small travelling break.
+            //
+            // 0.35 length against a 0.35 gap draws only half the arc at any
+            // moment, in two chunks - so PHL to DEN read as loose fragments
+            // and you could not tell which end joined which. The route has to
+            // be continuous to be a route. The remaining 10% gap runs the
+            // length of the arc, which is what still shows direction of travel;
+            // taking it to zero would give a clean line that says nothing about
+            // which way the flight went.
+            .arcDashLength(0.9)
+            .arcDashGap(0.1)
+            .arcDashAnimateTime(4500)
             .arcCircularResolution(24);
 
           // ── Labels ─────────────────────────────────────────────────────
@@ -894,7 +970,12 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           // composite. Pills with a blue border were 2019 chrome fighting 2026
           // glass; a pill that carries the user's own verdict is not chrome.
           function makeGlobeLabel(d) {
-            return d.kind === 'place' ? makePlacePill(d) : makeAirportLabel(d);
+            const el = d.kind === 'place' ? makePlacePill(d) : makeAirportLabel(d);
+            // The visibility pass gets an element, not a datum, so the position
+            // has to travel on the element itself.
+            el.dataset.lat = d.lat;
+            el.dataset.lng = d.lng;
+            return el;
           }
 
           function makeAirportLabel(d) {
@@ -902,12 +983,12 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             el.textContent = d.text;
             el.style.cssText = `
               color: ${palette().label};
-              font-family: 'GeistMono-Regular', ui-monospace, 'Monaco', 'Menlo', 'Consolas', monospace;
-              font-size: 9px;
-              font-weight: 500;
-              letter-spacing: 0.06em;
+              font-family: \(GlobeWebFont.stack);
+              font-size: 11px;
+              font-weight: 600;
+              letter-spacing: 0.08em;
               text-shadow: ${palette().labelShadow};
-              opacity: 0.72;
+              opacity: 1;
               text-align: center;
               pointer-events: none;
               white-space: nowrap;
@@ -1020,7 +1101,7 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               color: ${PILL.ink};
               border: 0.5px solid ${PILL.hairline};
               box-shadow: ${PILL.shadow};
-              font-family: 'GeistMono-Regular', ui-monospace, 'Monaco', 'Menlo', 'Consolas', monospace;
+              font-family: \(GlobeWebFont.stack);
               font-size: 10px;
               font-weight: 600;
               letter-spacing: 0.04em;
@@ -1047,10 +1128,17 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
               const candidate = candidates[i];
               let clear = true;
               for (let j = 0; j < kept.length; j++) {
-                const distance = Math.sqrt(
-                  Math.pow(candidate.lat - kept[j].lat, 2) +
-                  Math.pow(candidate.lng - kept[j].lng, 2)
-                );
+                // Longitude has to be scaled by cos(latitude) before it can be
+                // compared with latitude at all. A degree of longitude is a
+                // degree of distance only at the equator; at Chicago's latitude
+                // it is about three quarters of one. Measuring raw degrees made
+                // ORD and JFK look 14 apart when they render about 10 apart, so
+                // they cleared the threshold and drew on top of each other as
+                // "ORJFK".
+                const meanLat = ((candidate.lat + kept[j].lat) / 2) * Math.PI / 180;
+                const dLat = candidate.lat - kept[j].lat;
+                const dLng = (candidate.lng - kept[j].lng) * Math.cos(meanLat);
+                const distance = Math.sqrt(dLat * dLat + dLng * dLng);
                 if (distance < threshold) { clear = false; break; }
               }
               if (clear) kept.push(candidate);
@@ -1107,7 +1195,14 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           function buildLabels(altitude) {
             // Places claim the label budget first; airport codes get whatever
             // room is left.
-            const places = dedupeByDistance(
+            // No place pills while the app is scoped to flights. Every place
+            // on this globe was derived from a flight, so each pill repeated an
+            // airport the arc already labels - and repeated it as "Newark
+            // Liberty International Airport" next to a 3-letter code. Restoring
+            // the place log restores these; the budget and spacing maths below
+            // is left intact for that.
+            const showPlacePills = false;
+            const places = !showPlacePills ? [] : dedupeByDistance(
               rankedPlaces().map(place => ({
                 lat: place.lat,
                 lng: place.lng,
@@ -1153,9 +1248,36 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           // label's own 0.72 opacity survives. Feature-tested because the hook
           // arrived in globe.gl 2.31 and the library is loaded from a CDN by
           // floating tag; without it the labels behave exactly as before.
+          // Whether a label is on the near face is measured here rather than
+          // taken from the library's `isBehindGlobe` argument. The script tag
+          // is `npm/globe.gl` with no version, so whatever the CDN serves today
+          // is what runs - and trusting that flag put every label on the FAR
+          // side of the sphere and hid the ones being looked at. A dot product
+          // against the camera cannot drift with the dependency.
+          function isFacingCamera(lat, lng) {
+            if (typeof world.getCoords !== 'function' || typeof world.camera !== 'function') return true;
+            const point = world.getCoords(lat, lng, 0);
+            const camera = world.camera().position;
+            const pointLength = Math.hypot(point.x, point.y, point.z);
+            const cameraLength = Math.hypot(camera.x, camera.y, camera.z);
+            if (!pointLength || !cameraLength) return true;
+            const facing =
+              (point.x * camera.x + point.y * camera.y + point.z * camera.z) /
+              (pointLength * cameraLength);
+            // Slightly above zero: a label exactly on the silhouette edge sits
+            // half over empty space and reads as detached from the globe.
+            return facing > 0.12;
+          }
+
           if (typeof world.htmlElementVisibilityModifier === 'function') {
-            world.htmlElementVisibilityModifier((el, isBehindGlobe) => {
-              el.style.visibility = isBehindGlobe ? 'hidden' : 'visible';
+            world.htmlElementVisibilityModifier(el => {
+              const lat = parseFloat(el.dataset.lat);
+              const lng = parseFloat(el.dataset.lng);
+              const visible = Number.isFinite(lat) && Number.isFinite(lng)
+                ? isFacingCamera(lat, lng)
+                : true;
+              // Only `visibility` is touched, so a label's own opacity survives.
+              el.style.visibility = visible ? 'visible' : 'hidden';
             });
           }
 
