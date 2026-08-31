@@ -356,19 +356,43 @@ struct SkyLineBottomBarView: View {
         AnyView(LegacyTabScroll(tab))
     }
 
+    /// True when the flights surface is showing one flight rather than the list.
+    private var isShowingFlightDetail: Bool {
+        selectedFlightForDetails != nil
+            && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large)
+    }
+
     /// The Trips / Flights / Profile surfaces, which still share one scroll view
     /// and one hand-rolled header.
     @ViewBuilder
     private func LegacyTabScroll(_ tab: SkyLineTab) -> some View {
+        // The flight detail is hosted OUTSIDE this scroll view, not inside it.
+        //
+        // `ModernFlightDetailContent` builds its own `ScrollView`, so putting it
+        // in here nested one inside another - and because the outer one is the
+        // same instance the list was using, it kept the list's offset. Tapping a
+        // flight near the bottom of a long list opened its boarding pass already
+        // scrolled to the bottom, looking at "Add to Trip". Recreating the
+        // CONTENT with `flightDetailsViewKey` could never fix that: the scroll
+        // position belongs to the scroll view, and that was the one thing being
+        // preserved.
+        if tab == .flights, let selectedFlight = selectedFlightForDetails, isShowingFlightDetail {
+            ModernFlightDetailContent(flight: selectedFlight, theme: themeManager)
+                .id(flightDetailsViewKey)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(.clear)
+        } else {
+            legacyTabList(tab)
+        }
+    }
+
+    private func legacyTabList(_ tab: SkyLineTab) -> some View {
         ScrollView(.vertical) {
             // One explicit stack rather than two siblings in the ScrollView's
             // implicit one, so the gap between header and content is on the grid
             // instead of being SwiftUI's default.
             VStack(spacing: 0) {
-                // Remove the header section when viewing flight details
-                if !(tab == .flights && selectedFlightForDetails != nil && (selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large)) {
-                    TabHeader(tab)
-                }
+                TabHeader(tab)
 
                 // Tab-specific content
                 switch tab {
@@ -378,24 +402,7 @@ struct SkyLineBottomBarView: View {
                 case .trips:
                     AnyView(TripsTabContent())
                 case .flights:
-                    if let selectedFlight = selectedFlightForDetails, selectedDetent == .fraction(0.3) || selectedDetent == .fraction(0.6) || selectedDetent == .large {
-                        AnyView(ModernFlightDetailContent(flight: selectedFlight, theme: themeManager))
-                        .id(flightDetailsViewKey)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .clipped()
-                        .transaction { transaction in
-                            // Force immediate update without animation to reset scroll state
-                            transaction.disablesAnimations = true
-                        }
-                        .onAppear {
-                            print("\u{1F50D} DEBUG: FlightDetailView appeared in SkyLineBottomBarView")
-                            print("\u{1F50D} DEBUG: Current selectedDetent: \(selectedDetent)")
-                            print("\u{1F50D} DEBUG: Flight: \(selectedFlight.flightNumber)")
-                            print("\u{1F50D} DEBUG: ViewKey: \(flightDetailsViewKey)")
-                        }
-                    } else {
-                        AnyView(FlightsTabContent())
-                    }
+                    AnyView(FlightsTabContent())
                 case .profile:
                     AnyView(ProfileTabContent())
                 }
