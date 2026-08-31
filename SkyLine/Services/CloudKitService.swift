@@ -574,7 +574,13 @@ class CloudKitService: ObservableObject {
             progress: record["progress"] as? Double,
             flightDate: record["flightDate"] as? String,
             dataSource: dataSource,
-            date: record["date"] as? Date ?? extractDateFromDepartureTime(record["departureTime"] as? String),
+            // The record's own dates are the anchor. Without them a bare
+            // "21:30" was stamped onto TODAY, so a flight logged in August sat
+            // at 21:30 on the day it was scanned rather than on 26 November.
+            date: record["date"] as? Date ?? extractDateFromDepartureTime(
+                record["departureTime"] as? String,
+                anchoredTo: (record["departureDate"] as? Date) ?? (record["arrivalDate"] as? Date)
+            ),
             departureDate: record["departureDate"] as? Date,
             arrivalDate: record["arrivalDate"] as? Date,
             flightDuration: record["flightDuration"] as? String,
@@ -592,23 +598,64 @@ class CloudKitService: ObservableObject {
         )
     }
     
-    private func extractDateFromDepartureTime(_ departureTime: String?) -> Date {
+    /// Resolves a departure time into a real instant.
+    ///
+    /// `anchoredTo` is the flight's own date. A boarding pass and a booking
+    /// confirmation both print the time as a bare "21:30", and stamping that
+    /// onto `Date()` put every scanned flight at the right time on the WRONG
+    /// day — the day it happened to be scanned. Anchoring is the whole job.
+    private func extractDateFromDepartureTime(_ departureTime: String?, anchoredTo anchor: Date?) -> Date {
         guard let departureTime = departureTime else {
-            print("⚠️ No departure time found, using current date as fallback")
+            if let anchor {
+                return anchor
+            }
+            print("⚠️ No departure time and no flight date, using now as fallback")
             return Date()
         }
-        
+
         // Try to parse as ISO8601 date (which includes the date component)
         let isoFormatter = ISO8601DateFormatter()
         if let date = isoFormatter.date(from: departureTime) {
-            print("✅ Extracted date from ISO8601 departure time: \(date)")
             return date
         }
-        
-        // If it's just a time string (like "14:25"), we can't extract a proper date
-        // Use current date but log this for debugging
-        print("⚠️ Departure time '\(departureTime)' is just time, not full date. Using current date as fallback")
+
+        // A bare clock time. Put it on the flight's own day.
+        if let anchor, let combined = Self.combining(time: departureTime, withDayOf: anchor) {
+            return combined
+        }
+
+        if let anchor {
+            print("⚠️ Could not read '\(departureTime)' as a time; using the flight date alone")
+            return anchor
+        }
+
+        print("⚠️ Departure time '\(departureTime)' is just a time and the flight has no date — using now")
         return Date()
+    }
+
+    /// Puts a "HH:mm" (or "h:mm a") clock time onto the calendar day of `day`.
+    static func combining(time: String, withDayOf day: Date) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        // Parse and reassemble in the same zone. Without this the formatter
+        // reads "21:30" in the device's zone while the calendar below writes in
+        // UTC, so the hour lands shifted by the local offset - the flight moves
+        // to the right day and the wrong hour, which is the bug one layer down.
+        formatter.timeZone = TimeZone(identifier: "UTC")
+
+        for format in ["HH:mm", "H:mm", "hh:mm a", "h:mm a", "HH:mm:ss"] {
+            formatter.dateFormat = format
+            guard let parsed = formatter.date(from: time.trimmingCharacters(in: .whitespaces)) else { continue }
+
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+            let clock = calendar.dateComponents([.hour, .minute], from: parsed)
+            var dayParts = calendar.dateComponents([.year, .month, .day], from: day)
+            dayParts.hour = clock.hour
+            dayParts.minute = clock.minute
+            return calendar.date(from: dayParts)
+        }
+        return nil
     }
     
     // MARK: - Conflict Resolution & Offline Support

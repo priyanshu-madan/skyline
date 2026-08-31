@@ -273,7 +273,37 @@ struct OpenRouterParsingConfig: Codable {
 // MARK: - Boarding Pass Data Model
 
 struct BoardingPassData: CustomStringConvertible, Identifiable {
-    let id = UUID()
+    /// Derived from the flight, never minted.
+    ///
+    /// `UUID()` gave the same pass a new identity on every scan, so scanning a
+    /// boarding pass twice produced two flights rather than one updated flight.
+    /// Carrier, number, route and day are what make a flight that flight, so
+    /// that is what the id is built from — the same reasoning as the content
+    /// derived cluster ids in `PlaceClusterer`, and for the same reason: an
+    /// identity that changes per run cannot be reconciled with anything.
+    ///
+    /// Falls back to a UUID only for a pass so empty it has no flight in it,
+    /// which cannot be saved anyway — `isValid` requires all three parts.
+    var id: String {
+        guard let flightNumber, let departureCode, let arrivalCode else {
+            return "pass-unidentified-\(UUID().uuidString)"
+        }
+        let day = departureDate.map { BoardingPassData.dayFormatter.string(from: $0) } ?? "nodate"
+        let parts = [flightNumber, departureCode, arrivalCode, day]
+            .joined(separator: "-")
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "")
+        return "pass-\(parts)"
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyyMMdd"
+        return formatter
+    }()
+
     var flightNumber: String?
     var airline: String?
     var departureCode: String?
