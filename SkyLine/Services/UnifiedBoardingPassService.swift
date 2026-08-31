@@ -289,6 +289,7 @@ class UnifiedBoardingPassService: ObservableObject {
                 data = BoardingPassBarcodeService.overlay(barcode: barcodeData, onto: data)
             }
 
+            data = await Self.enriched(data)
             print("✅ Unified: Parsed with \(method.displayName) in \(String(format: "%.2f", result.processingTime))s")
             logSummary(data)
             return data
@@ -296,7 +297,8 @@ class UnifiedBoardingPassService: ObservableObject {
 
         // A partial barcode read still beats nothing: it is exact as far as it
         // goes, and the caller can see which fields are missing.
-        if let data = barcodeResult.data {
+        if var data = barcodeResult.data {
+            data = await Self.enriched(data)
             lastResult = barcodeResult
             print("⚠️ Unified: Returning partial barcode data; no method completed it")
             logSummary(data)
@@ -494,6 +496,67 @@ class UnifiedBoardingPassService: ObservableObject {
         
         UserDefaults.standard.set(data, forKey: "UnifiedBoardingPassService.UsageStatistics")
     }
+
+    /// Fills the names a code implies: the airline behind "UA323", and the city
+    /// behind "PHL".
+    ///
+    /// Every one of these lookups already existed and none of them were on the
+    /// scan path - so a pass that read perfectly still showed "Unknown" for its
+    /// airline and nothing at all for its cities, while the app happily
+    /// resolved the same codes elsewhere.
+    ///
+    /// Only ever fills a blank. A barcode carries the carrier designator
+    /// directly and a user may have corrected a city by hand; neither should be
+    /// overwritten by a lookup.
+    static func enriched(_ data: BoardingPassData) async -> BoardingPassData {
+        var filled = await fillingAirlineName(in: data)
+
+        if isBlank(filled.departureCity), let code = filled.departureCode, !code.isEmpty {
+            filled.departureCity = await AirportService.shared.getAirportInfo(for: code).city
+        }
+        if isBlank(filled.arrivalCity), let code = filled.arrivalCode, !code.isEmpty {
+            filled.arrivalCity = await AirportService.shared.getAirportInfo(for: code).city
+        }
+
+        if let from = filled.departureCity, let to = filled.arrivalCity {
+            print("🏙️ Unified: Filled cities \(from) → \(to) from airport codes")
+        }
+        return filled
+    }
+
+    private static func isBlank(_ value: String?) -> Bool {
+        guard let value else { return true }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed.caseInsensitiveCompare("Unknown") == .orderedSame
+    }
+
+    /// Derives the airline's name from the flight number when the parse did not
+    /// supply one.
+    ///
+    /// `AirlineService` already maps UA to United Airlines and knows twenty more
+    /// besides, but nothing on the remote path ever asked it - the lookup was
+    /// wired only to the field's own onChange handler, so it fired when a user
+    /// EDITED the flight number and never when a scan produced one. A pass that
+    /// read perfectly still showed "Unknown" for its airline.
+    ///
+    /// A barcode carries the carrier designator directly, so this fills a gap
+    /// rather than overriding anything: it runs only when the name is missing.
+    static func fillingAirlineName(in data: BoardingPassData) async -> BoardingPassData {
+        guard isBlank(data.airline),
+              let flightNumber = data.flightNumber, !flightNumber.isEmpty else {
+            return data
+        }
+
+        guard let name = await AirlineService.shared.getAirlineFromFlightNumber(flightNumber) else {
+            return data
+        }
+
+        var filled = data
+        filled.airline = name
+        print("🏢 Unified: Filled airline '\(name)' from flight number \(flightNumber)")
+        return filled
+    }
+
 }
 
 // MARK: - Configuration Models

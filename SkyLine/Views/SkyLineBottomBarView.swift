@@ -1057,6 +1057,11 @@ struct SkyLineBottomBarView: View {
 
         onGlobeReset?()
         withAnimation(chromeAnimation) {
+            // The card highlight is a different piece of state from the detail
+            // screen, and only the screen was being cleared - so a flight you
+            // opened and closed stayed lit for the rest of the session.
+            selectedFlightId = nil
+
             switch flightNavigationContext {
             case .flights:
                 selectedFlightForDetails = nil
@@ -1951,7 +1956,21 @@ private extension SkyLineBottomBarView {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .skylineGlassCard(tint: isSelected ? colors.primary : nil, theme: theme)
+        // Selection is a border, not a fill.
+        //
+        // `tint: primary` washes the entire card in the accent while every
+        // label keeps the colour it had - so the route, the times and the
+        // airline all became blue ink on a blue ground and the selected card
+        // was the one you could not read. A ring marks the same card and
+        // touches no contrast: `onAccent` exists for text ON a filled accent
+        // surface, and there is no reason to put a whole card there.
+        .skylineGlassCard(theme: theme)
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous)
+                    .strokeBorder(colors.primary, lineWidth: 2)
+            }
+        }
         .accessibilityLabel(
             Text("\(flight.flightNumber), \(flight.departure.code) to \(flight.arrival.code), \(flight.status.displayName)")
         )
