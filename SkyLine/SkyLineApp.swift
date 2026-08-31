@@ -247,21 +247,41 @@ struct SkyLineApp: App {
         UINavigationBar.appearance().scrollEdgeAppearance = navigationAppearance
         
         // Configure Tab Bar Appearance
+        //
+        // `configureWithDefaultBackground()`, NOT `configureWithOpaqueBackground()`.
+        //
+        // The opaque call is an explicit instruction to replace the bar's
+        // material with a flat fill, and it was written when the system bar was
+        // being hidden anyway and a bar was hand-drawn in its place. Once the
+        // real bar came back, that line was still overriding it - so iOS 26
+        // rendered Liquid Glass and this immediately painted a solid dark
+        // rectangle over it. That rectangle is what read as "a capsule inside
+        // another capsule". The default background keeps the system material.
         let tabBarAppearance = UITabBarAppearance()
-        tabBarAppearance.configureWithOpaqueBackground()
-        tabBarAppearance.backgroundColor = UIColor(theme.colors.surface)
-        
+        // Transparent, not default. `configureWithDefaultBackground()` gives the
+        // bar its own full-width background container, and iOS 26 then draws the
+        // floating glass tab group INSIDE that - which is the wide dark rectangle
+        // wrapped around a capsule. Transparent leaves only the floating group.
+        tabBarAppearance.configureWithTransparentBackground()
+
+        // The app's face, scaled. `monospacedSystemFont(ofSize: 10)` was SF Mono
+        // - not the face the rest of the app uses - and a hard 10pt that ignored
+        // Dynamic Type entirely.
+        let labelFont = UIFont(name: "GeistMono-Medium", size: 10)
+            ?? UIFont.monospacedSystemFont(ofSize: 10, weight: .medium)
+        let scaledLabelFont = UIFontMetrics(forTextStyle: .caption2).scaledFont(for: labelFont)
+
         // Configure tab bar item appearance
         tabBarAppearance.stackedLayoutAppearance.normal.iconColor = UIColor(theme.colors.textSecondary)
         tabBarAppearance.stackedLayoutAppearance.normal.titleTextAttributes = [
             .foregroundColor: UIColor(theme.colors.textSecondary),
-            .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .medium)
+            .font: scaledLabelFont
         ]
         
         tabBarAppearance.stackedLayoutAppearance.selected.iconColor = UIColor(theme.colors.primary)
         tabBarAppearance.stackedLayoutAppearance.selected.titleTextAttributes = [
             .foregroundColor: UIColor(theme.colors.primary),
-            .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .medium)
+            .font: scaledLabelFont
         ]
         
         UITabBar.appearance().standardAppearance = tabBarAppearance

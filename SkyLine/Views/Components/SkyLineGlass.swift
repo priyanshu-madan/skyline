@@ -213,12 +213,28 @@ struct SkyLineGlobeScrim: View {
 // MARK: - Sheet Chrome
 extension View {
     /// The presentation configuration for the globe sheet, kept in one place.
-    /// Detent values are unchanged from ContentView so existing equality checks
+    /// The fractional detents are unchanged, so existing equality checks
     /// (`selectedDetent == .fraction(0.3)`) keep working.
+    ///
+    /// `.height(80)` IS GONE, and its absence is load-bearing. It was the
+    /// "resting" height the app sat at with nothing to show, and at a detent
+    /// that short iOS 26 draws a sheet as an inset floating platter — a grey
+    /// `#1C1C1E` lozenge, 26pt in from each side, that `presentationBackground`
+    /// cannot remove because it sits behind it. That lozenge is the rounded
+    /// rectangle the tab bar looked nested inside. The resting state is now the
+    /// sheet being DISMISSED, which leaves the globe and the floating bar alone
+    /// on screen.
+    ///
+    /// `.fraction(0.2)` is gone with it. The floating bar hangs off this sheet
+    /// as a bottom safe-area inset, so it now costs the page about 110pt at
+    /// every height; 0.2 is 175pt on a 874pt screen, which left the Profile
+    /// surface with its avatar cut in half by the bar and its name stranded
+    /// below it. `.fraction(0.3)` is the shortest peek that still has a page in
+    /// it, and it is a detent this app already used.
     func skylineGlobeSheetChrome(selectedDetent: Binding<PresentationDetent>) -> some View {
         self
             .presentationDetents(
-                [.height(80), .fraction(0.2), .fraction(0.3), .fraction(0.6), .large],
+                [.fraction(0.3), .fraction(0.6), .large],
                 selection: selectedDetent
             )
             .presentationBackgroundInteraction(.enabled)

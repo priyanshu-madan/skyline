@@ -109,9 +109,6 @@ struct SkyLineBottomBarView: View {
     @StateObject private var tripStore = TripStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var tabSelectionNamespace
-    // Launch tab. Derived from `SkyLineTab.barTabs`, so it follows the scoping
-    // decision instead of being a second place to remember. Was `.places`.
-    @State private var activeTab: SkyLineTab = .primary
     @State private var addTripView: Bool = false
     @State private var refreshID = UUID()
     @State private var selectedFlightId: String? = nil
@@ -136,177 +133,141 @@ struct SkyLineBottomBarView: View {
     @ScaledMetric(relativeTo: .body) private var barcodeHeight: CGFloat = 64
     @ScaledMetric(relativeTo: .caption) private var statusDotSize: CGFloat = 6
 
+    /// The surface on screen, owned by `ContentView`.
+    ///
+    /// It has to live up there now: the bar is in ContentView's ZStack over the
+    /// globe and this sheet holds the page, so both of them read this one value.
+    /// Writing it from inside — `openFlights()`, a flight tapped in a trip —
+    /// changes the page AND relights the bar's slot without a second channel.
+    /// There used to be an `onTabChanged` callback for exactly that; the binding
+    /// replaces it, and cannot go stale the way two copies could.
+    @Binding var activeTab: SkyLineTab
+    @Binding var selectedDetent: PresentationDetent
+
     // Callbacks to communicate with parent ContentView
     let onFlightSelected: ((Flight) -> Void)?
-    let onTabSelected: (() -> Void)?
+    /// "Open the sheet for this surface." Takes the tab EXPLICITLY rather than
+    /// letting ContentView re-read `activeTab`: the binding is written in the
+    /// same update, and a reader in that update is not guaranteed to see it.
+    let onTabSelected: ((SkyLineTab) -> Void)?
     let onGlobeReset: (() -> Void)?
-    let onTabChanged: ((SkyLineTab) -> Void)?
-    @Binding var selectedDetent: PresentationDetent
-    
-    init(onFlightSelected: ((Flight) -> Void)? = nil, onTabSelected: (() -> Void)? = nil, onGlobeReset: (() -> Void)? = nil, selectedDetent: Binding<PresentationDetent>, onTabChanged: ((SkyLineTab) -> Void)? = nil) {
+
+    init(
+        activeTab: Binding<SkyLineTab>,
+        selectedDetent: Binding<PresentationDetent>,
+        onFlightSelected: ((Flight) -> Void)? = nil,
+        onTabSelected: ((SkyLineTab) -> Void)? = nil,
+        onGlobeReset: (() -> Void)? = nil
+    ) {
+        self._activeTab = activeTab
+        self._selectedDetent = selectedDetent
         self.onFlightSelected = onFlightSelected
         self.onTabSelected = onTabSelected
         self.onGlobeReset = onGlobeReset
-        self.onTabChanged = onTabChanged
-        self._selectedDetent = selectedDetent
     }
     
     var body: some View {
-        GeometryReader {
-            let safeArea = $0.safeAreaInsets
-            let bottomPadding = safeArea.bottom / 5
-            
-            VStack(spacing: 0) {
-                TabView(selection: $activeTab) {
-                    // Places and Trips are gated on `SkyLineTab.barTabs` because
-                    // the app is scoped to boarding-pass scanning. Gating the
-                    // PAGE and not just the bar slot is deliberate: an
-                    // unreachable page is still built, and `PlaceLogView` is the
-                    // one that owns a `NavigationStack` + `.searchable` inside
-                    // this constantly-resizing sheet. Keeping it out of the
-                    // shell keeps its store queries and its navigation bar out
-                    // of the shell too. Restore by editing `barTabs` alone.
-                    //
-                    // Places is built HERE, not through `IndividualTabView`.
-                    // See `PlacesTabPage`.
-                    if SkyLineTab.barTabs.contains(.places) {
-                        PlacesTabPage()
-                            .tag(SkyLineTab.places)
-                    }
-
-                    if SkyLineTab.barTabs.contains(.trips) {
-                        IndividualTabView(.trips)
-                            .tag(SkyLineTab.trips)
-                    }
-
-                    IndividualTabView(.flights)
-                        .tag(SkyLineTab.flights)
-
-                    IndividualTabView(.profile)
-                        .tag(SkyLineTab.profile)
-                }
-                // NO `.tabViewStyle(PageTabViewStyle(...))`, and its absence is
-                // load-bearing. Do not put it back.
-                //
-                // The page style backs this TabView with a UICollectionView
-                // (`SwiftUI.PagingCollectionView`) and hosts each tab in a
-                // RECYCLED `UIKitPagingCell`. The Places tab is `PlaceLogView`,
-                // which owns a `NavigationStack`, and SwiftUI bridges that to a
-                // real `UIKitNavigationController` + `UIKitNavigationBar` living
-                // inside that cell.
-                //
-                // This sheet resizes constantly - five detents, and tapping a
-                // tab animates the detent at the same moment as it changes the
-                // page. A resize makes the paging layout momentarily invalid
-                // ("the item height must be less than the height of the
-                // UICollectionView"), which resets the collection view's
-                // contentOffset and makes the pager write `activeTab` back to
-                // `.places` on its own, mid-layout. The Places cell is then
-                // rebuilt inside that same layout pass, and because the page's
-                // view IDENTITY has not changed SwiftUI reuses the existing root
-                // hosting controller - so a SECOND navigation controller adopts
-                // the SAME `UINavigationItem`. Two live `UIKitNavigationBar`s
-                // then claim one item; the first is still in the window, so the
-                // rest of the sheet resize walks the autoresizing chain into it
-                // (`-[UISheetPresentationController _updatePresentedViewFrame]`
-                // -> `-[UINavigationBar layoutSubviews]`), UIKit finds
-                // `topItem.navigationBar != self` and raises
-                // NSInternalInconsistencyException: "Layout requested for
-                // visible navigation bar ... when the top item belongs to a
-                // different navigation bar". SIGABRT, and the reason is only in
-                // the console - never in the .ips.
-                //
-                // The default style is backed by a UITabBarController, whose
-                // child view controllers are created once and RETAINED, so the
-                // navigation stack is hosted exactly once and can never be
-                // duplicated. `TabViewHelper` below was written for exactly that
-                // controller - it casts to `UITabBarController` and strips the
-                // system bar so the hand-rolled `CustomTabBar` is the only one on
-                // screen - and was silently a no-op while the page style was on.
-                //
-                // The cost is that tabs no longer respond to a horizontal swipe;
-                // they change on a tap of `CustomTabBar`, which is how the bar is
-                // driven everywhere else anyway.
-                .background {
-                    TabViewHelper()
-                }
-                .compositingGroup()
-                // The bar is hand-rolled (see `CustomTabBar`), but declare the
-                // system behaviour too so chrome gets out of the way of a scroll
-                // and so this comes for free if the bar ever moves to `Tab`.
-                .tabBarMinimizeBehavior(.onScrollDown)
-                // The content slab. It used to run to the bottom of the sheet with
-                // the tab bar bolted onto it; now the bar floats below it over the
-                // globe, so the slab needs a bottom edge of its own. Its top corners
-                // are square because the sheet's own 40pt corner radius rounds them.
-                .background {
-                    UnevenRoundedRectangle(
-                        bottomLeadingRadius: AppRadius.sheet,
-                        bottomTrailingRadius: AppRadius.sheet,
-                        style: .continuous
-                    )
-                    .fill(themeManager.currentTheme.colors.background)
-                }
-                .onChange(of: activeTab) { _, newTab in
-                    print("🔄 Tab changed in onChange: \(newTab.rawValue)")
-                    onTabChanged?(newTab)
-                }
-                .onAppear {
-                    onTabChanged?(activeTab)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BoardingPassScanned"))) { notification in
-                    if let boardingPassData = notification.object as? BoardingPassData {
-                        Task {
-                            await handleBoardingPassScanned(boardingPassData)
-                        }
-                    }
-                }
-                
-                CustomTabBar()
-                    .padding(.bottom, bottomPadding)
-            }
-            .ignoresSafeArea(.all, edges: .bottom)
-        }
-        .interactiveDismissDisabled()
-        .sheet(isPresented: $addTripView) {
-            AddTripView()
-                .environmentObject(themeManager)
-                .environmentObject(tripStore)
-        }
-        .sheet(item: $scannedBoardingPassData) { boardingPassData in
-            BoardingPassConfirmationView(
-                boardingPassData: boardingPassData,
-                onConfirm: { confirmedData in
+        // ONE SURFACE, NO TAB SHELL. The bar that used to be built here — a
+        // native `TabView` + `Tab`, which genuinely is the iOS 26 system bar —
+        // is now `SkyLineFloatingTabBar`, and `ContentView` places it.
+        //
+        // The rounded rectangle it looked nested inside was never this TabView's
+        // doing; it was the sheet's own platter at the old 80pt detent. See
+        // `SkyLineFloatingTabBar` for the measurements. Rebuilding the bar by
+        // hand is what buys the app a capsule it fully controls — its own glass,
+        // its own morph, its own labels in the app's face — and hosting it
+        // outside the sheet is what lets it sit on the globe at all.
+        //
+        // `.tabBarMinimizeBehavior(.onScrollDown)` went with the TabView: there
+        // is no UITabBar left to minimise, and the floating bar is always up.
+        activePage
+            // No bottom padding for the bar here. `ContentView` hangs it off
+            // this sheet with `.safeAreaInset(edge: .bottom)`, which already
+            // shortens the page's safe area by exactly the bar's height — a
+            // number nothing in this file has to know or keep in step with
+            // Dynamic Type.
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BoardingPassScanned"))) { notification in
+                if let boardingPassData = notification.object as? BoardingPassData {
                     Task {
-                        let flight = await createFlightFromBoardingPass(confirmedData)
-                        let result = await flightStore.addFlight(flight)
-                        
-                        await MainActor.run {
-                            switch result {
-                            case .success:
-                                print("✅ Flight added to store: \(flight.flightNumber)")
-                                scannedBoardingPassData = nil
-                                
-                                // Auto-focus on the new flight
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                    handleFlightTap(flight)
+                        await handleBoardingPassScanned(boardingPassData)
+                    }
+                }
+            }
+            // NO `.interactiveDismissDisabled()`, and its removal is the other
+            // half of dropping the 80pt resting detent. Dragging this sheet down
+            // IS how the user gets back to the globe now, and disabling that
+            // would strand them on a page with no way out — the bar can open a
+            // surface but it cannot close one.
+            .presentationDragIndicator(.automatic)
+            .sheet(isPresented: $addTripView) {
+                AddTripView()
+                    .environmentObject(themeManager)
+                    .environmentObject(tripStore)
+            }
+            .sheet(item: $scannedBoardingPassData) { boardingPassData in
+                BoardingPassConfirmationView(
+                    boardingPassData: boardingPassData,
+                    onConfirm: { confirmedData in
+                        Task {
+                            let flight = await createFlightFromBoardingPass(confirmedData)
+                            let result = await flightStore.addFlight(flight)
+
+                            await MainActor.run {
+                                switch result {
+                                case .success:
+                                    print("✅ Flight added to store: \(flight.flightNumber)")
+                                    scannedBoardingPassData = nil
+
+                                    // Auto-focus on the new flight
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        handleFlightTap(flight)
+                                    }
+
+                                case .failure(let error):
+                                    print("❌ Failed to add flight: \(error)")
+                                    scannedBoardingPassData = nil
                                 }
-                                
-                            case .failure(let error):
-                                print("❌ Failed to add flight: \(error)")
-                                scannedBoardingPassData = nil
                             }
                         }
+                    },
+                    onCancel: {
+                        scannedBoardingPassData = nil
                     }
-                },
-                onCancel: {
-                    scannedBoardingPassData = nil
+                )
+                .environmentObject(themeManager)
+                .onAppear {
+                    print("📋 Presenting confirmation sheet with data: \(boardingPassData.summary)")
                 }
-            )
-            .environmentObject(themeManager)
-            .onAppear {
-                print("📋 Presenting confirmation sheet with data: \(boardingPassData.summary)")
             }
+    }
+
+    // MARK: - Active Page
+
+    /// The one surface this sheet is showing.
+    ///
+    /// `activeTab` is a `@Binding` now. `ContentView` owns it because the bar
+    /// and this page both read it, and one value is the only way a lit slot and
+    /// the page under it can never disagree.
+    ///
+    /// Places gets its own branch and is NOT routed through `IndividualTabView`.
+    /// It owns a `NavigationStack`, so it must not be erased — erasure destroys
+    /// structural identity and makes SwiftUI rebuild the stack, which is how
+    /// "top item belongs to a different navigation bar" gets raised. Everything
+    /// else goes through the one erased branch; see `IndividualTabView` for why
+    /// that erasure is load-bearing.
+    ///
+    /// `.id(activeTab)` gives each surface its own identity. Both legacy pages
+    /// resolve to the same `AnyView` type, so without it SwiftUI would reuse one
+    /// ScrollView between them and Profile would open at whatever offset Flights
+    /// was left scrolled to. It keys on the TAB, not the detent, so opening and
+    /// closing the sheet still does not scroll a list back to the top.
+    @ViewBuilder
+    private var activePage: some View {
+        if activeTab == .places {
+            PlacesTabPage()
+        } else {
+            pageSlab { IndividualTabView(activeTab) }
+                .id(activeTab)
         }
     }
     
@@ -335,8 +296,40 @@ struct SkyLineBottomBarView: View {
         PlaceLogView(onAddTrip: { addTripView = true })
             .environmentObject(themeManager)
             .background(.clear)
-            .toolbarVisibility(.hidden, for: .tabBar)
-            .toolbarBackgroundVisibility(.hidden, for: .tabBar)
+            // No `.toolbarVisibility(.hidden, for: .tabBar)` and no
+            // `.toolbarBackgroundVisibility(.hidden, ...)`. There is no system
+            // tab bar in this sheet to hide any more, and the floating bar
+            // `ContentView` hangs off the sheet is not a toolbar, so neither
+            // modifier has anything to act on.
+    }
+
+    /// The page's own ground.
+    ///
+    /// It fills the whole sheet, the strip the floating bar sits in included, so
+    /// a page reads as one surface with the bar hovering on it — and so the
+    /// bar's glass has the app's own colour to sample rather than a system fill.
+    @ViewBuilder
+    private func pageSlab<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .background {
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: AppRadius.sheet,
+                    bottomTrailingRadius: AppRadius.sheet,
+                    style: .continuous
+                )
+                .fill(themeManager.currentTheme.colors.background)
+                // Runs UNDER the bar, deliberately. `ContentView` hangs the bar
+                // off this sheet with `.safeAreaInset(edge: .bottom)`, so the
+                // bar lives in the bottom safe area and the page's own ground
+                // has to reach through it. Stopping at the safe area instead
+                // leaves that strip showing the sheet's system-grey platter
+                // rather than the app's `background`, which reads as a two-tone
+                // band across the bottom of every page.
+                //
+                // Only safe because the bar is ABOVE this now. While the bar was
+                // behind the sheet, this same line drew the page over it.
+                .ignoresSafeArea(.all, edges: .bottom)
+            }
     }
 
     /// Individual Tab View - Trips, Flights and Profile.
@@ -407,16 +400,20 @@ struct SkyLineBottomBarView: View {
                     AnyView(ProfileTabContent())
                 }
             }
-            // The tab bar floats over the globe below the slab, so content has to
-            // be able to scroll clear of it rather than ending underneath.
+            // The system bar floats over the end of this content. SwiftUI adds
+            // its own bottom inset for the bar; this is the breathing room on
+            // top of it, so the last row does not sit against the glass.
             .padding(.bottom, AppSpacing.xxl)
         }
         .background(.clear)
         // Softens the fade where content passes under the glass bar. `.soft`
         // rather than `.hard`: a hairline over the globe reads as a seam.
         .skylineScrollEdges()
-        .toolbarVisibility(.hidden, for: .tabBar)
-        .toolbarBackgroundVisibility(.hidden, for: .tabBar)
+        // Nothing fades this page any more. It used to be held at opacity 0 at
+        // the 80pt resting detent, where the sheet was 80pt of nothing and a
+        // large title would have been drawn across the bar. There is no such
+        // detent now: an idle app has no sheet at all, so every height this page
+        // can be at is one it should be visible at.
     }
 
     // MARK: - Tab Header
@@ -537,8 +534,11 @@ struct SkyLineBottomBarView: View {
             selectedFlightForDetails = nil
             activeTab = .flights
         }
-        onTabChanged?(.flights)
-        onTabSelected?()
+        // No `onTabChanged` any more: `activeTab` is a binding, so the write
+        // above has already relit the bar's slot. This only asks the sheet to
+        // open, and it names the tab rather than letting ContentView re-read a
+        // value written in the same update.
+        onTabSelected?(.flights)
     }
 
     /// Flights -> Trips, the matching way back out.
@@ -558,11 +558,60 @@ struct SkyLineBottomBarView: View {
             flightNavigationContext = .flights
             activeTab = destination
         }
-        onTabChanged?(destination)
     }
 
-    // MARK: - Tab Bar
+    // MARK: - Tab Bar (superseded)
 
+    /// IF A `TabView` EVER COMES BACK TO THIS SHEET: NO
+    /// `.tabViewStyle(PageTabViewStyle(...))`. Its absence was load-bearing and
+    /// the reason is still true, so it is written down here rather than deleted
+    /// with the TabView it used to hang off.
+    ///
+    /// The page style backs a TabView with a UICollectionView
+    /// (`SwiftUI.PagingCollectionView`) and hosts each tab in a RECYCLED
+    /// `UIKitPagingCell`. The Places tab is `PlaceLogView`, which owns a
+    /// `NavigationStack`, and SwiftUI bridges that to a real
+    /// `UIKitNavigationController` + `UIKitNavigationBar` living inside that
+    /// cell.
+    ///
+    /// This sheet resizes constantly, and tapping a tab animates the detent at
+    /// the same moment as it changes the page. A resize makes the paging layout
+    /// momentarily invalid ("the item height must be less than the height of the
+    /// UICollectionView"), which resets the collection view's contentOffset and
+    /// makes the pager write `activeTab` back to `.places` on its own,
+    /// mid-layout. The Places cell is then rebuilt inside that same layout pass,
+    /// and because the page's view IDENTITY has not changed SwiftUI reuses the
+    /// existing root hosting controller — so a SECOND navigation controller
+    /// adopts the SAME `UINavigationItem`. Two live `UIKitNavigationBar`s then
+    /// claim one item; the first is still in the window, so the rest of the
+    /// sheet resize walks the autoresizing chain into it
+    /// (`-[UISheetPresentationController _updatePresentedViewFrame]` ->
+    /// `-[UINavigationBar layoutSubviews]`), UIKit finds
+    /// `topItem.navigationBar != self` and raises
+    /// NSInternalInconsistencyException: "Layout requested for visible
+    /// navigation bar ... when the top item belongs to a different navigation
+    /// bar". SIGABRT, and the reason is only in the console — never in the .ips.
+    ///
+    /// The default style is backed by a UITabBarController, whose child view
+    /// controllers are created once and RETAINED, so the navigation stack is
+    /// hosted exactly once and can never be duplicated. `TabViewHelper` at the
+    /// bottom of this file was written for exactly that controller.
+    ///
+    /// The sheet has no TabView at all today — it builds one page for
+    /// `activeTab` — so none of this is live. It is here for whoever puts one
+    /// back.
+    private enum PageStyleWarning {}
+
+
+    /// SUPERSEDED BY THE SYSTEM BAR. Nothing calls this; `body` builds `Tab`
+    /// items and iOS 26 draws the bar itself. Kept, not deleted, because this
+    /// app is scoped and surfaces get switched back — but a call to it would put
+    /// a SECOND bar under the real one, which is the failure mode to watch for.
+    ///
+    /// It was an honest approximation of Liquid Glass and it was still an
+    /// approximation: a capsule of `.chrome` glass with a hand-morphed selection
+    /// pill, sampling `SkyLineGlobeScrim` instead of the page it belongs to.
+    ///
     /// Custom Tab Bar with Liquid Glass Effect
     ///
     /// A floating glass bar rather than an opaque slab bolted to the bottom: it
@@ -574,9 +623,12 @@ struct SkyLineBottomBarView: View {
         // Corner radius is deliberately not passed: 28 is `SkyLineGlassBar`'s own
         // default and belongs to the component, not to this call site.
         SkyLineGlassBar(
-            horizontalPadding: AppSpacing.xs,
-            verticalPadding: AppSpacing.xs
+            cornerRadius: 30,
+            horizontalPadding: AppSpacing.xs + 2,
+            verticalPadding: AppSpacing.xs + 2
         ) {
+            // spacing 0: the slots already divide the width evenly, and a gap
+            // between them would stop the selection morphing cleanly across.
             HStack(spacing: 0) {
                 ForEach(SkyLineTab.barTabs, id: \.rawValue) { tab in
                     TabBarItem(tab)
@@ -591,6 +643,12 @@ struct SkyLineBottomBarView: View {
         }
     }
 
+    /// SUPERSEDED, with `CustomTabBar` above. The bar that ships is
+    /// `SkyLineFloatingTabBar`, at the bottom of this file, hosted by
+    /// `ContentView` so its glass has the globe behind it. What lived here that
+    /// still matters moved there: the `barRepresentative` lookup for which slot
+    /// lights, and the glass selection capsule.
+    ///
     /// One slot in the bar. Flights has no slot of its own, so while it is showing
     /// the Trips slot stays lit — that is what `barRepresentative` encodes.
     @ViewBuilder
@@ -604,31 +662,51 @@ struct SkyLineBottomBarView: View {
                 activeTab = tab
             }
 
-            // Immediately notify the globe of tab change
-            print("🔄 Immediately calling onTabChanged with: \(tab.rawValue)")
-            onTabChanged?(tab)
-
-            // Trigger sheet expansion when tab is tapped
-            onTabSelected?()
+            // Trigger sheet expansion when tab is tapped. The globe needs no
+            // separate message: `activeTab` is a binding to ContentView, which
+            // is what feeds `WebViewGlobeView(currentTab:)`.
+            onTabSelected?(tab)
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Image(systemName: tab.symbolImage)
-                    .font(AppTypography.mono(.title3, weight: .semibold))
+                    .font(AppTypography.mono(.title2, weight: .semibold))
                     .symbolVariant(isActive ? .fill : .none)
+                    .symbolRenderingMode(.hierarchical)
 
                 Text(tab.rawValue)
-                    .font(AppTypography.mono(.caption2, weight: .semibold))
+                    .font(AppTypography.mono(.caption2, weight: .medium))
+                    .tracking(0.4)
             }
             .foregroundStyle(isActive ? theme.colors.primary : theme.colors.textSecondary)
+            // The pill hugs its label instead of spanning the slot. With two
+            // tabs `maxWidth: .infinity` made the selection half the bar wide -
+            // a slab, not an indicator - and the unselected item looked like a
+            // hole next to it. The tap target below is still the full slot.
+            .padding(.horizontal, AppSpacing.md + 2)
             .padding(.vertical, AppSpacing.sm)
-            .frame(maxWidth: .infinity)
             .background {
                 if isActive {
-                    Capsule(style: .continuous)
-                        .fill(theme.colors.primary.opacity(theme == .light ? 0.12 : 0.20))
-                        .matchedGeometryEffect(id: "SkyLineTabSelection", in: tabSelectionNamespace)
+                    // Real glass, not a painted tint. The old
+                    // `Capsule().fill(primary.opacity(0.12))` is what made this
+                    // read as a flat grey-blue slab sitting on the bar: an
+                    // opaque fill samples nothing, so it cannot pick up the
+                    // globe behind it the way the bar around it does.
+                    //
+                    // `glassEffectID` in a shared namespace is what makes the
+                    // selection MORPH from one slot to the next rather than
+                    // cross-fading - the behaviour that reads as Liquid Glass.
+                    Color.clear
+                        .skylineGlass(
+                            .control,
+                            in: Capsule(style: .continuous),
+                            tint: theme.colors.primary,
+                            interactive: true,
+                            theme: theme
+                        )
+                        .glassEffectID("SkyLineTabSelection", in: tabSelectionNamespace)
                 }
             }
+            .frame(maxWidth: .infinity)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
@@ -657,8 +735,8 @@ struct SkyLineBottomBarView: View {
         // Refresh the view to ensure proper display
         flightDetailsViewKey = UUID()
         
-        // Call the parent callback if needed
-        onTabChanged?(.flights)
+        // Call the parent callback if needed. `activeTab` above is a binding,
+        // so ContentView and the bar already know which surface this is.
         onFlightSelected?(flight)
     }
     
@@ -982,14 +1060,17 @@ struct SkyLineBottomBarView: View {
             switch flightNavigationContext {
             case .flights:
                 selectedFlightForDetails = nil
-                selectedDetent = .fraction(0.2)
+                // 0.3, not 0.2: the floating bar hangs off this sheet as a
+                // bottom safe-area inset and costs ~110pt at every height, so
+                // 0.2 is no longer a detent the sheet has.
+                selectedDetent = .fraction(0.3)
             case .trip(let trip):
                 selectedFlightForDetails = nil
                 // `.resolved` because Trips is hidden while the app is scoped to
                 // boarding passes; this lands back on Flights instead of on a
                 // page the TabView is not building.
                 activeTab = SkyLineTab.trips.resolved
-                selectedDetent = .fraction(0.2)
+                selectedDetent = .fraction(0.3)
 
                 tripToReopen = trip
 
@@ -1394,6 +1475,197 @@ struct SkyLineBottomBarView: View {
     @State private var showingAddToTripSheet = false
 }
 
+// MARK: - Floating Tab Bar
+
+/// The bar the app ships: a floating Liquid Glass capsule.
+///
+/// `ContentView` places it, in one of two hosts and never both: in its ZStack
+/// over the globe while nothing is open, and as the sheet's bottom
+/// `safeAreaInset` while a page is. Same padding either way, so the swap does
+/// not move it — measured at (28, 773, 173, 55) for the Flights slot before
+/// opening the sheet and again after dismissing it.
+///
+/// WHAT THE ROUNDED RECTANGLE AROUND THE OLD BAR ACTUALLY WAS. Not a container
+/// belonging to the tab bar. It was THE SHEET, at its old 80pt resting detent,
+/// which iOS 26 draws as an inset floating platter: 26pt in from each side,
+/// 22pt up from the bottom, filled `#1C1C1E`. Measured, not assumed —
+///   • the shape occupies y 2343…2557, x 77…1128 at 3x both BEFORE this change
+///     and after the tab bar was taken out of the sheet entirely, which is not
+///     something a tab bar's own chrome can do;
+///   • `#1C1C1E` is `UIColor.systemBackground` dark, and no token in
+///     `ThemeColors` is that value;
+///   • `.presentationBackground(Color.red)` turns it red, so the modifier does
+///     reach the sheet — but `.presentationBackground(Color.red.opacity(0.35))`
+///     comes back rgb(107,41,47), which is red over that grey and not red over
+///     the globe (rgb(89,0,8)). The platter sits BEHIND the presentation
+///     background and cannot be cleared from SwiftUI.
+/// So `UITabBarAppearance` was never going to move it, and neither was anything
+/// done to the page slab. The fix was to stop presenting the sheet when there is
+/// no surface to show; see `skylineGlobeSheetChrome`.
+///
+/// On the globe the bar has `SkyLineGlobeScrim` and the live globe behind it,
+/// which is the backdrop worth refracting; on a page it has the page's own
+/// ground. The cost of leaving the system bar behind is
+/// `.tabBarMinimizeBehavior(.onScrollDown)`, which went with the UITabBar that
+/// implemented it: this bar is always up.
+///
+/// It is a `struct: View` and not a `@ViewBuilder` function. A function is not a
+/// nominal type boundary — its whole tree inlines into the caller's concrete
+/// type — and this file has already shipped a launch crash from exactly that.
+struct SkyLineFloatingTabBar: View {
+    @EnvironmentObject var themeManager: ThemeManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The surface showing right now. `ContentView` owns it and the sheet's page
+    /// reads the same binding, so a lit slot and the page under it cannot
+    /// disagree.
+    @Binding var activeTab: SkyLineTab
+
+    /// A TAP on a slot, and only a tap. Code that switches surfaces writes
+    /// `activeTab` directly, so a programmatic change still leaves the sheet at
+    /// whatever height the user put it.
+    var onSelect: (SkyLineTab) -> Void
+
+    /// Shared by every slot's selection capsule. `glassEffectID` means nothing
+    /// to glass that is not inside a `GlassEffectContainer` sharing this
+    /// namespace, which is why the container below is not optional decoration.
+    @Namespace private var glassNamespace
+
+    var body: some View {
+        let theme = themeManager.currentTheme
+
+        // `spacing` is the distance within which two pieces of glass in this
+        // container stop being two shapes and flow into one. The selection
+        // capsule sits INSIDE the bar capsule, so a generous value here
+        // dissolves the selection into the bar and the bar looks empty. `xs` is
+        // enough for the morph to read and small enough to keep them apart.
+        GlassEffectContainer(spacing: AppSpacing.xs) {
+            HStack(spacing: 0) {
+                ForEach(SkyLineTab.barTabs, id: \.rawValue) { tab in
+                    SkyLineFloatingTabBarSlot(
+                        tab: tab,
+                        isActive: activeTab.barRepresentative == tab,
+                        theme: theme,
+                        horizontalPadding: slotHorizontalPadding,
+                        glassNamespace: glassNamespace
+                    ) {
+                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                        impactFeedback.impactOccurred()
+                        onSelect(tab)
+                    }
+                }
+            }
+            .padding(AppSpacing.xs)
+            // This IS `.glassEffect(.regular.interactive(), in: .capsule)` —
+            // read `SkyLineGlassSurface` — with the Reduce Transparency
+            // fallback attached. Calling `.glassEffect` straight would leave
+            // anyone who turns transparency off with a bar that has no
+            // substance at all over a live globe.
+            .skylineGlass(.chrome, in: .capsule, interactive: true, theme: theme)
+        }
+        // The morph. `glassEffectID` decides that the selection capsule is the
+        // same element in a new slot; this is what animates it there.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: activeTab)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// How much air each slot puts around its label.
+    ///
+    /// Two slots can afford `md`, and need it: with `barTabs` at
+    /// `[.flights, .profile]` a tighter pill reads as a chip rather than a
+    /// selection. Restore `.places` and `.trips` and four slots have to share
+    /// 375pt minus the bar's own inset, so at the accessibility text sizes
+    /// `.footnote` still permits, `md` on both sides of four labels overflows.
+    /// Derived from `barTabs` so restoring the surfaces restores the fit too.
+    private var slotHorizontalPadding: CGFloat {
+        SkyLineTab.barTabs.count > 2 ? AppSpacing.sm : AppSpacing.md
+    }
+}
+
+/// One slot in `SkyLineFloatingTabBar`.
+///
+/// Its own type, not a builder function on the bar, for the same reason the bar
+/// is: keeping each subtree out of the parent's concrete type.
+private struct SkyLineFloatingTabBarSlot: View {
+    let tab: SkyLineTab
+    let isActive: Bool
+    let theme: AppTheme
+    let horizontalPadding: CGFloat
+    let glassNamespace: Namespace.ID
+    let action: () -> Void
+
+    /// ONE id for every slot's capsule, deliberately, and NOT the tab.
+    ///
+    /// `glassEffectID` is what tells the container that two pieces of glass in
+    /// two states are the same piece of glass. Keyed on the tab, the old slot's
+    /// capsule and the new slot's capsule are different elements — one removed,
+    /// one inserted — and glass that is removed and inserted cross-fades. Keyed
+    /// on a constant it is one element that has moved, so the container
+    /// interpolates its geometry and the capsule TRAVELS between slots. That
+    /// travel is the thing that reads as Liquid Glass; a cross-fade reads as a
+    /// highlight blinking sideways.
+    private static let selectionGlassID = "SkyLineTabSelection"
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: AppSpacing.xs / 2) {
+                Image(systemName: tab.symbolImage)
+                    .font(AppTypography.mono(.title3, weight: .semibold))
+                    // Colour is never the only signal. The selected glyph is
+                    // FILLED and the unselected one is outlined, so which slot
+                    // is live still reads in greyscale and without colour
+                    // vision.
+                    .symbolVariant(isActive ? .fill : .none)
+                    .symbolRenderingMode(.hierarchical)
+
+                Text(tab.rawValue)
+                    .appFont(.footnote, lineLimit: .exactly(1))
+            }
+            .foregroundStyle(isActive ? theme.colors.primary : theme.colors.textSecondary)
+            // The pill hugs its label instead of spanning the slot. With two
+            // tabs, `maxWidth: .infinity` on the capsule made the selection half
+            // the bar wide — a slab, not an indicator — and left the unselected
+            // slot looking like a hole beside it. The tap target below is still
+            // the whole slot.
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, AppSpacing.sm)
+            .background {
+                if isActive {
+                    // Real glass, not a painted tint: an opaque fill samples
+                    // nothing, so it cannot pick up the globe the way the bar
+                    // around it does, and that is what made the previous
+                    // `Capsule().fill(primary.opacity(0.12))` read as a flat
+                    // grey-blue slab.
+                    //
+                    // UNTINTED, which is a change. `Glass.tint(primary)` under
+                    // a label that is also `primary` puts blue ink on a blue
+                    // wash; `onAccent` cannot rescue it either, because a tinted
+                    // glass is not a filled surface and near-black ink over a
+                    // translucent wash on a night globe is worse. Plain glass
+                    // lightens whatever is behind it, and `primary` measures
+                    // 5.9:1 (light) and 7.3:1 (dark) against the palette's own
+                    // ground.
+                    Color.clear
+                        .skylineGlass(
+                            .control,
+                            in: Capsule(style: .continuous),
+                            interactive: true,
+                            theme: theme
+                        )
+                        .glassEffectID(Self.selectionGlassID, in: glassNamespace)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(tab.rawValue))
+        // VoiceOver has no other way to know which slot is lit — the tint, the
+        // fill variant and the capsule are all visual.
+        .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
 // MARK: - Previews
 /// Both previews stand the sheet on the app's own `background` rather than a
 /// literal black, so what you see in the canvas is what the theme actually paints.
@@ -1408,7 +1680,7 @@ private struct BottomBarPreviewHost: View {
             themeManager.currentTheme.colors.background
                 .ignoresSafeArea()
 
-            SkyLineBottomBarView(selectedDetent: .constant(.large))
+            SkyLineBottomBarView(activeTab: .constant(.primary), selectedDetent: .constant(.large))
                 .environmentObject(themeManager)
                 .environmentObject(flightStore)
                 .environmentObject(AuthenticationService.shared)
@@ -1629,12 +1901,13 @@ private extension SkyLineBottomBarView {
             print("🔍 DEBUG: Set selectedFlightForDetails to \(flight.flightNumber)")
             print("🔍 DEBUG: Generated new flightDetailsViewKey: \(flightDetailsViewKey)")
             
-            // For collapsed sheet, start with a specific detent
-            if selectedDetent == .fraction(0.2) {
-                selectedDetent = .fraction(0.3) // Start collapsed
-                print("🔍 DEBUG: Changed selectedDetent from 0.2 to 0.3 (collapsed)")
+            // Already at the shortest detent the sheet has, so there is
+            // nothing to collapse to. This used to promote 0.2 -> 0.3; 0.2 left
+            // with the floating bar's safe-area inset, and 0.3 IS the peek now.
+            if selectedDetent == .fraction(0.3) {
+                print("🔍 DEBUG: selectedDetent already at the 0.3 peek")
             } else {
-                print("🔍 DEBUG: selectedDetent was not 0.2, keeping as \(selectedDetent)")
+                print("🔍 DEBUG: keeping selectedDetent as \(selectedDetent)")
             }
         }
         
@@ -1881,6 +2154,18 @@ private extension SkyLineBottomBarView {
 }
 
 
+/// NO LONGER APPLIED. Nothing constructs this.
+///
+/// It existed to make the hand-rolled bar the only bar on screen: one runloop
+/// after layout it walked `superview.superview` (the `.compositingGroup()` that
+/// used to sit under the TabView) down to the `UITabBarController` SwiftUI backs
+/// a default-styled TabView with, cleared its backgrounds, and sent the tab bar
+/// `removeFromSuperview()`. That is precisely why the app did not look like
+/// Liquid Glass — the real glass bar was built every launch and then destroyed.
+///
+/// Kept, unused, because this app is scoped and things get switched back. Its
+/// `Coordinator` also killed the cross-fade between tabs (a zero-duration
+/// transition); with the system bar back, tab changes animate the system way.
 fileprivate struct TabViewHelper: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -2305,10 +2590,8 @@ struct FlightsEmptyStateView: View {
 
 #Preview {
     SkyLineBottomBarView(
-        onFlightSelected: nil,
-        onTabSelected: nil,
-        onGlobeReset: nil,
-        selectedDetent: .constant(.fraction(0.2))
+        activeTab: .constant(.primary),
+        selectedDetent: .constant(.fraction(0.3))
     )
         .environmentObject(ThemeManager())
         .environmentObject(FlightStore())
