@@ -2,26 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>MISTRAL_API_KEY</key>
-	<string>YOUR_MISTRAL_API_KEY_HERE</string>
-	<key>OPENROUTER_API_KEY</key>
-	<string></string>
+	<!-- The app makes only HTTPS calls and uses no non-exempt encryption of its
+	     own. Declaring it here means a build is not held in "Missing Compliance"
+	     in App Store Connect until someone answers the export questionnaire by
+	     hand, which otherwise happens once per build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- Photo access. Both picker call sites use SwiftUI's `.photosPicker`,
+	     which runs out of process and never prompts - so this string exists
+	     only to be read by App Review, and it has to describe what the app
+	     actually does. The previous one described the retired photo-library
+	     place scan and promised "your photos stay on your device", which is
+	     not true of a pass sent to the remote parser. -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SkyLine looks at the photos from your trip dates to work out which places you spent time at, so you can log them without typing. Your photos stay on your device.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Take photos of boarding passes for automatic flight information import</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>processing</string>
-	</array>
+	<string>SkyLine reads the boarding pass or booking confirmation you choose, so it can add the flight without you typing it in.</string>
+
 	<key>UIStatusBarHidden</key>
 	<false/>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>comgooglemaps</string>
-	</array>
+
 	<key>UIAppFonts</key>
 	<array>
 		<string>GeistMono-Regular.ttf</string>

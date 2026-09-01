@@ -13,6 +13,7 @@
 		DC1D9DDAEB3140C1A04F4D59 /* GeistMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 0D84AB2A25A545FCAB621A8F /* GeistMono-Medium.ttf */; };
 		4E9D5DC6995B4B108FD98198 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B5F35E2E0ED247AB8AD127D7 /* GeistMono-Regular.ttf */; };
 		468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */ = {isa = PBXBuildFile; fileRef = CCE42A62B909487098B269AA /* countries.geojson */; };
+		A940FA623F214CF996B93ACC /* globe.gl.js in Resources */ = {isa = PBXBuildFile; fileRef = 5A2917FC2EDB4C44BBDB7B22 /* globe.gl.js */; };
 		A90A235B2F11B0F5008AC9AE /* DestinationSearchManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235A2F11B0F5008AC9AE /* DestinationSearchManager.swift */; };
 		A90A235D2F11B11D008AC9AE /* LocationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235C2F11B11D008AC9AE /* LocationPickerView.swift */; };
 		A90A235F2F1362AC008AC9AE /* TripImageGenerationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A90A235E2F1362AC008AC9AE /* TripImageGenerationService.swift */; };
@@ -22,6 +23,7 @@
 		A93C59922E5B9C4F00266D7E /* SkyLineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */; };
 		A93C59942E5B9C4F00266D7E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93C59932E5B9C4F00266D7E /* ContentView.swift */; };
 		A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */; };
+		B583FF2458704D79BD93D8C9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3214C93683D3499394B2C507 /* PrivacyInfo.xcprivacy */; };
 		A94165942E8709EB0050BE19 /* SkyLineBottomBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */; };
 		A94165C42EA9D8400050BE19 /* AddTripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C02EA9D8400050BE19 /* AddTripView.swift */; };
 		A94165C52EA9D8400050BE19 /* TripDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A94165C12EA9D8400050BE19 /* TripDetailView.swift */; };
@@ -101,10 +103,13 @@
 		877D1D962DC21AC82CAEBB99 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE007FD8987DDA7084E5E684 /* OnboardingViewModel.swift */; };
 		DB6965288C99734686AB48B2 /* FirstRunDetectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF459F0CCD94725429D9F63 /* FirstRunDetectionView.swift */; };
 		CD02EFA997D74D63C05AB1F2 /* PendingReviewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */; };
+		2A32E720EAFF4B4F81C063A2 /* AccountDeletionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B511580B24D96BB3E0CF2 /* AccountDeletionService.swift */; };
+		915B54220FD74648B8E5FBED /* AccountDataEraser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0C3C32F8CC49349F58E0B8 /* AccountDataEraser.swift */; };
 		B8ADFC5385F04D958BEB40BF /* BoardingPassPrintedFields.swift in Sources */ = {isa = PBXBuildFile; fileRef = F54781DF85B44D0C80B18CD5 /* BoardingPassPrintedFields.swift */; };
 		376691BCF8094FB1889A3B7A /* BoardingPassBarcodeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */; };
 		817C92F383BC4271A212C465 /* BCBPParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3424C9E463B44E3AB86AD41D /* BCBPParser.swift */; };
 		8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */; };
+		45F2E347F029478A8A6F2247 /* AccountDeletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A28A539ECD74CCAA5BC6DE3 /* AccountDeletionTests.swift */; };
 		40058E034A884DBD8E974B71 /* BoardingPassIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B844136FFFB4AD2B0D8D55C /* BoardingPassIdentityTests.swift */; };
 		FAF3C30A0F9D42E2BFD5288B /* BoardingPassScanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */; };
 		8F2BB947BF0A4CC1BFEAE998 /* BCBPParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */; };
@@ -146,6 +151,7 @@
 		A93C59912E5B9C4F00266D7E /* SkyLineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineApp.swift; sourceTree = "<group>"; };
 		A93C59932E5B9C4F00266D7E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		3214C93683D3499394B2C507 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = "SkyLine/PrivacyInfo.xcprivacy"; sourceTree = SOURCE_ROOT; };
 		A93C599E2E5B9C5200266D7E /* SkyLineTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkyLineTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A93C59A82E5B9C5200266D7E /* SkyLineUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SkyLineUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A94165932E8709EA0050BE19 /* SkyLineBottomBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyLineBottomBarView.swift; sourceTree = "<group>"; };
@@ -186,6 +192,7 @@
 		A99F90F02E651D2B00BE96FE /* User.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		A99F90F22E662B0700BE96FE /* SharedAirportService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SharedAirportService.swift; sourceTree = "<group>"; };
 		CCE42A62B909487098B269AA /* countries.geojson */ = {isa = PBXFileReference; lastKnownFileType = text; path = countries.geojson; sourceTree = "<group>"; };
+		5A2917FC2EDB4C44BBDB7B22 /* globe.gl.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = globe.gl.js; path = "SkyLine/Resources/globe.gl.js"; sourceTree = SOURCE_ROOT; };
 		115D216FF664C5C7EF0C8C5D /* DebugFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugFlags.swift; path = "SkyLine/Configuration/DebugFlags.swift"; sourceTree = SOURCE_ROOT; };
 		792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompactFlightRowView.swift; path = "SkyLine/Views/Components/CompactFlightRowView.swift"; sourceTree = SOURCE_ROOT; };
 		696E3BC857B56B570F717948 /* HarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HarnessTests.swift; path = "SkyLineTests/HarnessTests.swift"; sourceTree = SOURCE_ROOT; };
@@ -229,10 +236,13 @@
 		EE007FD8987DDA7084E5E684 /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingViewModel.swift; path = "SkyLine/Views/Onboarding/OnboardingViewModel.swift"; sourceTree = SOURCE_ROOT; };
 		AAF459F0CCD94725429D9F63 /* FirstRunDetectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FirstRunDetectionView.swift; path = "SkyLine/Views/Places/FirstRunDetectionView.swift"; sourceTree = SOURCE_ROOT; };
 		B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStore.swift; path = "SkyLine/Services/PendingReviewStore.swift"; sourceTree = SOURCE_ROOT; };
+		8B8B511580B24D96BB3E0CF2 /* AccountDeletionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountDeletionService.swift; path = "SkyLine/Services/AccountDeletionService.swift"; sourceTree = SOURCE_ROOT; };
+		1D0C3C32F8CC49349F58E0B8 /* AccountDataEraser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountDataEraser.swift; path = "SkyLine/Services/AccountDataEraser.swift"; sourceTree = SOURCE_ROOT; };
 		F54781DF85B44D0C80B18CD5 /* BoardingPassPrintedFields.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassPrintedFields.swift; path = "SkyLine/Services/BoardingPassPrintedFields.swift"; sourceTree = SOURCE_ROOT; };
 		43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassBarcodeService.swift; path = "SkyLine/Services/BoardingPassBarcodeService.swift"; sourceTree = SOURCE_ROOT; };
 		3424C9E463B44E3AB86AD41D /* BCBPParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BCBPParser.swift; path = "SkyLine/Services/BCBPParser.swift"; sourceTree = SOURCE_ROOT; };
 		3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PendingReviewStoreTests.swift; path = "SkyLineTests/PendingReviewStoreTests.swift"; sourceTree = SOURCE_ROOT; };
+		7A28A539ECD74CCAA5BC6DE3 /* AccountDeletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountDeletionTests.swift; path = "SkyLineTests/AccountDeletionTests.swift"; sourceTree = SOURCE_ROOT; };
 		2B844136FFFB4AD2B0D8D55C /* BoardingPassIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassIdentityTests.swift; path = "SkyLineTests/BoardingPassIdentityTests.swift"; sourceTree = SOURCE_ROOT; };
 		3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BoardingPassScanTests.swift; path = "SkyLineTests/BoardingPassScanTests.swift"; sourceTree = SOURCE_ROOT; };
 		AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BCBPParserTests.swift; path = "SkyLineTests/BCBPParserTests.swift"; sourceTree = SOURCE_ROOT; };
@@ -351,10 +361,13 @@
 				51A7B04EF6400C8E82FBB6A0 /* LibraryPlaceDetectionService.swift */,
 				508401CEC80FD94F35289AA2 /* Onboarding */,
 				B0CD458B1FC7874D5CFCA9BD /* PendingReviewStore.swift */,
+				8B8B511580B24D96BB3E0CF2 /* AccountDeletionService.swift */,
+				1D0C3C32F8CC49349F58E0B8 /* AccountDataEraser.swift */,
 				F54781DF85B44D0C80B18CD5 /* BoardingPassPrintedFields.swift */,
 				43F0F5A9A24B43F8BA265028 /* BoardingPassBarcodeService.swift */,
 				3424C9E463B44E3AB86AD41D /* BCBPParser.swift */,
 				3C799E78D9F1C3DFC014AD66 /* PendingReviewStoreTests.swift */,
+				7A28A539ECD74CCAA5BC6DE3 /* AccountDeletionTests.swift */,
 				2B844136FFFB4AD2B0D8D55C /* BoardingPassIdentityTests.swift */,
 				3CDBC4561F0149769E44DBCA /* BoardingPassScanTests.swift */,
 				AE114DF5E6F04B8DB841EA50 /* BCBPParserTests.swift */,
@@ -368,6 +381,7 @@
 			isa = PBXGroup;
 			children = (
 				A93C59982E5B9C5200266D7E /* Preview Assets.xcassets */,
+				3214C93683D3499394B2C507 /* PrivacyInfo.xcprivacy */,
 				792FD6419D6FEF19D5D1305A /* CompactFlightRowView.swift */,
 				58F01E2A4AC1BC01BA1C26A1 /* SkyLineGlass.swift */,
 				84BCCF77FF4DA5819E19602B /* VerdictChip.swift */,
@@ -414,6 +428,7 @@
 			children = (
 				A94165E42ED3782D0050BE19 /* BoardingPassConfig.json */,
 				CCE42A62B909487098B269AA /* countries.geojson */,
+				5A2917FC2EDB4C44BBDB7B22 /* globe.gl.js */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -672,6 +687,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A93C59992E5B9C5200266D7E /* Preview Assets.xcassets in Resources */,
+				B583FF2458704D79BD93D8C9 /* PrivacyInfo.xcprivacy in Resources */,
 				614256E4DDB74B3CB406DE96 /* GeistMono-OFL.txt in Resources */,
 				3F58B11B5DF6499593A8E5AB /* GeistMono-Bold.ttf in Resources */,
 				FF2ACA1171924D17BF745BF8 /* GeistMono-SemiBold.ttf in Resources */,
@@ -679,6 +695,7 @@
 				4E9D5DC6995B4B108FD98198 /* GeistMono-Regular.ttf in Resources */,
 				A94165E62ED3782D0050BE19 /* BoardingPassConfig.json in Resources */,
 				468BF6E431754B1F9C3F18F1 /* countries.geojson in Resources */,
+				A940FA623F214CF996B93ACC /* globe.gl.js in Resources */,
 				A99F90C62E5BAE8B00BE96FE /* Preview Assets.xcassets in Resources */,
 				A99F90C72E5BAE8B00BE96FE /* Assets.xcassets in Resources */,
 			);
@@ -782,6 +799,8 @@
 				877D1D962DC21AC82CAEBB99 /* OnboardingViewModel.swift in Sources */,
 				DB6965288C99734686AB48B2 /* FirstRunDetectionView.swift in Sources */,
 				CD02EFA997D74D63C05AB1F2 /* PendingReviewStore.swift in Sources */,
+				2A32E720EAFF4B4F81C063A2 /* AccountDeletionService.swift in Sources */,
+				915B54220FD74648B8E5FBED /* AccountDataEraser.swift in Sources */,
 				B8ADFC5385F04D958BEB40BF /* BoardingPassPrintedFields.swift in Sources */,
 				376691BCF8094FB1889A3B7A /* BoardingPassBarcodeService.swift in Sources */,
 				817C92F383BC4271A212C465 /* BCBPParser.swift in Sources */,
@@ -800,6 +819,7 @@
 				BCC05A4E213A6EAF54469733 /* CountryLocatorTests.swift in Sources */,
 				9E34CAE80C7EBA39D4D74B16 /* PhotoSamplingTests.swift in Sources */,
 				8EE2D431823F36A719268F43 /* PendingReviewStoreTests.swift in Sources */,
+				45F2E347F029478A8A6F2247 /* AccountDeletionTests.swift in Sources */,
 				40058E034A884DBD8E974B71 /* BoardingPassIdentityTests.swift in Sources */,
 				FAF3C30A0F9D42E2BFD5288B /* BoardingPassScanTests.swift in Sources */,
 				8F2BB947BF0A4CC1BFEAE998 /* BCBPParserTests.swift in Sources */,
@@ -967,7 +987,7 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -977,7 +997,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1";
 			};
 			name = Debug;
 		};
@@ -998,7 +1018,7 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1008,7 +1028,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1";
 			};
 			name = Release;
 		};
@@ -1025,7 +1045,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkyLine.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SkyLine";
 			};
 			name = Debug;
@@ -1043,7 +1063,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SkyLine.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/SkyLine";
 			};
 			name = Release;
@@ -1059,7 +1079,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1";
 				TEST_TARGET_NAME = SkyLine;
 			};
 			name = Debug;
@@ -1075,7 +1095,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = "1";
 				TEST_TARGET_NAME = SkyLine;
 			};
 			name = Release;
