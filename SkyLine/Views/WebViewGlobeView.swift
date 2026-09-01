@@ -800,8 +800,15 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             light: {
               globeImage: TILE_WHITE,
               background: '#FFFFFF',
-              space: 'linear-gradient(180deg, #E8F4FD 0%, #B8E0FF 30%, #87CEEB 70%, #F0F8FF 100%)',
-              atmosphere: '#CCE7FF',
+              // Neutral, not sky blue. `#B8E0FF` through `#87CEEB` was a
+              // literal daytime sky, which read as a themed illustration behind
+              // a product that is otherwise paper-white. These are the app's own
+              // light tokens - surface, background, and a shade below border -
+              // so the globe sits on the same ground as every other screen.
+              space: 'linear-gradient(180deg, #FFFFFF 0%, #F7F8FC 45%, #EDF0F7 100%)',
+              // Grey, faintly cool, so the sphere still has an edge without
+              // casting blue onto the neutral ground behind it.
+              atmosphere: '#DCE2EF',
               country: 'rgba(0, 0, 0, 0.60)',
               tripActive: 'rgba(31, 122, 68, 0.85)',
               tripUpcoming: 'rgba(154, 113, 38, 0.85)',
@@ -842,14 +849,128 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           window.currentTheme = (window.initialTheme === 'light') ? 'light' : 'dark';
           function palette() { return PALETTE[window.currentTheme] || PALETTE.dark; }
 
+          // ── Stars ──────────────────────────────────────────────────────
+          //
+          // Drawn once into an offscreen canvas and handed to globe.gl as a
+          // data URI, rather than fetched. The globe.gl script already comes
+          // from a CDN by floating tag; a second network dependency for the
+          // backdrop would mean the app's signature screen has two ways to
+          // arrive half-drawn.
+          //
+          // Seeded rather than `Math.random()`, so the sky is the same sky
+          // after a theme toggle or a reload. Stars that rearrange themselves
+          // every time the user taps the sun icon read as a glitch.
+          //
+          // Dark only. On the light palette the ground is near-white paper and
+          // stars on it would be soot.
+          function makeStarfield(width, height, isLight) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            // Deliberately NOT filled. The tile is transparent so the palette's
+            // own `space` gradient shows through underneath it - those values
+            // are CSS gradients, not colours, so painting one here with
+            // `fillStyle` silently does nothing and leaves the canvas black.
+            // That is what the first version did, and dark mode looked right
+            // only by accident.
+
+            // Mulberry32: small, seeded, and good enough for scattering points.
+            let seed = 1013904223;
+            function random() {
+              seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+              let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+              t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+              return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            }
+
+            // Three passes, faint and many to bright and few, so the field has
+            // depth instead of reading as evenly-spaced noise. The seed is
+            // fixed, so light and dark are the SAME sky - toggling the theme
+            // inverts the ink and leaves every star where it was.
+            const layers = [
+              { count: 520, maxRadius: 0.7, alpha: 0.30 },
+              { count: 180, maxRadius: 1.1, alpha: 0.55 },
+              { count: 46,  maxRadius: 1.6, alpha: 0.85 }
+            ];
+
+            layers.forEach(layer => {
+              for (let i = 0; i < layer.count; i++) {
+                const x = random() * width;
+                const y = random() * height;
+                const radius = 0.3 + random() * layer.maxRadius;
+                const jitter = 0.6 + random() * 0.4;
+                if (isLight) {
+                  // Near-black specks, at full layer alpha.
+                  //
+                  // The first attempt reasoned that dark-on-light reads heavier
+                  // and scaled the alpha to 0.55 - which put the faint layer at
+                  // about 0.17 over a pale blue sky, where it simply vanished.
+                  // The light gradient is much closer in value to a mid grey
+                  // than the dark gradient is to white, so the ink needs MORE
+                  // contrast here, not less.
+                  const grey = 96 + Math.floor(random() * 40);
+                  ctx.fillStyle = 'rgba(' + grey + ', ' + grey + ', ' + (grey + 10) + ', ' + Math.min(1, layer.alpha * jitter * 0.95) + ')';
+                } else {
+                  // A touch of blue in the brighter stars, to sit with the
+                  // atmosphere halo rather than fight it.
+                  const blue = 235 + Math.floor(random() * 20);
+                  ctx.fillStyle = 'rgba(255, 255, ' + blue + ', ' + (layer.alpha * jitter) + ')';
+                }
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            });
+
+            return canvas.toDataURL('image/png');
+          }
+
+          const starfieldCache = {};
+          function starfield(themeName) {
+            if (starfieldCache[themeName] === undefined) {
+              try {
+                starfieldCache[themeName] = makeStarfield(512, 512, themeName === 'light');
+              } catch (error) {
+                console.warn('Starfield unavailable:', error);
+                starfieldCache[themeName] = '';
+              }
+            }
+            return starfieldCache[themeName] || null;
+          }
+
+          function canvasClearColor() {
+            // Transparent in BOTH themes. Returning an opaque colour here for
+            // light painted the canvas over the page background - and the page
+            // background is where the starfield lives, so light mode had stars
+            // that were drawn, layered and then completely covered up. The
+            // globe's own backdrop is `applyBackdrop()`, on the body, for both
+            // themes; the canvas contributes the sphere and nothing else.
+            return 'rgba(0,0,0,0)';
+          }
+
+          function applyBackdrop() {
+            const stars = starfield(window.currentTheme);
+            // Two layers in one declaration: the star tile on top, the
+            // palette's own gradient beneath it. `background` shorthand rather
+            // than `backgroundColor`, because `space` IS a gradient and a
+            // gradient assigned to `backgroundColor` is simply dropped.
+            if (stars) {
+              document.body.style.background =
+                'url(' + stars + ') repeat top left / 512px 512px, ' + palette().space;
+            } else {
+              document.body.style.background = palette().space;
+            }
+          }
+
           const world = new Globe(document.getElementById('globeViz'))
             .globeImageUrl(palette().globeImage)
-            .backgroundColor(palette().background)
+            .backgroundColor(canvasClearColor())
             .showAtmosphere(true)
             .atmosphereColor(palette().atmosphere)
             .enablePointerInteraction(true);
 
-          document.body.style.background = palette().space;
+          applyBackdrop();
 
           world.controls().autoRotate = true;
           world.controls().autoRotateSpeed = 0.3;
@@ -1407,10 +1528,10 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
 
             world
               .globeImageUrl(next.globeImage)
-              .backgroundColor(next.background)
+              .backgroundColor(canvasClearColor())
               .atmosphereColor(next.atmosphere);
 
-            document.body.style.background = next.space;
+            applyBackdrop();
 
             window.applyHexagonColors();
             // Arc colours and label colours both come out of the palette.
