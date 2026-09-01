@@ -20,6 +20,9 @@ struct WebViewGlobeView: View {
     @ObservedObject var coordinator: WebViewCoordinator
     let currentTab: SkyLineTab?
     @State private var isGlobeReady = false
+    /// The page told us it cannot draw the globe and is showing the user why.
+    /// Drives the globe controls off screen; cleared if a retry succeeds.
+    @State private var globeFailed = false
     @State private var isAutoRotating = true
     @State private var lastFlightDataHash: String = ""
     @State private var lastVisitedCitiesHash: String = ""
@@ -127,16 +130,23 @@ struct WebViewGlobeView: View {
             }
             
             // Control Panel
-            VStack {
-                HStack {
+            //
+            // Hidden when the globe reported that it could not be drawn. Theme,
+            // pause-rotation and reset-rotation all act on a globe that is not
+            // there, so leaving them floating over the failure message would be
+            // three dead controls on top of an apology.
+            if !globeFailed {
+                VStack {
+                    HStack {
+                        Spacer()
+                        controlPanel
+                            .padding(.top, 50) // Move buttons down to avoid status bar
+                    }
+
                     Spacer()
-                    controlPanel
-                        .padding(.top, 50) // Move buttons down to avoid status bar
                 }
-                
-                Spacer()
+                .padding()
             }
-            .padding()
             
         }
         .background(globeBackgroundColor)
@@ -230,23 +240,45 @@ struct WebViewGlobeView: View {
     
     private func setupWebView() {
         coordinator.onMessageReceived = handleWebViewMessage
+
+        // There used to be a `coordinator.webView?.reload()` here, on the
+        // reasoning that an appear with no ready globe should start it over.
+        //
+        // `reload()` does not do that. The page is loaded with
+        // `loadHTMLString(_:baseURL: nil)`, so it has no URL to reload, and a
+        // reload of a string-loaded page yields an EMPTY document — measured:
+        //
+        //     load #1  url=about:blank  body=<h1>REAL CONTENT</h1>
+        //     reload()
+        //     load #2  url=about:blank  body=
+        //
+        // It survived until now only on timing. The old page spent two seconds
+        // waiting on the CDN, so this call landed while the load was still in
+        // flight and merely restarted it. Now that the library is bundled the
+        // page finishes almost immediately, the reload lands after it, and it
+        // wipes the globe — or, worse, wipes the failure message explaining why
+        // there is no globe.
+        //
+        // Nothing needs to happen here. The coordinator loads the page in its
+        // own init and it is already on screen. A page that genuinely has to be
+        // rebuilt goes through `coordinator.loadPage()`, which re-runs
+        // `loadHTMLString` and always produces the page we meant.
         
-        if !isGlobeReady {
-            coordinator.webView?.reload()
-        }
-        
-        // Set initial theme immediately
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            let themeString = self.themeManager.currentTheme == .light ? "light" : "dark"
-            self.coordinator.evaluateJavaScript("""
-                if (window.setTheme) {
-                    window.setTheme('\(themeString)');
-                } else {
-                    window.initialTheme = '\(themeString)';
-                }
-            """)
-        }
-        
+        // The theme is no longer pushed on a timer from here.
+        //
+        // This used to fire at +0.1s and set `window.setTheme` if it existed and
+        // `window.initialTheme` if it did not. Both halves could miss: at +0.1s
+        // the globe had not been created yet (it waited 2s for the CDN), so it
+        // always took the `initialTheme` branch — and it was writing that onto a
+        // document the `reload()` above was in the middle of replacing. The
+        // value went with the old document and the globe booted dark under a
+        // light app.
+        //
+        // The theme now arrives two ways that cannot miss: baked into the HTML
+        // at construction, so the first frame is already right, and confirmed by
+        // a `GLOBE_REQUEST_THEME` handshake the page sends the moment
+        // `window.setTheme` is defined.
+
         // Test for globe functions and mark ready when available
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.coordinator.evaluateJavaScript("""
@@ -282,10 +314,16 @@ struct WebViewGlobeView: View {
         // Handle simple string messages
         if message == "Globe ready" || message == "Globe ready (fallback)" {
             DispatchQueue.main.async {
-                if !self.isGlobeReady {
-                    self.isGlobeReady = true
-                    self.updateGlobeTheme()
-                }
+                self.isGlobeReady = true
+                // A retry (or a content process recovery) that got through:
+                // the globe is on screen again, so bring its controls back.
+                self.globeFailed = false
+                // Unconditionally, not only on the first ready. A reload or a
+                // content process recovery produces a brand new document that
+                // has never been told the theme; when this was inside
+                // `if !isGlobeReady` the recovered globe came back dark under a
+                // light app, because the flag was still true from last time.
+                self.pushTheme()
                 // Wait a bit longer to ensure everything is settled
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.updateGlobeData()
@@ -328,6 +366,25 @@ struct WebViewGlobeView: View {
         print("📨 WebView message received: \(type)")
         
         switch type {
+        case "GLOBE_REQUEST_THEME":
+            // The page has just defined `window.setTheme` and is asking what the
+            // app's appearance is. Answering here is what replaced pushing the
+            // theme on a timer and hoping the function existed yet.
+            DispatchQueue.main.async {
+                self.pushTheme()
+            }
+
+        case "GLOBE_FAILED":
+            // The globe cannot be drawn and the page is showing the user why.
+            // Release the splash so it does not hang on top of the explanation,
+            // but leave `isGlobeReady` false — there is nothing to push data to.
+            let detail = json["detail"] as? String ?? "unknown"
+            print("❌ Globe reported failure: \(detail)")
+            DispatchQueue.main.async {
+                self.globeFailed = true
+                NotificationCenter.default.post(name: NSNotification.Name("GlobeReady"), object: nil)
+            }
+
         case "AUTO_ROTATE_TOGGLED":
             if let autoRotate = json["autoRotate"] as? Bool {
                 DispatchQueue.main.async {
@@ -401,11 +458,23 @@ struct WebViewGlobeView: View {
     
     private func updateGlobeTheme() {
         guard isGlobeReady else { return }
-        
+        pushTheme()
+    }
+
+    /// Sends the app's current theme to the page.
+    ///
+    /// Deliberately not gated on `isGlobeReady`: the page asks for the theme
+    /// (`GLOBE_REQUEST_THEME`) as soon as `window.setTheme` exists, which is
+    /// before Swift considers the globe ready, and that request is the one that
+    /// settles the colour. `updateGlobeTheme()` keeps the guard for the ordinary
+    /// case of the user toggling appearance.
+    private func pushTheme() {
         let themeString = themeManager.currentTheme == .light ? "light" : "dark"
         coordinator.evaluateJavaScript("""
             if (window.setTheme) {
                 window.setTheme('\(themeString)');
+            } else {
+                window.initialTheme = '\(themeString)';
             }
         """)
     }
@@ -666,6 +735,70 @@ private enum GlobeWebFont {
     static let stack = "'\(family)', ui-monospace, 'Menlo', monospace"
 }
 
+// MARK: - Globe.gl Library
+
+/// globe.gl, vendored into the app bundle. See `Resources/globe.gl.README.md`
+/// for provenance and the upgrade procedure.
+///
+/// This used to be `script.src = 'https://cdn.jsdelivr.net/npm/globe.gl'`,
+/// appended to the page two seconds after load. That was an unversioned URL —
+/// jsdelivr serves whatever is latest, so an upstream release could break every
+/// installed copy of the app with no build on our side — and it made the app's
+/// only feature depend on the network. In airplane mode, which is the situation
+/// this app exists for, the fetch failed and the user got a black screen.
+///
+/// ── Why the source is inlined into the page rather than injected as a
+///    `WKUserScript` at `.atDocumentStart` ────────────────────────────────────
+///
+/// Because `.atDocumentStart` does not work with this library, and fails
+/// silently. Measured in a WKWebView, at document start:
+///
+///     readyState=loading  documentElement=HTML  head=NULL  body=NULL
+///
+/// The very first statement of globe.gl appends its `<style>` to
+/// `document.head || document.getElementsByTagName('head')[0]`. At document
+/// start both are empty, so that statement throws, the rest of the file never
+/// evaluates, and `typeof Globe` stays `'undefined'` with nothing logged. It
+/// can be forced to work by synthesising a `<head>` first, but the parser then
+/// builds its own and the document ends up with two of them.
+///
+/// A `<script>` element in the page's `<head>` has neither problem: the parser
+/// runs it in document order, so `Globe` is guaranteed to be defined by the time
+/// the page's own bootstrap script runs, with no `onload`, no polling and no
+/// timer. Nothing is left to sequence.
+///
+/// `baseURL` stays `nil`. A relative `<script src>` would need the page to have
+/// a real origin, and re-pointing `baseURL` into the bundle changes the page's
+/// origin and read permissions for the sake of one script — the same reasoning
+/// that made `GlobeWebFont` use a `data:` URI.
+///
+/// 1.9 MB of JavaScript. `static let` is lazy and evaluated once per process, so
+/// the read and UTF-8 decode do not happen again on a reload or on a content
+/// process recovery, both of which rebuild the page.
+private enum GlobeLibrary {
+    /// Kept in step with `Resources/globe.gl.README.md` by hand. Logged at boot
+    /// so a running build can be identified from the console.
+    static let version = "2.46.2"
+
+    /// The library source, or `nil` if the resource is missing from the bundle
+    /// — which can only be a packaging mistake, and which the page reports to
+    /// the user rather than hiding.
+    static let source: String? = {
+        guard let url = Bundle.main.url(forResource: "globe.gl", withExtension: "js"),
+              let js = try? String(contentsOf: url, encoding: .utf8) else {
+            print("❌ Globe: globe.gl.js is not in the app bundle — the globe cannot be drawn")
+            return nil
+        }
+
+        // An inline `<script>` is terminated by the literal `</script`, wherever
+        // it appears — including inside a JS string. `<\/script` is the standard
+        // escape and is an identity escape in JS, so the string is unchanged.
+        // Version 2.46.2 contains zero occurrences; this is here so that a
+        // future version bump cannot quietly truncate the library mid-file.
+        return js.replacingOccurrences(of: "</script", with: "<\\/script")
+    }()
+}
+
 // MARK: - WebView Coordinator
 
 class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKScriptMessageHandler {
@@ -679,17 +812,29 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     
     private func setupWebView() {
         let configuration = WKWebViewConfiguration()
-        
+
         // Add message handler for JavaScript communication
         configuration.userContentController.add(self, name: "reactNativeWebView")
-        
+
         webView = WKWebView(frame: .zero, configuration: configuration)
         webView?.navigationDelegate = self
-        
-        let htmlString = getSimpleTestHTML()
-        webView?.loadHTMLString(htmlString, baseURL: nil)
+
+        loadPage()
     }
-    
+
+    /// Builds and loads the globe page from scratch.
+    ///
+    /// Deliberately a fresh `loadHTMLString` rather than `reload()`. The page has
+    /// no URL — it is loaded with `baseURL: nil`, so the web view's `url` is
+    /// `about:blank` — and `reload()` on a string-loaded page is not a reliable
+    /// way to get the same document back, least of all after the content process
+    /// has died and taken the whole page with it. Re-loading the string always
+    /// produces the page we meant. `GlobeLibrary.source` and
+    /// `GlobeWebFont.faceCSS` are `static let`, so nothing is re-read from disk.
+    func loadPage() {
+        webView?.loadHTMLString(getSimpleTestHTML(), baseURL: nil)
+    }
+
     private func getSimpleTestHTML() -> String {
         // Load countries GeoJSON from bundle for offline support
         var countriesJSON = "{}"
@@ -701,15 +846,45 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
             print("⚠️ Failed to load countries.geojson from bundle")
         }
 
+        // The globe used to start dark and be corrected by a timer, so the app
+        // could sit in light mode with a dark globe underneath it. Baking the
+        // saved theme into the page means the FIRST frame is already right and
+        // there is nothing to race.
+        //
+        // Read from the same UserDefaults key `ThemeManager` loads at launch, so
+        // the two cannot disagree. It is duplicated rather than shared because
+        // this type has no ThemeManager to ask — it is constructed before any
+        // view exists. `setTheme` still arrives from Swift for every later
+        // change; this only settles the first paint.
+        let savedTheme = UserDefaults.standard.string(forKey: "app_theme") ?? "dark"
+        let bootTheme = (AppTheme(rawValue: savedTheme) ?? .dark) == .light ? "light" : "dark"
+
+        // The library, inlined. See `GlobeLibrary` for why it is a <script>
+        // element in <head> and not a WKUserScript. If the resource is missing
+        // the page still loads and reports it — an empty <script> here means
+        // `typeof Globe` is 'undefined' below, which is exactly what the boot
+        // check tests for.
+        let globeLibraryScript = GlobeLibrary.source ?? "/* globe.gl missing from bundle */"
+
         return """
 <!DOCTYPE html>
-<html>
+<html class="\(bootTheme)">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script type="text/javascript">
     // Preload countries data from bundle (offline support)
     window.COUNTRIES_DATA = \(countriesJSON);
+    // The theme as of page construction, so the globe's first frame matches the
+    // app instead of being corrected a moment later.
+    window.initialTheme = '\(bootTheme)';
+    window.GLOBE_GL_VERSION = '\(GlobeLibrary.version)';
+  </script>
+  <!-- globe.gl \(GlobeLibrary.version), bundled. Runs here, in document order,
+       so `Globe` is defined before the bootstrap script at the end of <body>.
+       No network. -->
+  <script type="text/javascript">
+\(globeLibraryScript)
   </script>
   <style>
     /* Geist Mono, inlined as a data: URI. See GlobeWebFont — a UIAppFonts
@@ -732,7 +907,12 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
       height: 100vh;
     }
     /* Boot status: bare type, no pill. It is hidden the moment the globe is
-       ready, and anything with a border fights the glass the app lays on top. */
+       ready, and anything with a border fights the glass the app lays on top.
+
+       This is a DEVELOPER readout, not a user-facing surface. It used to be the
+       only thing shown when the library failed to load: an 11px red string
+       reading "Failed to load Globe.gl library" on a black screen. Real
+       failures now go to `.globe-failure` below; this stays small and quiet. */
     .status {
       position: absolute;
       top: 20px;
@@ -744,31 +924,159 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
       z-index: 1000;
       pointer-events: none;
     }
+    html.light .status {
+      color: rgba(10, 15, 28, 0.55);
+      text-shadow: none;
+    }
+
+    /* ── The honest failure screen ────────────────────────────────────────
+       Shown only if the globe genuinely cannot be drawn. Centred, in the app's
+       own face, at a size a person can read, in plain language, with a way out.
+       Themed off the <html> class so it is legible in light mode too — the
+       previous failure state was white-on-black regardless of the app's mode. */
+    .globe-failure {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 40px;
+      text-align: center;
+      z-index: 2000;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .globe-failure.visible { display: flex; }
+    .globe-failure .title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: rgba(255, 255, 255, 0.95);
+      margin-bottom: 10px;
+    }
+    .globe-failure .detail {
+      font-size: 13px;
+      line-height: 1.55;
+      color: rgba(255, 255, 255, 0.62);
+      max-width: 300px;
+    }
+    .globe-failure .retry {
+      margin-top: 26px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      color: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.20);
+      border-radius: 10px;
+      padding: 11px 22px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .globe-failure .retry:active { background: rgba(255, 255, 255, 0.20); }
+    html.light .globe-failure .title  { color: rgba(10, 15, 28, 0.95); }
+    html.light .globe-failure .detail { color: rgba(10, 15, 28, 0.60); }
+    html.light .globe-failure .retry {
+      color: rgba(10, 15, 28, 0.95);
+      background: rgba(10, 15, 28, 0.06);
+      border-color: rgba(10, 15, 28, 0.16);
+    }
+    html.light .globe-failure .retry:active { background: rgba(10, 15, 28, 0.12); }
+    /* The failure screen must sit on something. The globe normally paints the
+       background itself; if it never starts, there is nothing behind the text. */
+    html.light body.globe-failed { background: #F7F7FA; }
+    html.dark  body.globe-failed { background: #000011; }
   </style>
 </head>
 <body>
   <div class="status" id="status">Starting...</div>
   <div id="globeViz"></div>
+  <div class="globe-failure" id="globeFailure">
+    <div class="title" id="globeFailureTitle">The globe didn&rsquo;t load</div>
+    <div class="detail" id="globeFailureDetail"></div>
+    <button class="retry" id="globeFailureRetry" type="button">Try again</button>
+  </div>
 
   <script>
-    console.log('🚀 HTML loaded');
-    document.getElementById('status').innerHTML = 'HTML loaded, testing basic JS...';
+    console.log('🚀 HTML loaded, globe.gl ' + window.GLOBE_GL_VERSION + ' (bundled)');
+    document.getElementById('status').innerHTML = 'Starting globe...';
 
-    // Test basic functionality
-    setTimeout(() => {
-      document.getElementById('status').innerHTML = 'Basic JS working, loading Globe.gl...';
-      console.log('✅ Basic JavaScript working');
-    }, 1000);
+    // ── Failure surface ───────────────────────────────────────────────────
+    //
+    // Only ever called when the globe genuinely cannot be drawn. The old
+    // behaviour was to write 'Failed to load Globe.gl library' into an 11px
+    // red developer readout and leave the user on a black screen; meanwhile a
+    // 3s timer in Swift lifted the splash onto it regardless. This says what
+    // happened in plain language and offers the one action that can help.
+    function showGlobeFailure(detail, consoleContext) {
+      console.error('❌ Globe failure:', consoleContext || detail);
+      var failure = document.getElementById('globeFailure');
+      var status = document.getElementById('status');
+      if (status) { status.style.display = 'none'; }
+      if (!failure) { return; }
+      document.getElementById('globeFailureDetail').textContent = detail;
+      failure.classList.add('visible');
+      document.body.classList.add('globe-failed');
 
-    setTimeout(() => {
-      document.getElementById('status').innerHTML = 'Loading Globe.gl library...';
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/globe.gl';
-      script.onload = function() {
-        console.log('✅ Globe.gl loaded successfully');
-        document.getElementById('status').innerHTML = 'Globe.gl loaded, creating globe...';
+      // Tell Swift, so the splash comes down onto a screen that explains itself
+      // rather than hanging on a globe that is never going to arrive.
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+        window.webkit.messageHandlers.reactNativeWebView.postMessage(
+          JSON.stringify({ type: 'GLOBE_FAILED', detail: detail })
+        );
+      }
+    }
 
-        try {
+    // The only thing that can help a transient failure: build the page again
+    // from scratch, which re-reads the library from the bundle. Handled by the
+    // coordinator, which owns the web view.
+    document.getElementById('globeFailureRetry').addEventListener('click', function() {
+      this.disabled = true;
+      this.textContent = 'Reloading…';
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+        window.webkit.messageHandlers.reactNativeWebView.postMessage(
+          JSON.stringify({ type: 'GLOBE_RELOAD_REQUESTED' })
+        );
+      }
+    });
+
+    // ── Boot ──────────────────────────────────────────────────────────────
+    //
+    // `Globe` is defined by the bundled <script> in <head>, which the parser
+    // has already run by the time this executes. There is nothing to wait for,
+    // so this runs synchronously: no `onload`, no `setTimeout` staging, and no
+    // window in which Swift can call `window.setTheme` before it exists.
+    //
+    // `globeBooted` is the guarantee that this happens exactly once. It used to
+    // be implicit in the script tag firing `onload` once; now that the boot is
+    // an ordinary function that a retry can also reach, it is explicit.
+    var globeBooted = false;
+
+    function bootGlobe() {
+      if (globeBooted) {
+        console.log('⏭️ Globe already booted, ignoring duplicate boot');
+        return;
+      }
+
+      if (typeof Globe !== 'function') {
+        // Only reachable if the bundled resource is missing from the app — a
+        // packaging mistake, not something the network can cause any more.
+        showGlobeFailure(
+          'SkyLine couldn\\'t start the map. Reinstalling the app should fix it.',
+          'typeof Globe === ' + (typeof Globe) + ' — globe.gl.js missing from the bundle?'
+        );
+        return;
+      }
+
+      globeBooted = true;
+      document.getElementById('status').innerHTML = 'Creating globe...';
+
+      // The body of this `try` is unchanged from when it was the CDN script's
+      // `onload` handler, indentation included, so that vendoring the library
+      // shows up as a diff of the boot sequence and not of the globe itself.
+      try {
           // ────────────────────────────────────────────────────────────────
           // Palette
           //
@@ -1524,6 +1832,10 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           window.setTheme = function(theme) {
             console.log('🎨 Setting theme to:', theme);
             window.currentTheme = (theme === 'light') ? 'light' : 'dark';
+            // Keep the document in step, not just the WebGL scene: the boot
+            // readout and the failure screen are CSS and theme themselves off
+            // this class.
+            document.documentElement.className = window.currentTheme;
             const next = palette();
 
             world
@@ -1692,6 +2004,23 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           console.log('🌍 Globe with place + flight support created successfully');
           console.log('📋 Available functions:', typeof window.updateGlobeData, typeof window.updateFlightData, typeof window.setTheme);
 
+          // ── Theme handshake ───────────────────────────────────────────
+          //
+          // The page already booted in the theme Swift baked into the HTML, so
+          // the first frame is correct. This asks Swift to confirm it, which
+          // closes the two cases baking cannot: the user toggling the theme
+          // while the page was still building, and a `reload()` restoring an
+          // older document whose baked value has since gone stale.
+          //
+          // A request from the page, at the moment `window.setTheme` is known
+          // to exist, replaces the old arrangement — Swift firing setTheme on a
+          // 0.1s timer and hoping the function was there yet.
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.reactNativeWebView) {
+            window.webkit.messageHandlers.reactNativeWebView.postMessage(
+              JSON.stringify({ type: 'GLOBE_REQUEST_THEME' })
+            );
+          }
+
           // Try to load countries data with timeout and error handling
           const loadCountries = () => {
             const timeoutId = setTimeout(() => {
@@ -1773,18 +2102,18 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
           setTimeout(loadCountries, 1000);
 
         } catch (error) {
-          console.error('❌ Error creating globe:', error);
-          document.getElementById('status').innerHTML = 'Error: ' + error.message;
-          document.getElementById('status').style.color = '#FF7A6B';
+          // Reachable without the network now: no WebGL context, a device out
+          // of memory, a bad GPU state after a jetsam. All of those can come
+          // right on a fresh page, so the retry is worth offering.
+          showGlobeFailure(
+            'SkyLine couldn\\'t draw the globe on this device. Try again, or reopen the app.',
+            error
+          );
         }
-      };
-      script.onerror = function() {
-        console.error('❌ Failed to load Globe.gl');
-        document.getElementById('status').innerHTML = 'Failed to load Globe.gl library';
-        document.getElementById('status').style.color = '#FF7A6B';
-      };
-      document.head.appendChild(script);
-    }, 2000);
+    }
+
+    // Boot immediately. The library is already in memory.
+    bootGlobe();
   </script>
 </body>
 </html>
@@ -1799,24 +2128,47 @@ class WebViewCoordinator: NSObject, ObservableObject, WKNavigationDelegate, WKSc
     // MARK: - WKScriptMessageHandler
     
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == "reactNativeWebView",
-           let messageBody = message.body as? String {
-            onMessageReceived?(messageBody)
+        guard message.name == "reactNativeWebView",
+              let messageBody = message.body as? String else { return }
+
+        // The retry button on the failure screen. Handled here rather than in
+        // the view because rebuilding the page is the coordinator's job — it
+        // owns the web view, and the view may not even be on screen.
+        if messageBody.contains("GLOBE_RELOAD_REQUESTED") {
+            print("🔄 Globe: reload requested from the page")
+            loadPage()
+            return
         }
+
+        onMessageReceived?(messageBody)
     }
-    
+
     // MARK: - WKNavigationDelegate
-    
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // WebView finished loading
     }
-    
+
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         // WebView started loading content
     }
-    
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         // WebView failed to load
+    }
+
+    /// The content process died — almost always jetsam, because a WebGL globe
+    /// is the most expensive thing the app keeps resident and it is the first
+    /// thing reclaimed after a long spell in the background.
+    ///
+    /// WebKit does not recover from this on its own: the web view is left
+    /// showing nothing, forever, and every `evaluateJavaScript` after it fails
+    /// silently. Without this the globe simply never comes back and the app
+    /// looks broken until it is force quit. Rebuilding the page is cheap —
+    /// the library and the fonts are already in memory as `static let`.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        print("💀 Globe: web content process terminated — rebuilding the page")
+        loadPage()
     }
 }
 
