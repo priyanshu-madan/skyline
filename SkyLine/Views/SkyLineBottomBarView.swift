@@ -126,7 +126,6 @@ struct SkyLineBottomBarView: View {
     // while the labels around them get bigger.
     @ScaledMetric(relativeTo: .largeTitle) private var avatarSize: CGFloat = 80
     @ScaledMetric(relativeTo: .body) private var avatarBadge: CGFloat = 28
-    @ScaledMetric(relativeTo: .title3) private var menuGlyphWell: CGFloat = 30
     @ScaledMetric(relativeTo: .body) private var passGlyphWell: CGFloat = 44
     @ScaledMetric(relativeTo: .largeTitle) private var passWatermarkSize: CGFloat = 148
     @ScaledMetric(relativeTo: .body) private var passNotchSize: CGFloat = 28
@@ -186,13 +185,7 @@ struct SkyLineBottomBarView: View {
             // shortens the page's safe area by exactly the bar's height — a
             // number nothing in this file has to know or keep in step with
             // Dynamic Type.
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BoardingPassScanned"))) { notification in
-                if let boardingPassData = notification.object as? BoardingPassData {
-                    Task {
-                        await handleBoardingPassScanned(boardingPassData)
-                    }
-                }
-            }
+            //
             // NO `.interactiveDismissDisabled()`, and its removal is the other
             // half of dropping the 80pt resting detent. Dragging this sheet down
             // IS how the user gets back to the globe now, and disabling that
@@ -203,41 +196,6 @@ struct SkyLineBottomBarView: View {
                 AddTripView()
                     .environmentObject(themeManager)
                     .environmentObject(tripStore)
-            }
-            .sheet(item: $scannedBoardingPassData) { boardingPassData in
-                BoardingPassConfirmationView(
-                    boardingPassData: boardingPassData,
-                    onConfirm: { confirmedData in
-                        Task {
-                            let flight = await createFlightFromBoardingPass(confirmedData)
-                            let result = await flightStore.addFlight(flight)
-
-                            await MainActor.run {
-                                switch result {
-                                case .success:
-                                    print("✅ Flight added to store: \(flight.flightNumber)")
-                                    scannedBoardingPassData = nil
-
-                                    // Auto-focus on the new flight
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        handleFlightTap(flight)
-                                    }
-
-                                case .failure(let error):
-                                    print("❌ Failed to add flight: \(error)")
-                                    scannedBoardingPassData = nil
-                                }
-                            }
-                        }
-                    },
-                    onCancel: {
-                        scannedBoardingPassData = nil
-                    }
-                )
-                .environmentObject(themeManager)
-                .onAppear {
-                    print("📋 Presenting confirmation sheet with data: \(boardingPassData.summary)")
-                }
             }
     }
 
@@ -485,15 +443,6 @@ struct SkyLineBottomBarView: View {
                                 accessibilityLabel: "Add a trip"
                             ) {
                                 addTripView.toggle()
-                            }
-                        } else if tab == .flights {
-                            CustomMenuView(style: .glass) {
-                                Image(systemName: "plus")
-                                    .font(AppTypography.mono(.title3, weight: .semibold))
-                                    .frame(width: menuGlyphWell, height: menuGlyphWell)
-                            } content: {
-                                BoardingPassMenuContent()
-                                    .environmentObject(themeManager)
                             }
                         } else if tab == .profile {
                             SkyLineGlassIconButton(
@@ -1481,9 +1430,6 @@ struct SkyLineBottomBarView: View {
         return nil
     }
     
-    // MARK: - Boarding Pass Handler
-    
-    @State private var scannedBoardingPassData: BoardingPassData?
     @State private var showingAddToTripSheet = false
 }
 
@@ -1538,6 +1484,12 @@ struct SkyLineFloatingTabBar: View {
     /// whatever height the user put it.
     var onSelect: (SkyLineTab) -> Void
 
+    /// The trailing round action. Adding a flight is the app's one job, so it
+    /// gets a permanent affordance rather than living behind a tab: this is
+    /// reachable from the globe, with no surface open at all. Optional so a
+    /// build without it just renders the tab capsule.
+    var onAdd: (() -> Void)? = nil
+
     /// Shared by every slot's selection capsule. `glassEffectID` means nothing
     /// to glass that is not inside a `GlassEffectContainer` sharing this
     /// namespace, which is why the container below is not optional decoration.
@@ -1552,33 +1504,74 @@ struct SkyLineFloatingTabBar: View {
         // dissolves the selection into the bar and the bar looks empty. `xs` is
         // enough for the morph to read and small enough to keep them apart.
         GlassEffectContainer(spacing: AppSpacing.xs) {
-            HStack(spacing: 0) {
-                ForEach(SkyLineTab.barTabs, id: \.rawValue) { tab in
-                    SkyLineFloatingTabBarSlot(
-                        tab: tab,
-                        isActive: activeTab.barRepresentative == tab,
-                        theme: theme,
-                        horizontalPadding: slotHorizontalPadding,
-                        glassNamespace: glassNamespace
-                    ) {
-                        let impactFeedback = UIImpactFeedbackGenerator(style: .light)
-                        impactFeedback.impactOccurred()
-                        onSelect(tab)
+            // The action is a SEPARATE piece of glass beside the capsule, not a
+            // fourth slot inside it. A slot means "a surface you are on", and
+            // this is not somewhere you can be - it is something you do. The
+            // gap is `sm`, wider than the container's `xs` merge distance, so
+            // the two shapes stay two shapes instead of flowing together.
+            HStack(spacing: AppSpacing.sm) {
+                tabCapsule(theme: theme)
+                    // Measured, not guessed. The capsule's height comes from its
+                    // label, its slot padding and its own inset, all of which
+                    // move with Dynamic Type - so any constant here is only
+                    // correct at one text size, and the circle drifts out of
+                    // round with the pill at every other.
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { height in
+                        capsuleHeight = height
                     }
+
+                if let onAdd {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onAdd()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(AppTypography.mono(.title3, weight: .semibold))
+                            .foregroundStyle(theme.colors.primary)
+                            .frame(width: capsuleHeight, height: capsuleHeight)
+                            .contentShape(.circle)
+                    }
+                    .buttonStyle(.plain)
+                    .skylineGlass(.chrome, in: .circle, interactive: true, theme: theme)
+                    .accessibilityLabel(Text("Add a flight"))
                 }
             }
-            .padding(AppSpacing.xs)
+        }
+        // The morph. `glassEffectID` decides that the selection capsule is the
+        // same element in a new slot; this is what animates it there.
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: activeTab)
+        .accessibilityElement(children: .contain)
+    }
+
+    /// The tab capsule's measured height, so the round action matches it exactly.
+    /// Seeded with a plausible value for the first layout pass only.
+    @State private var capsuleHeight: CGFloat = 52
+
+    private func tabCapsule(theme: AppTheme) -> some View {
+        HStack(spacing: 0) {
+            ForEach(SkyLineTab.barTabs, id: \.rawValue) { tab in
+                SkyLineFloatingTabBarSlot(
+                    tab: tab,
+                    isActive: activeTab.barRepresentative == tab,
+                    theme: theme,
+                    horizontalPadding: slotHorizontalPadding,
+                    glassNamespace: glassNamespace
+                ) {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
+                    onSelect(tab)
+                }
+            }
+        }
+        .padding(AppSpacing.xs)
             // This IS `.glassEffect(.regular.interactive(), in: .capsule)` —
             // read `SkyLineGlassSurface` — with the Reduce Transparency
             // fallback attached. Calling `.glassEffect` straight would leave
             // anyone who turns transparency off with a bar that has no
             // substance at all over a live globe.
             .skylineGlass(.chrome, in: .capsule, interactive: true, theme: theme)
-        }
-        // The morph. `glassEffectID` decides that the selection capsule is the
-        // same element in a new slot; this is what animates it there.
-        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: activeTab)
-        .accessibilityElement(children: .contain)
     }
 
     /// How much air each slot puts around its label.
@@ -1710,188 +1703,6 @@ private struct BottomBarPreviewHost: View {
 }
 
 private extension SkyLineBottomBarView {
-    func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
-        print("🎫 Boarding pass scanned successfully")
-        print("📄 Data: \(boardingPassData.summary)")
-        print("🔍 Detailed BoardingPassData received in UI:")
-        print("   ✈️  Flight: \(boardingPassData.flightNumber ?? "N/A")")
-        print("   🏢 Airline: \(boardingPassData.airline ?? "N/A")")
-        print("   👤 Passenger: \(boardingPassData.passengerName ?? "N/A")")
-        print("   🛫 Departure: \(boardingPassData.departureCode ?? "N/A") (\(boardingPassData.departureCity ?? "N/A"))")
-        print("   🛬 Arrival: \(boardingPassData.arrivalCode ?? "N/A") (\(boardingPassData.arrivalCity ?? "N/A"))")
-        print("   🕐 Dep Time: \(boardingPassData.departureTime ?? "N/A")")
-        print("   🕐 Arr Time: \(boardingPassData.arrivalTime ?? "N/A")")
-        print("   📅 Dep Date: \(boardingPassData.departureDate?.description ?? "N/A")")
-        print("   📅 Arr Date: \(boardingPassData.arrivalDate?.description ?? "N/A")")
-        print("   💺 Seat: \(boardingPassData.seat ?? "N/A")")
-        print("   🚪 Gate: \(boardingPassData.gate ?? "N/A")")
-        print("   🏢 Terminal: \(boardingPassData.terminal ?? "N/A")")
-        print("   🎫 Confirmation: \(boardingPassData.confirmationCode ?? "N/A")")
-        print("   ✅ Is Valid: \(boardingPassData.isValid)")
-        
-        // Show confirmation sheet with compact time pickers by setting the data
-        await MainActor.run {
-            scannedBoardingPassData = boardingPassData
-            print("📋 Set scannedBoardingPassData to trigger sheet: \(scannedBoardingPassData?.summary ?? "nil")")
-        }
-    }
-    
-    private func createFlightFromBoardingPass(_ data: BoardingPassData) async -> Flight {
-        // Extract departure and arrival dates separately
-        let departureDate: Date
-        if let boardingPassDepartureDate = data.departureDate {
-            departureDate = boardingPassDepartureDate
-        } else {
-            // If no departure date from boarding pass, use tomorrow instead of today
-            departureDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-        }
-        
-        let arrivalDate: Date
-        if let boardingPassArrivalDate = data.arrivalDate {
-            arrivalDate = boardingPassArrivalDate
-        } else {
-            // If no specific arrival date, assume same day as departure
-            arrivalDate = departureDate
-        }
-        
-        // Legacy flight date for backward compatibility
-        let flightDate = departureDate
-        
-        // Look up coordinates for departure airport (async with dynamic fetching)
-        let (depName, depCity, _, depCoordinates) = await AirportService.shared.getAirportInfo(for: data.departureCode ?? "")
-        let (arrName, arrCity, _, arrCoordinates) = await AirportService.shared.getAirportInfo(for: data.arrivalCode ?? "")
-        
-        // Format departure time - combine departure date with time from boarding pass
-        let departureTimeString: String
-        let departureDateTime: Date
-        if let boardingPassTime = data.departureTime {
-            // Combine departure date with boarding pass time
-            departureDateTime = combineDateAndTime(date: departureDate, timeString: boardingPassTime) ?? departureDate
-            departureTimeString = boardingPassTime // Keep the original time string for display
-            print("✈️ Using boarding pass departure time: \(boardingPassTime) on date: \(departureDate)")
-        } else {
-            // Fallback to ISO format if no time available
-            departureDateTime = departureDate
-            departureTimeString = ISO8601DateFormatter().string(from: departureDate)
-        }
-        
-        // Format arrival time - combine arrival date with time from boarding pass
-        let arrivalTimeString: String
-        let arrivalDateTime: Date
-        if let boardingPassArrivalTime = data.arrivalTime {
-            // Combine arrival date with boarding pass time (this is the key fix!)
-            arrivalDateTime = combineDateAndTime(date: arrivalDate, timeString: boardingPassArrivalTime) ?? arrivalDate.addingTimeInterval(7200)
-            arrivalTimeString = boardingPassArrivalTime
-            print("✈️ Using boarding pass arrival time: \(boardingPassArrivalTime) on date: \(arrivalDate)")
-        } else {
-            // No arrival time on boarding pass - show N/A
-            arrivalDateTime = departureDateTime.addingTimeInterval(7200) // Still need a date for internal use
-            arrivalTimeString = "N/A"
-            print("⚠️ No arrival time on boarding pass, showing N/A")
-        }
-        
-        // Create departure airport with proper coordinates
-        let departure = Airport(
-            airport: depName ?? "\(data.departureCity ?? data.departureCode ?? "Unknown") Airport",
-            code: data.departureCode ?? "???",
-            city: depCity ?? data.departureCity ?? data.departureCode ?? "Unknown",
-            latitude: depCoordinates?.latitude ?? 0.0,
-            longitude: depCoordinates?.longitude ?? 0.0,
-            time: departureTimeString,
-            actualTime: nil,
-            terminal: data.terminal,
-            gate: data.gate,
-            delay: nil
-        )
-        
-        // Create arrival airport with proper coordinates
-        let arrival = Airport(
-            airport: arrName ?? "\(data.arrivalCity ?? data.arrivalCode ?? "Unknown") Airport", 
-            code: data.arrivalCode ?? "???",
-            city: arrCity ?? data.arrivalCity ?? data.arrivalCode ?? "Unknown",
-            latitude: arrCoordinates?.latitude ?? 0.0,
-            longitude: arrCoordinates?.longitude ?? 0.0,
-            time: arrivalTimeString,
-            actualTime: nil,
-            terminal: nil,
-            gate: nil,
-            delay: nil
-        )
-        
-        // Create flight object
-        let flight = Flight(
-            id: "boarding-pass-\(UUID().uuidString)",
-            flightNumber: data.flightNumber ?? "Unknown",
-            airline: data.airline, // Use the airline extracted from boarding pass
-            departure: departure,
-            arrival: arrival,
-            status: .boarding,
-            aircraft: Aircraft(
-                type: nil,
-                registration: nil,
-                icao24: nil
-            ),
-            currentPosition: nil,
-            progress: 0.0,
-            flightDate: ISO8601DateFormatter().string(from: flightDate),
-            dataSource: .pkpass,
-            date: flightDate,
-            departureDate: departureDate,
-            arrivalDate: arrivalDate,
-            flightDuration: data.flightDuration,
-            isUserConfirmed: true, // Boarding pass data is user-confirmed
-            userConfirmedFields: UserConfirmedFields(
-                departureTime: data.departureTime != nil,
-                arrivalTime: data.arrivalTime != nil,
-                flightDate: data.departureDate != nil,
-                departureDate: data.departureDate != nil,
-                arrivalDate: data.arrivalDate != nil,
-                gate: data.gate != nil,
-                terminal: data.terminal != nil,
-                seat: data.seat != nil
-            )
-        )
-        
-        print("✈️ Created Flight object from BoardingPass:")
-        print("   Flight: \(flight.flightNumber) (\(flight.airline ?? "No Airline"))")
-        print("   Route: \(flight.departure.code) (\(flight.departure.city)) → \(flight.arrival.code) (\(flight.arrival.city))")
-        print("   Times: \(flight.departure.time) → \(flight.arrival.time)")
-        print("   Date: \(DateFormatter.flightCardDate.string(from: flight.date))")
-        print("   Coordinates: (\(flight.departure.latitude ?? 0), \(flight.departure.longitude ?? 0)) → (\(flight.arrival.latitude ?? 0), \(flight.arrival.longitude ?? 0))")
-        
-        return flight
-    }
-    
-    // MARK: - Helper Functions
-    
-    private func combineDateAndTime(date: Date, timeString: String) -> Date? {
-        let calendar = Calendar.current
-        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
-        
-        // Parse the time string (supports formats like "19:45", "7:35 PM")
-        let timeFormats = ["HH:mm", "H:mm", "h:mm a", "h:mm"]
-        
-        for format in timeFormats {
-            let formatter = DateFormatter()
-            formatter.dateFormat = format
-            if let timeDate = formatter.date(from: timeString) {
-                let timeComponents = calendar.dateComponents([.hour, .minute], from: timeDate)
-                
-                var combinedComponents = DateComponents()
-                combinedComponents.year = dateComponents.year
-                combinedComponents.month = dateComponents.month
-                combinedComponents.day = dateComponents.day
-                combinedComponents.hour = timeComponents.hour
-                combinedComponents.minute = timeComponents.minute
-                
-                return calendar.date(from: combinedComponents)
-            }
-        }
-        
-        print("⚠️ Could not parse time string: '\(timeString)'")
-        return nil
-    }
-    
     // Duration calculation removed - will be added in future update
     
     // MARK: - Flight Action Handlers

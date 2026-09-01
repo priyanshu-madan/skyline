@@ -103,6 +103,86 @@ struct ContentView: View {
                 .environmentObject(themeManager)
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: sheetFraction)
 
+            // The scan sheet. Hung off its own `Color.clear` rather than off
+            // the surface sheet below, because the bar's "+" is reachable with
+            // no surface open at all - presenting from a sheet that is not
+            // there would do nothing.
+            //
+            // `onDismiss` is how the scan gets from here to the confirmation;
+            // see `presentScannedPass`.
+            Color.clear
+                .sheet(isPresented: $isShowingAddFlight, onDismiss: presentScannedPass) {
+                    BoardingPassMenuContent()
+                        .environmentObject(themeManager)
+                        .environmentObject(flightStore)
+                        // Its own presentation: it inherits neither the theme
+                        // object nor the colour scheme resolved further up.
+                        .preferredColorScheme(themeManager.currentTheme.colorScheme)
+                        .presentationDetents([.height(280)])
+                        .presentationBackground(themeManager.currentTheme.colors.background)
+                        .presentationCornerRadius(AppRadius.sheet)
+                }
+
+            // Where a scanned pass is confirmed before it becomes a flight.
+            //
+            // This USED to live inside `SkyLineBottomBarView`, along with the
+            // observer that fills it, and that was the bug: the bar view only
+            // exists while the surface sheet is up, so a scan started from the
+            // globe parsed correctly and was then handed to a view that was not
+            // mounted. Nothing appeared and nothing failed. Here it is as
+            // durable as the globe.
+            //
+            // A sibling of the scan sheet rather than a second `.sheet` on the
+            // same `Color.clear`: one view presents one sheet.
+            Color.clear
+                .sheet(item: $scannedBoardingPassData) { boardingPassData in
+                    BoardingPassConfirmationView(
+                        boardingPassData: boardingPassData,
+                        onConfirm: { confirmedData in
+                            Task {
+                                let flight = await createFlightFromBoardingPass(confirmedData)
+                                let result = await flightStore.addFlight(flight)
+
+                                await MainActor.run {
+                                    switch result {
+                                    case .success:
+                                        print("✅ Flight added to store: \(flight.flightNumber)")
+                                        scannedBoardingPassData = nil
+
+                                        // Auto-focus on the new flight. This was
+                                        // `handleFlightTap`, which lived on the bar
+                                        // view and did two things: set that view's
+                                        // own flight-detail state, and call back
+                                        // here. Only the callback half is reachable
+                                        // from outside the sheet, and it is exactly
+                                        // this function - so the globe still swings
+                                        // to the new flight, but the detail page no
+                                        // longer opens by itself.
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                            handleFlightSelection(flight)
+                                        }
+
+                                    case .failure(let error):
+                                        print("❌ Failed to add flight: \(error)")
+                                        scannedBoardingPassData = nil
+                                    }
+                                }
+                            }
+                        },
+                        onCancel: {
+                            scannedBoardingPassData = nil
+                        }
+                    )
+                    .environmentObject(themeManager)
+                    // Same reason as the scan sheet above: a separate
+                    // presentation resolves system colours against the DEVICE
+                    // appearance unless the theme's scheme is restated on it.
+                    .preferredColorScheme(themeManager.currentTheme.colorScheme)
+                    .onAppear {
+                        print("📋 Presenting confirmation sheet with data: \(boardingPassData.summary)")
+                    }
+                }
+
             // Bottom sheet, now carrying ONLY the active surface, and only while
             // there IS one. The bar is not in it; see `floatingTabBar`.
             Color.clear
@@ -171,6 +251,17 @@ struct ContentView: View {
         // carets, `.glassProminent` labels — and `primary` is legible on both
         // palettes by construction (5.9:1 light, 7.3:1 dark on background).
         .tint(themeManager.currentTheme.colors.primary)
+        // The one listener for a scanned pass, on the one view that is always
+        // mounted. `BoardingPassMenuContent` reports its result by posting this
+        // notification and then dismissing itself, so whoever observes it has to
+        // outlive the scanner - which the bar view did not.
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("BoardingPassScanned"))) { notification in
+            if let boardingPassData = notification.object as? BoardingPassData {
+                Task {
+                    await handleBoardingPassScanned(boardingPassData)
+                }
+            }
+        }
     }
 
     // MARK: - Tab Bar
@@ -181,11 +272,60 @@ struct ContentView: View {
     /// page" does not move a pixel. `SkyLineFloatingTabBar` is a `struct: View`,
     /// so this property is a placement, not a second copy of the bar's tree.
     private var floatingTabBar: some View {
-        SkyLineFloatingTabBar(activeTab: $activeTab, onSelect: handleTabSelection)
+        SkyLineFloatingTabBar(
+            activeTab: $activeTab,
+            onSelect: handleTabSelection,
+            onAdd: openScanner
+        )
             .environmentObject(themeManager)
             .padding(.horizontal, AppSpacing.lg)
             .padding(.bottom, AppSpacing.sm)
     }
+
+    // MARK: - Boarding Pass Scanning
+
+    /// Opens the scanner. That is the whole action.
+    ///
+    /// It used to open the Flights surface first and present the scanner a
+    /// third of a second later, because the observer for the scan result lived
+    /// inside `SkyLineBottomBarView` and only existed while that surface was
+    /// up. The observer is on this view now, so the app no longer has to travel
+    /// somewhere the user did not ask to go in order to hear the answer.
+    private func openScanner() {
+        isShowingAddFlight = true
+    }
+
+    /// Hands a parked pass to the confirmation sheet once the scanner is gone.
+    ///
+    /// `BoardingPassMenuContent` posts its result and dismisses itself in the
+    /// same turn, so the confirmation would otherwise be asked to present from
+    /// this same host while the scanner is still leaving it. `onDismiss` runs
+    /// after the dismissal finishes, which is the one ordering here that is
+    /// defined rather than hoped for.
+    ///
+    /// Not observed failing without this - a real scan needs a photo and cannot
+    /// be driven headlessly - but presenting into a dismissal is a known way to
+    /// lose a sheet, and losing this one is the exact bug being fixed.
+    private func presentScannedPass() {
+        guard let pending = pendingBoardingPassData else { return }
+        pendingBoardingPassData = nil
+        scannedBoardingPassData = pending
+    }
+
+    /// The scan sheet, presented from the bar's trailing action.
+    ///
+    /// Reachable from the globe with no surface open, which the header "+" never
+    /// was - that one only existed once you had already opened Flights, and it
+    /// is gone now that the bar owns this.
+    @State private var isShowingAddFlight = false
+
+    /// A parsed pass waiting for the scanner sheet to finish leaving the screen.
+    /// Only ever set while `isShowingAddFlight` is true; `presentScannedPass`
+    /// empties it.
+    @State private var pendingBoardingPassData: BoardingPassData?
+
+    /// The pass being confirmed. Non-nil IS the confirmation sheet being up.
+    @State private var scannedBoardingPassData: BoardingPassData?
 
     // MARK: - Flight Selection Handler
     
@@ -337,6 +477,208 @@ struct ContentView: View {
         """
         
         webViewCoordinator.evaluateJavaScript(resetScript)
+    }
+}
+
+// MARK: - Boarding Pass -> Flight
+
+/// The scan pipeline, moved here from `SkyLineBottomBarView`.
+///
+/// It sat on a view that only exists while the surface sheet is up, so a scan
+/// started from the globe had nowhere to land. Nothing here needs the bar:
+/// `createFlightFromBoardingPass` reaches `AirportService.shared`, a singleton,
+/// and `combineDateAndTime` is pure.
+private extension ContentView {
+    func handleBoardingPassScanned(_ boardingPassData: BoardingPassData) async {
+        print("🎫 Boarding pass scanned successfully")
+        print("📄 Data: \(boardingPassData.summary)")
+        print("🔍 Detailed BoardingPassData received in UI:")
+        print("   ✈️  Flight: \(boardingPassData.flightNumber ?? "N/A")")
+        print("   🏢 Airline: \(boardingPassData.airline ?? "N/A")")
+        print("   👤 Passenger: \(boardingPassData.passengerName ?? "N/A")")
+        print("   🛫 Departure: \(boardingPassData.departureCode ?? "N/A") (\(boardingPassData.departureCity ?? "N/A"))")
+        print("   🛬 Arrival: \(boardingPassData.arrivalCode ?? "N/A") (\(boardingPassData.arrivalCity ?? "N/A"))")
+        print("   🕐 Dep Time: \(boardingPassData.departureTime ?? "N/A")")
+        print("   🕐 Arr Time: \(boardingPassData.arrivalTime ?? "N/A")")
+        print("   📅 Dep Date: \(boardingPassData.departureDate?.description ?? "N/A")")
+        print("   📅 Arr Date: \(boardingPassData.arrivalDate?.description ?? "N/A")")
+        print("   💺 Seat: \(boardingPassData.seat ?? "N/A")")
+        print("   🚪 Gate: \(boardingPassData.gate ?? "N/A")")
+        print("   🏢 Terminal: \(boardingPassData.terminal ?? "N/A")")
+        print("   🎫 Confirmation: \(boardingPassData.confirmationCode ?? "N/A")")
+        print("   ✅ Is Valid: \(boardingPassData.isValid)")
+        
+        // Show confirmation sheet with compact time pickers by setting the data.
+        await MainActor.run {
+            if isShowingAddFlight {
+                // The scanner posted this and is dismissing itself right now.
+                // Park the pass and let `presentScannedPass` put it up once the
+                // scanner is off screen, rather than asking one host to present
+                // a second sheet while the first is still leaving.
+                pendingBoardingPassData = boardingPassData
+                isShowingAddFlight = false
+                print("📋 Parked scanned pass until the scanner is down: \(boardingPassData.summary)")
+            } else {
+                scannedBoardingPassData = boardingPassData
+                print("📋 Set scannedBoardingPassData to trigger sheet: \(scannedBoardingPassData?.summary ?? "nil")")
+            }
+        }
+    }
+    
+    private func createFlightFromBoardingPass(_ data: BoardingPassData) async -> Flight {
+        // Extract departure and arrival dates separately
+        let departureDate: Date
+        if let boardingPassDepartureDate = data.departureDate {
+            departureDate = boardingPassDepartureDate
+        } else {
+            // If no departure date from boarding pass, use tomorrow instead of today
+            departureDate = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        }
+        
+        let arrivalDate: Date
+        if let boardingPassArrivalDate = data.arrivalDate {
+            arrivalDate = boardingPassArrivalDate
+        } else {
+            // If no specific arrival date, assume same day as departure
+            arrivalDate = departureDate
+        }
+        
+        // Legacy flight date for backward compatibility
+        let flightDate = departureDate
+        
+        // Look up coordinates for departure airport (async with dynamic fetching)
+        let (depName, depCity, _, depCoordinates) = await AirportService.shared.getAirportInfo(for: data.departureCode ?? "")
+        let (arrName, arrCity, _, arrCoordinates) = await AirportService.shared.getAirportInfo(for: data.arrivalCode ?? "")
+        
+        // Format departure time - combine departure date with time from boarding pass
+        let departureTimeString: String
+        let departureDateTime: Date
+        if let boardingPassTime = data.departureTime {
+            // Combine departure date with boarding pass time
+            departureDateTime = combineDateAndTime(date: departureDate, timeString: boardingPassTime) ?? departureDate
+            departureTimeString = boardingPassTime // Keep the original time string for display
+            print("✈️ Using boarding pass departure time: \(boardingPassTime) on date: \(departureDate)")
+        } else {
+            // Fallback to ISO format if no time available
+            departureDateTime = departureDate
+            departureTimeString = ISO8601DateFormatter().string(from: departureDate)
+        }
+        
+        // Format arrival time - combine arrival date with time from boarding pass
+        let arrivalTimeString: String
+        let arrivalDateTime: Date
+        if let boardingPassArrivalTime = data.arrivalTime {
+            // Combine arrival date with boarding pass time (this is the key fix!)
+            arrivalDateTime = combineDateAndTime(date: arrivalDate, timeString: boardingPassArrivalTime) ?? arrivalDate.addingTimeInterval(7200)
+            arrivalTimeString = boardingPassArrivalTime
+            print("✈️ Using boarding pass arrival time: \(boardingPassArrivalTime) on date: \(arrivalDate)")
+        } else {
+            // No arrival time on boarding pass - show N/A
+            arrivalDateTime = departureDateTime.addingTimeInterval(7200) // Still need a date for internal use
+            arrivalTimeString = "N/A"
+            print("⚠️ No arrival time on boarding pass, showing N/A")
+        }
+        
+        // Create departure airport with proper coordinates
+        let departure = Airport(
+            airport: depName ?? "\(data.departureCity ?? data.departureCode ?? "Unknown") Airport",
+            code: data.departureCode ?? "???",
+            city: depCity ?? data.departureCity ?? data.departureCode ?? "Unknown",
+            latitude: depCoordinates?.latitude ?? 0.0,
+            longitude: depCoordinates?.longitude ?? 0.0,
+            time: departureTimeString,
+            actualTime: nil,
+            terminal: data.terminal,
+            gate: data.gate,
+            delay: nil
+        )
+        
+        // Create arrival airport with proper coordinates
+        let arrival = Airport(
+            airport: arrName ?? "\(data.arrivalCity ?? data.arrivalCode ?? "Unknown") Airport", 
+            code: data.arrivalCode ?? "???",
+            city: arrCity ?? data.arrivalCity ?? data.arrivalCode ?? "Unknown",
+            latitude: arrCoordinates?.latitude ?? 0.0,
+            longitude: arrCoordinates?.longitude ?? 0.0,
+            time: arrivalTimeString,
+            actualTime: nil,
+            terminal: nil,
+            gate: nil,
+            delay: nil
+        )
+        
+        // Create flight object
+        let flight = Flight(
+            id: "boarding-pass-\(UUID().uuidString)",
+            flightNumber: data.flightNumber ?? "Unknown",
+            airline: data.airline, // Use the airline extracted from boarding pass
+            departure: departure,
+            arrival: arrival,
+            status: .boarding,
+            aircraft: Aircraft(
+                type: nil,
+                registration: nil,
+                icao24: nil
+            ),
+            currentPosition: nil,
+            progress: 0.0,
+            flightDate: ISO8601DateFormatter().string(from: flightDate),
+            dataSource: .pkpass,
+            date: flightDate,
+            departureDate: departureDate,
+            arrivalDate: arrivalDate,
+            flightDuration: data.flightDuration,
+            isUserConfirmed: true, // Boarding pass data is user-confirmed
+            userConfirmedFields: UserConfirmedFields(
+                departureTime: data.departureTime != nil,
+                arrivalTime: data.arrivalTime != nil,
+                flightDate: data.departureDate != nil,
+                departureDate: data.departureDate != nil,
+                arrivalDate: data.arrivalDate != nil,
+                gate: data.gate != nil,
+                terminal: data.terminal != nil,
+                seat: data.seat != nil
+            )
+        )
+        
+        print("✈️ Created Flight object from BoardingPass:")
+        print("   Flight: \(flight.flightNumber) (\(flight.airline ?? "No Airline"))")
+        print("   Route: \(flight.departure.code) (\(flight.departure.city)) → \(flight.arrival.code) (\(flight.arrival.city))")
+        print("   Times: \(flight.departure.time) → \(flight.arrival.time)")
+        print("   Date: \(DateFormatter.flightCardDate.string(from: flight.date))")
+        print("   Coordinates: (\(flight.departure.latitude ?? 0), \(flight.departure.longitude ?? 0)) → (\(flight.arrival.latitude ?? 0), \(flight.arrival.longitude ?? 0))")
+        
+        return flight
+    }
+    
+    // MARK: - Helper Functions
+    
+    private func combineDateAndTime(date: Date, timeString: String) -> Date? {
+        let calendar = Calendar.current
+        let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+        
+        // Parse the time string (supports formats like "19:45", "7:35 PM")
+        let timeFormats = ["HH:mm", "H:mm", "h:mm a", "h:mm"]
+        
+        for format in timeFormats {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            if let timeDate = formatter.date(from: timeString) {
+                let timeComponents = calendar.dateComponents([.hour, .minute], from: timeDate)
+                
+                var combinedComponents = DateComponents()
+                combinedComponents.year = dateComponents.year
+                combinedComponents.month = dateComponents.month
+                combinedComponents.day = dateComponents.day
+                combinedComponents.hour = timeComponents.hour
+                combinedComponents.minute = timeComponents.minute
+                
+                return calendar.date(from: combinedComponents)
+            }
+        }
+        
+        print("⚠️ Could not parse time string: '\(timeString)'")
+        return nil
     }
 }
 
