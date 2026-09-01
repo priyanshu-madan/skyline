@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyLine — Privacy Policy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#F7F8FC; --surface:#FFFFFF; --ink:#0E1626; --muted:#5A6480;
+  --line:#DCE2EF; --accent:#0B63C5;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0A0F1C; --surface:#151D30; --ink:#E9EDF7; --muted:#99A3BC;
+  --line:#27324B; --accent:#4DA3FF;
+}}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);
+  line-height:1.65;margin:0;padding:0 20px 90px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:680px;margin:0 auto}
+h1{font-family:var(--mono);font-size:clamp(28px,5vw,38px);font-weight:600;
+  letter-spacing:-.02em;margin:64px 0 8px;line-height:1.15}
+h2{font-family:var(--mono);font-size:19px;font-weight:600;margin:48px 0 4px}
+h3{font-family:var(--mono);font-size:15px;font-weight:600;margin:32px 0 4px;color:var(--muted)}
+p{margin:14px 0;max-width:66ch}
+ul{margin:14px 0;padding-left:22px;max-width:66ch}
+li{margin:8px 0}
+a{color:var(--accent)}
+hr{border:0;border-top:1px solid var(--line);margin:44px 0}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface);
+  border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+strong{font-weight:600}
+p:first-of-type{color:var(--muted);font-family:var(--mono);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>SkyLine — Privacy Policy</h1>
+<p><strong>Last updated: 30 August 2026</strong></p>
+<p>SkyLine logs the flights you have taken and draws them on a globe. This policy</p>
+<p>describes exactly what the app does with your information. It is written against</p>
+<p>the app&#x27;s actual behaviour, not a template.</p>
+<hr>
+<h2>The short version</h2>
+<ul>
+<li>Your flights are stored in <strong>your own iCloud account</strong>, not on our servers. We</li>
+</ul>
+<p>  cannot read them.</p>
+<ul>
+<li>When you scan a boarding pass, the app first tries to read the **barcode on</li>
+</ul>
+<p>  your device**. Nothing leaves your phone when that works.</p>
+<ul>
+<li>If there is no readable barcode, **the image is sent to an AI service to be</li>
+</ul>
+<p>  read**. A boarding pass image can contain your name and booking reference.</p>
+<ul>
+<li>We do not use analytics, advertising, or tracking of any kind.</li>
+</ul>
+<hr>
+<h2>What we collect, and where it goes</h2>
+<h3>Your flights</h3>
+<p>Flights you add — by scanning or by typing them in — are written to the</p>
+<p><strong>private database of your own iCloud account</strong> (CloudKit container</p>
+<p><code>iCloud.com.skyline.flighttracker</code>). This is storage that belongs to you. The</p>
+<p>developer has no access to it, and it is covered by</p>
+<p><a href="https://www.apple.com/legal/privacy/">Apple&#x27;s iCloud privacy terms</a>.</p>
+<p>Deleting the app does not delete this data. To remove it, use **Settings →</p>
+<p>Delete Account** inside SkyLine.</p>
+<h3>Boarding pass and confirmation images</h3>
+<p>When you scan a pass, SkyLine tries three things in order:</p>
+<p>1. <strong>Barcode, on your device.</strong> Most printed boarding passes carry a PDF417</p>
+<p>   barcode holding the flight details in a standard format. This is decoded</p>
+<p>   entirely on your phone. <strong>Nothing is transmitted.</strong></p>
+<p>2. <strong>If no barcode can be read, the image is uploaded.</strong> This happens with</p>
+<p>   booking confirmations, emailed itineraries, screenshots that crop the</p>
+<p>   barcode out, and passes issued before check-in. The image travels to a</p>
+<p>   Cloudflare Worker operated by the developer, and from there to</p>
+<p>   <a href="https://openrouter.ai/privacy">OpenRouter</a>, which passes it to</p>
+<p>   <strong>OpenAI&#x27;s GPT-4o</strong> to be read. Alongside the image we send an identifier</p>
+<p>   derived from your Sign in with Apple account, used only to rate-limit abuse</p>
+<p>   of that endpoint.</p>
+<p>3. <strong>On-device text recognition</strong>, as a last resort. Nothing is transmitted.</p>
+<p><strong>What that image can contain.</strong> A boarding pass typically shows your name, the</p>
+<p>booking reference (PNR), flight number, route, date, seat, and sometimes a</p>
+<p>frequent-flyer number. If you would rather none of that leave your device, do</p>
+<p>not scan documents without a barcode — use <strong>Enter manually</strong> instead, which</p>
+<p>transmits nothing.</p>
+<p>Images are sent for the sole purpose of reading the flight out of them. They are</p>
+<p>not stored by us after the response is returned. We do not control OpenRouter&#x27;s</p>
+<p>or OpenAI&#x27;s retention; see their policies, linked above.</p>
+<h3>Airport and airline lookups</h3>
+<p>To draw a route we need coordinates for an airport code. When a code is not in</p>
+<p>the table bundled with the app, SkyLine asks</p>
+<p><a href="https://api-ninjas.com/">API Ninjas</a> for it, and</p>
+<p><a href="https://rapidapi.com/">RapidAPI</a> for an airline&#x27;s name from its flight number.</p>
+<p><strong>Only the three-letter airport code or the flight number is sent.</strong> No</p>
+<p>information about you accompanies these requests.</p>
+<h3>Sign in with Apple</h3>
+<p>SkyLine requires an account. Apple gives the app a stable identifier for you,</p>
+<p>and your name and email if you choose to share them. These are held on your</p>
+<p>device and in your own iCloud record. The identifier is also sent with image</p>
+<p>scans, as described above, for rate limiting.</p>
+<p>You can delete your account at any time from <strong>Settings → Delete Account</strong>. This</p>
+<p>removes your flights from iCloud, clears the app&#x27;s local data, and revokes the</p>
+<p>Sign in with Apple credential.</p>
+<h3>Photos</h3>
+<p>SkyLine uses the system photo picker. It receives only the single image you</p>
+<p>choose. <strong>The app has no access to the rest of your photo library</strong> and never</p>
+<p>requests it.</p>
+<hr>
+<h2>What we do not do</h2>
+<ul>
+<li>No analytics or crash-reporting SDKs. There are none in the app.</li>
+<li>No advertising, and no advertising identifiers.</li>
+<li>No tracking across apps or websites. Nothing is shared with data brokers.</li>
+<li>No selling of data. There is no data on our servers to sell.</li>
+</ul>
+<hr>
+<h2>Children</h2>
+<p>SkyLine is not directed at children under 13 and does not knowingly collect</p>
+<p>their information.</p>
+<h2>Changes</h2>
+<p>If this policy changes, the date at the top changes with it, and the updated</p>
+<p>version will be published at this address.</p>
+<h2>Contact</h2>
+<p>Questions about this policy, or a request about your data:</p>
+<p><strong>pmadan.illinois@gmail.com</strong></p>
+</div>
+</body>
+</html>
