@@ -26,7 +26,7 @@ class AirportService: ObservableObject {
     // Airport coordinates lookup (subset of major airports)
     private let airportCoordinates: [String: CLLocationCoordinate2D] = [
         // Major US Airports
-        // "LAX": CLLocationCoordinate2D(latitude: 33.9425, longitude: -118.4081), // Removed to test shared storage
+        "LAX": CLLocationCoordinate2D(latitude: 33.9425, longitude: -118.4081),
         "JFK": CLLocationCoordinate2D(latitude: 40.6413, longitude: -73.7781),
         "LGA": CLLocationCoordinate2D(latitude: 40.7769, longitude: -73.8740),
         "EWR": CLLocationCoordinate2D(latitude: 40.6895, longitude: -74.1745),

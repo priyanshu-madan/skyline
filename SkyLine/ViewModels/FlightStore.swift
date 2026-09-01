@@ -469,13 +469,14 @@ class FlightStore: ObservableObject {
     
     private func loadFlights() {
         guard let data = userDefaults.data(forKey: flightsKey) else {
-            // Load sample data for development
-            flights = [
-                Flight.sample, 
-                Flight.sampleInAir, 
-                Flight.sampleFigmaDesign, 
-                Flight.sampleJakartaDenpasar
-            ]
+            // Empty, not sample data.
+            //
+            // This branch runs on every FRESH INSTALL, and `setupAutoSave`
+            // then wrote these four invented flights to disk a second later -
+            // permanently. AA123 LAX-JFK appeared on the globe of every user
+            // who had never flown it, and the flight-to-place backfill turned
+            // their endpoints into airports in the user's real iCloud.
+            flights = []
             return
         }
         

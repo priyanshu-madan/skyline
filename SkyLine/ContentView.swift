@@ -584,8 +584,14 @@ private extension ContentView {
             airport: depName ?? "\(data.departureCity ?? data.departureCode ?? "Unknown") Airport",
             code: data.departureCode ?? "???",
             city: depCity ?? data.departureCity ?? data.departureCode ?? "Unknown",
-            latitude: depCoordinates?.latitude ?? 0.0,
-            longitude: depCoordinates?.longitude ?? 0.0,
+            // Nil, never 0.0. `Airport.latitude` is already `Double?` and
+            // `coordinate` already returns nil for a missing pair - this was
+            // forcing a real value where the model allowed none. When the
+            // airport lookup failed (its API key dies, or the code is not in
+            // the bundled table) the flight was saved at 0°N 0°E and synced to
+            // iCloud permanently, drawing an arc through the Gulf of Guinea.
+            latitude: depCoordinates?.latitude,
+            longitude: depCoordinates?.longitude,
             time: departureTimeString,
             actualTime: nil,
             terminal: data.terminal,
@@ -598,8 +604,8 @@ private extension ContentView {
             airport: arrName ?? "\(data.arrivalCity ?? data.arrivalCode ?? "Unknown") Airport", 
             code: data.arrivalCode ?? "???",
             city: arrCity ?? data.arrivalCity ?? data.arrivalCode ?? "Unknown",
-            latitude: arrCoordinates?.latitude ?? 0.0,
-            longitude: arrCoordinates?.longitude ?? 0.0,
+            latitude: arrCoordinates?.latitude,
+            longitude: arrCoordinates?.longitude,
             time: arrivalTimeString,
             actualTime: nil,
             terminal: nil,

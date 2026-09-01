@@ -167,7 +167,12 @@ struct SkyLineApp: App {
             }
             .onAppear {
                 // Enable CloudKit background sync
-                CloudKitService.shared.enableBackgroundSync()
+                // `enableBackgroundSync()` deliberately NOT called.
+                //
+                // It saved a CKQuerySubscription with a fresh random id on every
+                // single launch, accumulating subscriptions in the user's account
+                // for push notifications this app never registers to receive.
+                // `aps-environment` is gone from the entitlements with it.
                 
                 // Configure immersive navigation and status bars
                 configureImmersiveAppearance(for: themeManager.currentTheme)

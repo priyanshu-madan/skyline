@@ -23,7 +23,16 @@ extension Color {
 
 // MARK: - Theme Manager
 class ThemeManager: ObservableObject {
-    @Published var currentTheme: AppTheme = .dark
+    /// Saved on every change, not only from `toggleTheme()`.
+    ///
+    /// Settings binds to this property directly, so switching appearance there
+    /// changed the UI and was forgotten on the next launch.
+    @Published var currentTheme: AppTheme = .dark {
+        didSet {
+            guard oldValue != currentTheme else { return }
+            saveTheme()
+        }
+    }
     @Published var isAnimating: Bool = false
 
     private let userDefaults = UserDefaults.standard

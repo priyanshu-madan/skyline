@@ -21,7 +21,12 @@ struct OpenRouterConfig {
     static let `default` = OpenRouterConfig(
         apiKey: "", // Will be loaded from Info.plist
         preferredModel: .gpt4o,
-        fallbackModels: [.claude35Sonnet, .gpt4oMini],
+        // One model, not three.
+        //
+        // The chain uploaded the pass again per model, so a failing scan sent a
+        // photograph containing a passenger name and PNR to BOTH OpenAI and
+        // Anthropic, tripled the cost, and tripled the wait.
+        fallbackModels: [],
         maxTokens: 2000,
         temperature: 0.1
     )
@@ -194,7 +199,12 @@ class OpenRouterBoardingPassService: ObservableObject {
         self.config = OpenRouterConfig(
             apiKey: "not-needed-using-worker",
             preferredModel: .gpt4o,
-            fallbackModels: [.claude35Sonnet, .gpt4oMini],
+            // One model, not three.
+        //
+        // The chain uploaded the pass again per model, so a failing scan sent a
+        // photograph containing a passenger name and PNR to BOTH OpenAI and
+        // Anthropic, tripled the cost, and tripled the wait.
+        fallbackModels: [],
             maxTokens: 2000,
             temperature: 0.1
         )
@@ -524,7 +534,12 @@ class OpenRouterBoardingPassService: ObservableObject {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: workerRequest)
-        urlRequest.timeoutInterval = 120 // 2 minutes for vision models
+        // 25s, not 120. With three models in the chain a failing scan could
+        // sit on "Scanning…" for six minutes with no cancel and no overall
+        // budget. A person holding a phone waiting for a boarding pass to be
+        // read does not wait two minutes for one attempt, let alone six for
+        // the set.
+        urlRequest.timeoutInterval = 25
 
         let (data, response) = try await session.data(for: urlRequest)
 
