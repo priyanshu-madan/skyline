@@ -56,11 +56,38 @@ struct BoardingPassConfirmationView: View {
     let onConfirm: (BoardingPassData) -> Void
     let onCancel: () -> Void
 
+    /// True when this screen was handed a pass with nothing in it at all, which
+    /// is how manual entry arrives: the same form, presented empty.
+    ///
+    /// Derived from the DATA rather than passed in as a flag, because the caller
+    /// that presents this sheet presents it for both cases from one place. It
+    /// changes copy only — the fields, the validation and the save path are
+    /// identical, and that identity is the point of doing manual entry this way
+    /// rather than building a second form.
+    private let isManualEntry: Bool
+
     @EnvironmentObject private var themeManager: ThemeManager
     @StateObject private var configService = ConfigurationService.shared
 
     @State private var editedData: BoardingPassData
     @State private var showingValidationErrors = false
+
+    /// Which of the two city fields the SCREEN filled in, rather than the scan
+    /// or the user.
+    ///
+    /// The lookup behind a code may only replace a city it put there itself. It
+    /// must not overwrite a city that came off a boarding pass or that the user
+    /// typed, and it must be free to correct itself when the code changes —
+    /// typing PHL and then fixing it to JFK used to leave "Philadelphia" sitting
+    /// under JFK forever, because the rule was "fill only when empty".
+    @State private var departureCityIsDerived = false
+    @State private var arrivalCityIsDerived = false
+
+    /// Set for the length of the save. The airline and city lookups behind
+    /// `enriched` can reach the network, so there is a real gap between the tap
+    /// and the sheet leaving — long enough to tap Save twice and store the
+    /// flight twice.
+    @State private var isSaving = false
     @State private var departureTime = Date()
     @State private var arrivalTime = Date()
     @State private var departureDate = Date()
@@ -118,6 +145,7 @@ struct BoardingPassConfirmationView: View {
         self.boardingPassData = boardingPassData
         self.onConfirm = onConfirm
         self.onCancel = onCancel
+        self.isManualEntry = Self.carriesNothing(boardingPassData)
         self._editedData = State(initialValue: Self.normalizedCodes(in: boardingPassData))
 
         // Initialize time picker values from boarding pass data
@@ -194,7 +222,7 @@ struct BoardingPassConfirmationView: View {
             Text(getValidationErrorMessage())
         }
         .onAppear {
-            print("📋 BoardingPassConfirmationView appeared for flight: \(boardingPassData.flightNumber ?? "nil")")
+            print("📋 BoardingPassConfirmationView appeared — mode=\(isManualEntry ? "manual" : "scanned") flight: \(boardingPassData.flightNumber ?? "nil")")
         }
     }
 
@@ -216,7 +244,10 @@ struct BoardingPassConfirmationView: View {
 
                 Spacer(minLength: AppSpacing.sm)
 
-                Text("Confirm Flight Details")
+                // There is nothing to confirm on a form the user is filling in
+                // themselves. Same screen, same controls; the title says which
+                // job it is doing.
+                Text(isManualEntry ? "Add Flight" : "Confirm Flight Details")
                     .appFont(.headline, lineLimit: .exactly(1))
                     .foregroundStyle(theme.colors.text)
                     .accessibilityAddTraits(.isHeader)
@@ -225,7 +256,7 @@ struct BoardingPassConfirmationView: View {
 
                 SkyLineGlassIconButton(
                     systemImage: "arrow.counterclockwise",
-                    accessibilityLabel: "Reset to scanned values"
+                    accessibilityLabel: isManualEntry ? "Clear all fields" : "Reset to scanned values"
                 ) {
                     resetToOriginal()
                 }
@@ -242,24 +273,42 @@ struct BoardingPassConfirmationView: View {
     /// the values below are editable. `success` rather than the old
     /// `Color(.systemBlue)` so it does not compete with the `primary` save CTA,
     /// and it clears AA in both palettes (5.1:1 light, well clear in dark).
+    ///
+    /// Manual entry has no scan to report, so the same banner carries the one
+    /// thing the user actually needs to know before typing: which three fields
+    /// are required. Its badge is a RECESSED well — `background` fill inside the
+    /// lifted card, neutral ink — the same "nothing here yet" vocabulary as the
+    /// empty date slots below, rather than a success seal for something that has
+    /// not happened.
     private func heroSection(theme: AppTheme) -> some View {
         HStack(spacing: AppSpacing.md) {
-            Image(systemName: "checkmark.seal.fill")
+            Image(systemName: isManualEntry ? "square.and.pencil" : "checkmark.seal.fill")
                 .font(AppTypography.mono(.title3, weight: .semibold))
-                .foregroundStyle(theme.colors.success)
+                .foregroundStyle(isManualEntry ? theme.colors.textSecondary : theme.colors.success)
                 .frame(width: heroBadge, height: heroBadge)
                 .background(
-                    Circle().fill(theme.colors.success.opacity(theme == .light ? 0.12 : 0.18))
+                    Circle().fill(
+                        isManualEntry
+                            ? theme.colors.background
+                            : theme.colors.success.opacity(theme == .light ? 0.12 : 0.18)
+                    )
                 )
-                .overlay(Circle().stroke(theme.colors.success.opacity(0.45), lineWidth: 1))
+                .overlay(
+                    Circle().stroke(
+                        isManualEntry ? theme.colors.border : theme.colors.success.opacity(0.45),
+                        lineWidth: 1
+                    )
+                )
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text("Boarding Pass Scanned")
+                Text(isManualEntry ? "Enter Flight Details" : "Boarding Pass Scanned")
                     .appFont(.bodyBold, lineLimit: .exactly(1))
                     .foregroundStyle(theme.colors.text)
 
-                Text("Review and edit if needed")
+                Text(isManualEntry
+                     ? "Flight number and both airports are required."
+                     : "Review and edit if needed")
                     .appFont(.bodySmall, lineLimit: .unlimited)
                     .foregroundStyle(theme.colors.textSecondary)
             }
@@ -341,7 +390,11 @@ struct BoardingPassConfirmationView: View {
                     focus: .departureCity,
                     text: Binding(
                         get: { editedData.departureCity ?? "" },
-                        set: { editedData.departureCity = $0.isEmpty ? nil : $0 }
+                        set: {
+                            editedData.departureCity = $0.isEmpty ? nil : $0
+                            // Typed by hand: the code lookup no longer owns it.
+                            departureCityIsDerived = false
+                        }
                     )
                 )
 
@@ -356,7 +409,10 @@ struct BoardingPassConfirmationView: View {
                     focus: .arrivalCity,
                     text: Binding(
                         get: { editedData.arrivalCity ?? "" },
-                        set: { editedData.arrivalCity = $0.isEmpty ? nil : $0 }
+                        set: {
+                            editedData.arrivalCity = $0.isEmpty ? nil : $0
+                            arrivalCityIsDerived = false
+                        }
                     )
                 )
             }
@@ -844,7 +900,7 @@ struct BoardingPassConfirmationView: View {
                 print("✅ Confirm: validation passed, saving")
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
-                onConfirm(editedData)
+                save()
             } else {
                 print("""
                 ❌ Confirm: validation FAILED
@@ -857,15 +913,58 @@ struct BoardingPassConfirmationView: View {
                 showingValidationErrors = true
             }
         } label: {
-            Text(configService.getButtonText(for: .saveFlightButton))
-                .appFont(.bodyBold, lineLimit: .exactly(1))
-                .foregroundStyle(theme.colors.onAccent)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.sm + 4)
-                .background(Capsule(style: .continuous).fill(theme.colors.primary))
-                .contentShape(Capsule(style: .continuous))
+            HStack(spacing: AppSpacing.sm) {
+                // The spinner is the only thing that changes while saving, and
+                // it sits INSIDE the capsule so the bar does not resize under
+                // the user's thumb. `onAccent` is the ink on this fill in both
+                // palettes, so the spinner uses it too rather than a tint that
+                // would vanish on one of them.
+                if isSaving {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(theme.colors.onAccent)
+                }
+
+                Text(configService.getButtonText(for: .saveFlightButton))
+                    .appFont(.bodyBold, lineLimit: .exactly(1))
+                    .foregroundStyle(theme.colors.onAccent)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, AppSpacing.sm + 4)
+            .background(Capsule(style: .continuous).fill(theme.colors.primary))
+            .contentShape(Capsule(style: .continuous))
+            .opacity(isSaving ? 0.7 : 1)
         }
         .buttonStyle(.plain)
+        .disabled(isSaving)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isSaving)
+    }
+
+    /// Fills in what the codes already imply, then hands the pass up.
+    ///
+    /// A SCANNED pass was enriched on the way out of `UnifiedBoardingPassService`,
+    /// so United/Philadelphia/Denver were already on it before this screen opened.
+    /// A TYPED one has never been near that service: the airline and city lookups
+    /// on this screen hang off each field's own `onChange`, which fills a blank
+    /// city as you type but is a per-field race and does nothing at all for a
+    /// value that arrives any other way. Running `enriched` once at the point of
+    /// save is the same lookups from the same place the scanner uses, so a hand
+    /// typed UA323 PHL→DEN is stored with exactly what a scanned one would be.
+    ///
+    /// It only ever FILLS BLANKS, so this is a no-op for a pass that already has
+    /// an airline and both cities — including every scan.
+    private func save() {
+        guard !isSaving else { return }
+        isSaving = true
+
+        Task {
+            let enriched = await UnifiedBoardingPassService.enriched(editedData)
+            print("🧭 Confirm: enriched — airline='\(enriched.airline ?? "nil")' from='\(enriched.departureCity ?? "nil")' to='\(enriched.arrivalCity ?? "nil")' id=\(enriched.id)")
+            await MainActor.run {
+                isSaving = false
+                onConfirm(enriched)
+            }
+        }
     }
 
     // MARK: - Bindings
@@ -873,13 +972,36 @@ struct BoardingPassConfirmationView: View {
     // Extracted verbatim from the old inline `Binding(get:set:)` closures so the
     // section builders stay readable. Not one rule changed.
 
+    /// The one rule for a machine-readable field, applied to TYPING as well as to
+    /// arrival.
+    ///
+    /// `normalizedCodes(in:)` already squashes and uppercases a pass on the way
+    /// in, and its comment says why: `flightNumberPattern` is
+    /// `^[A-Z]{2,3}[0-9]{1,4}$`, which has no room for a space. But it ran only
+    /// at init, so the rule held for a SCANNED "UA 323" and not for a TYPED one
+    /// — a person entering a flight by hand, which is the normal way to write a
+    /// flight number, watched "flight number is invalid" appear under a flight
+    /// number that is perfectly correct, and the Save button reject it.
+    ///
+    /// Squashing in the setter means the field shows the canonical value as it is
+    /// typed, so what is validated, what is displayed and what is saved are the
+    /// same string.
+    private static func canonical(_ value: String) -> String? {
+        let squashed = value
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()
+            .uppercased()
+        return squashed.isEmpty ? nil : squashed
+    }
+
     private var flightNumberBinding: Binding<String> {
         Binding(
             get: { editedData.flightNumber ?? "" },
-            set: { newValue in
-                editedData.flightNumber = newValue.isEmpty ? nil : newValue.uppercased()
+            set: { rawValue in
+                let newValue = Self.canonical(rawValue) ?? ""
+                editedData.flightNumber = newValue.isEmpty ? nil : newValue
                 // Real-time validation
-                if !newValue.isEmpty && !isValidFlightNumber(newValue.uppercased()) {
+                if !newValue.isEmpty && !isValidFlightNumber(newValue) {
                     flightNumberError = configService.getErrorMessage(for: .flightNumberInvalid)
                 } else {
                     flightNumberError = nil
@@ -887,7 +1009,7 @@ struct BoardingPassConfirmationView: View {
 
                 // Auto-suggest airline based on flight number using AirlineService
                 Task {
-                    if let airline = await AirlineService.shared.getAirlineFromFlightNumber(newValue.uppercased()) {
+                    if let airline = await AirlineService.shared.getAirlineFromFlightNumber(newValue) {
                         await MainActor.run {
                             if editedData.airline?.isEmpty != false {
                                 editedData.airline = airline
@@ -902,10 +1024,11 @@ struct BoardingPassConfirmationView: View {
     private var confirmationCodeBinding: Binding<String> {
         Binding(
             get: { editedData.confirmationCode ?? "" },
-            set: { newValue in
-                editedData.confirmationCode = newValue.isEmpty ? nil : newValue.uppercased()
+            set: { rawValue in
+                let newValue = Self.canonical(rawValue) ?? ""
+                editedData.confirmationCode = newValue.isEmpty ? nil : newValue
                 // Real-time validation for optional field
-                if !newValue.isEmpty && !isValidConfirmationCode(newValue.uppercased()) {
+                if !newValue.isEmpty && !isValidConfirmationCode(newValue) {
                     confirmationCodeError = configService.getErrorMessage(for: .confirmationCodeInvalid)
                 } else {
                     confirmationCodeError = nil
@@ -917,21 +1040,33 @@ struct BoardingPassConfirmationView: View {
     private var departureCodeBinding: Binding<String> {
         Binding(
             get: { editedData.departureCode ?? "" },
-            set: { newValue in
-                editedData.departureCode = newValue.isEmpty ? nil : newValue.uppercased()
+            set: { rawValue in
+                let newValue = Self.canonical(rawValue) ?? ""
+                editedData.departureCode = newValue.isEmpty ? nil : newValue
                 // Real-time validation
-                if !newValue.isEmpty && !isValidAirportCode(newValue.uppercased()) {
+                if !newValue.isEmpty && !isValidAirportCode(newValue) {
                     departureCodeError = configService.getErrorMessage(for: .airportCodeInvalid)
                 } else {
                     departureCodeError = nil
                 }
 
-                // Auto-suggest city name from airport code using AirportService
+                // Auto-suggest the city, but only once the field HOLDS a code.
+                //
+                // This used to fire on every keystroke, so typing "phl" asked the
+                // airport service about "P", then "PH", then "PHL" — three
+                // lookups racing, and the first one to answer won because the
+                // rule was "fill only when empty". A hand-typed PHL came back as
+                // Shanghai (Pudong), observed on device, from the lookup for "P".
+                // A partial code is not a code, so it is not asked about.
                 Task {
-                    let airportInfo = await AirportService.shared.getAirportInfo(for: newValue.uppercased())
+                    guard isValidAirportCode(newValue) else { return }
+                    let airportInfo = await AirportService.shared.getAirportInfo(for: newValue)
                     await MainActor.run {
-                        if let city = airportInfo.city, editedData.departureCity?.isEmpty != false {
+                        guard let city = airportInfo.city,
+                              editedData.departureCode == newValue else { return }
+                        if editedData.departureCity?.isEmpty != false || departureCityIsDerived {
                             editedData.departureCity = city
+                            departureCityIsDerived = true
                         }
                     }
                 }
@@ -942,13 +1077,14 @@ struct BoardingPassConfirmationView: View {
     private var arrivalCodeBinding: Binding<String> {
         Binding(
             get: { editedData.arrivalCode ?? "" },
-            set: { newValue in
-                editedData.arrivalCode = newValue.isEmpty ? nil : newValue.uppercased()
+            set: { rawValue in
+                let newValue = Self.canonical(rawValue) ?? ""
+                editedData.arrivalCode = newValue.isEmpty ? nil : newValue
                 // Real-time validation
                 if !newValue.isEmpty {
-                    if !isValidAirportCode(newValue.uppercased()) {
+                    if !isValidAirportCode(newValue) {
                         arrivalCodeError = configService.getErrorMessage(for: .airportCodeInvalid)
-                    } else if newValue.uppercased() == editedData.departureCode {
+                    } else if newValue == editedData.departureCode {
                         arrivalCodeError = configService.getErrorMessage(for: .airportCodeSameAsOther)
                     } else {
                         arrivalCodeError = nil
@@ -957,12 +1093,17 @@ struct BoardingPassConfirmationView: View {
                     arrivalCodeError = nil
                 }
 
-                // Auto-suggest city name from airport code using AirportService
+                // Same rule as the departure code above: a whole code, or no
+                // lookup at all.
                 Task {
-                    let airportInfo = await AirportService.shared.getAirportInfo(for: newValue.uppercased())
+                    guard isValidAirportCode(newValue) else { return }
+                    let airportInfo = await AirportService.shared.getAirportInfo(for: newValue)
                     await MainActor.run {
-                        if let city = airportInfo.city, editedData.arrivalCity?.isEmpty != false {
+                        guard let city = airportInfo.city,
+                              editedData.arrivalCode == newValue else { return }
+                        if editedData.arrivalCity?.isEmpty != false || arrivalCityIsDerived {
                             editedData.arrivalCity = city
+                            arrivalCityIsDerived = true
                         }
                     }
                 }
@@ -973,10 +1114,11 @@ struct BoardingPassConfirmationView: View {
     private var seatBinding: Binding<String> {
         Binding(
             get: { editedData.seat ?? "" },
-            set: { newValue in
-                editedData.seat = newValue.isEmpty ? nil : newValue.uppercased()
+            set: { rawValue in
+                let newValue = Self.canonical(rawValue) ?? ""
+                editedData.seat = newValue.isEmpty ? nil : newValue
                 // Real-time validation for optional field
-                if !newValue.isEmpty && !isValidSeatNumber(newValue.uppercased()) {
+                if !newValue.isEmpty && !isValidSeatNumber(newValue) {
                     seatError = configService.getErrorMessage(for: .seatNumberInvalid)
                 } else {
                     seatError = nil
@@ -998,13 +1140,11 @@ struct BoardingPassConfirmationView: View {
     /// Applied on the way IN rather than only inside the validator, so the field
     /// shows the canonical value and whatever is saved matches what was checked.
     static func normalizedCodes(in data: BoardingPassData) -> BoardingPassData {
+        // One rule, one implementation: `canonical` is the same squash the
+        // field setters apply while the user types.
         func squashed(_ value: String?) -> String? {
             guard let value else { return nil }
-            let cleaned = value
-                .components(separatedBy: .whitespacesAndNewlines)
-                .joined()
-                .uppercased()
-            return cleaned.isEmpty ? nil : cleaned
+            return canonical(value)
         }
 
         var normalized = data
@@ -1014,6 +1154,31 @@ struct BoardingPassConfirmationView: View {
         normalized.confirmationCode = squashed(data.confirmationCode)
         normalized.seat = squashed(data.seat)
         return normalized
+    }
+
+    /// Whether this pass has nothing in it whatsoever.
+    ///
+    /// `isValid` is not the question — it asks for the three fields needed to
+    /// SAVE, and a scan that read a seat and a gate but missed the flight number
+    /// is invalid while being very much a scan. This asks whether ANY field
+    /// arrived, which is the only thing that distinguishes "the user asked to
+    /// type a flight in" from "a scan came back thin".
+    static func carriesNothing(_ data: BoardingPassData) -> Bool {
+        let text = [
+            data.flightNumber, data.airline,
+            data.departureCode, data.departureCity,
+            data.arrivalCode, data.arrivalCity,
+            data.departureTime, data.arrivalTime,
+            data.gate, data.terminal, data.seat,
+            data.confirmationCode, data.passengerName, data.flightDuration
+        ]
+
+        let carriesText = text.contains { value in
+            guard let value else { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        return !carriesText && data.departureDate == nil && data.arrivalDate == nil
     }
 
     private func validateData() -> Bool {

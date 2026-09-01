@@ -2126,7 +2126,10 @@ struct BoardingPassMenuContent: View {
         let theme = themeManager.currentTheme
 
         return VStack(spacing: AppSpacing.md) {
-            Text("Scan Boarding Pass")
+            // "Add a Flight" rather than "Scan Boarding Pass": scanning is now
+            // one of two ways in, and a title that names only the first one
+            // makes the second look like a fallback for when the app is broken.
+            Text("Add a Flight")
                 .appFont(.bodyBold, lineLimit: .exactly(1))
                 .foregroundStyle(theme.colors.text)
                 .frame(maxWidth: .infinity)
@@ -2161,6 +2164,42 @@ struct BoardingPassMenuContent: View {
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.capsule)
                 .tint(theme.colors.primary)
+                .disabled(unifiedService.isProcessing)
+
+                // The floor under the whole app. A bad photo, no network or a
+                // dead proxy used to mean the flight could not be added AT ALL;
+                // typing it always works. Quieter than the scan button — plain
+                // `.glass`, no fill — because scanning is still the fast path,
+                // but not hidden behind a menu: it is the recovery from the
+                // failure the row above can produce.
+                Button {
+                    startManualEntry()
+                } label: {
+                    HStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "square.and.pencil")
+                            .font(AppTypography.mono(.body, weight: .semibold))
+
+                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                            Text("Enter manually")
+                                .appFont(.bodyBold, lineLimit: .exactly(1))
+                            Text("Type the flight in")
+                                .appFont(.footnote, lineLimit: .exactly(1))
+                        }
+
+                        Spacer(minLength: AppSpacing.xs)
+
+                        Image(systemName: "chevron.right")
+                            .font(AppTypography.mono(.caption, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, AppSpacing.xs)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+                .tint(theme.colors.primary)
+                // A scan in flight owns the confirmation sheet the moment it
+                // lands, so a second route to the same sheet stays shut until
+                // it is done.
                 .disabled(unifiedService.isProcessing)
 
                 if unifiedService.isProcessing {
@@ -2234,6 +2273,32 @@ struct BoardingPassMenuContent: View {
         }
     }
     
+    /// Manual entry is the confirmation sheet with an EMPTY pass in it.
+    ///
+    /// It reports on the same channel a scan does, so it inherits the whole
+    /// downstream path unchanged: `ContentView` parks the pass while this sheet
+    /// leaves, presents `BoardingPassConfirmationView`, and on save builds the
+    /// `Flight` and stores it. There is no second form and no second save path
+    /// — the only difference between a scan and a typed flight is whether the
+    /// fields arrive filled.
+    ///
+    /// It does NOT call `dismiss()`, and that is deliberate. The observer parks
+    /// the pass and takes this sheet down ITSELF, then puts the confirmation up
+    /// from `onDismiss` — an ordering that is defined rather than hoped for.
+    /// Dismissing from here instead races that: the observer's hop to the main
+    /// actor can land after the presentation binding has already gone false, in
+    /// which case the pass takes the "nothing is up, present immediately" branch
+    /// and asks one host to present a second sheet while the first is still
+    /// leaving. Presenting into a dismissal is a known way to lose a sheet.
+    private func startManualEntry() {
+        let empty = BoardingPassData()
+        print("✍️ Manual entry requested — opening an empty pass")
+        NotificationCenter.default.post(
+            name: NSNotification.Name("BoardingPassScanned"),
+            object: empty
+        )
+    }
+
     private func processSelectedPhoto(_ photo: PhotosPickerItem) {
         Task {
             do {

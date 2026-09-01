@@ -112,12 +112,12 @@ struct AuthenticationView: View {
             .accessibilityHidden(true)
 
             VStack(spacing: AppSpacing.sm) {
-                Text("Welcome to SkyLine")
+                Text("Your flights, on a globe")
                     .appFont(.titleLarge)
                     .foregroundStyle(theme.colors.text)
                     .multilineTextAlignment(.center)
 
-                Text("Log the places you've been, and whether they were worth it.")
+                Text("Scan a boarding pass and SkyLine draws the route on your globe.")
                     .appFont(.bodySmall, lineLimit: .unlimited)
                     .foregroundStyle(theme.colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -130,22 +130,31 @@ struct AuthenticationView: View {
 
     private var features: some View {
         VStack(spacing: AppSpacing.sm) {
+            // The three rows are the loop, in order: what goes in, the check
+            // in the middle, what builds up. Each names something the app
+            // actually does - the picker and the barcode read, the
+            // review-and-correct sheet, the arcs on the globe.
+            FeatureRow(
+                // A pass, not a viewfinder: the scan reads an image you pick
+                // from your library, so no glyph here may imply a live camera.
+                icon: "wallet.pass",
+                title: "Scan a boarding pass",
+                description: "A photo or screenshot of the pass, or of a booking email"
+            )
+
+            FeatureRow(
+                icon: "checkmark.circle",
+                title: "Check what it read",
+                description: "Airline, route, date and seat come up to fix before saving"
+            )
+
             FeatureRow(
                 icon: "globe",
-                title: "A globe of where you've been",
-                description: "Every place you log lands on your own 3D map"
-            )
-
-            FeatureRow(
-                icon: "photo.on.rectangle.angled",
-                title: "Built from your camera roll",
-                description: "SkyLine groups your photos into the places you actually stopped"
-            )
-
-            FeatureRow(
-                icon: "hand.thumbsdown",
-                title: "Room for Skip",
-                description: "Record the places that weren't worth it, not just the ones that were"
+                // 18 characters. A row title is one line at minimum scale 0.8
+                // with no Dynamic Type ceiling, so "Everywhere you've flown"
+                // (221pt of the 239pt column) truncated from xxLarge upward.
+                title: "Everywhere you fly",
+                description: "Each flight lands as an arc on your own 3D globe"
             )
         }
     }
@@ -220,7 +229,12 @@ struct AuthenticationView: View {
                     .appFont(.bodySmall, lineLimit: .unlimited)
                     .foregroundStyle(theme.colors.textSecondary)
 
-                Text("Your places are stored in your own private iCloud, not on our servers")
+                // Storage, and only storage. This says where flights LIVE; it
+                // does not say nothing leaves the device, because a pass with
+                // no readable barcode is uploaded to a remote parser - see
+                // `UnifiedBoardingPassService.remoteFallbackEnabled`. Also the
+                // shorter of the two lines that were clipping off the bottom.
+                Text("Your flights are saved in your own iCloud, not on our servers")
                     .appFont(.caption, lineLimit: .unlimited)
                     .foregroundStyle(theme.colors.textSecondary.opacity(0.85))
             }
@@ -310,7 +324,7 @@ private struct SignInProviderButton: View {
 /// The honest problem: SkyLine writes everything to the CloudKit PRIVATE database,
 /// which belongs to the device's iCloud account. A Google identity has no bearing
 /// on that. Rather than admitting the user into an app that quietly drops every
-/// place they log, this states plainly what will and will not work and lets them
+/// flight they scan, this states plainly what will and will not work and lets them
 /// choose.
 private struct CloudStorageNoticeView: View {
     @EnvironmentObject var themeManager: ThemeManager
@@ -342,7 +356,7 @@ private struct CloudStorageNoticeView: View {
                         .foregroundStyle(colors.text)
                         .multilineTextAlignment(.center)
 
-                    Text("You're signed in with \(pending.provider.displayName), and that part worked. But SkyLine keeps your places in your own private iCloud database — which belongs to the iPhone's iCloud account, not to your \(pending.provider.displayName) account.")
+                    Text("You're signed in with \(pending.provider.displayName), and that part worked. But SkyLine keeps your flights in your own private iCloud database — which belongs to the iPhone's iCloud account, not to your \(pending.provider.displayName) account.")
                         .appFont(.bodySmall, lineLimit: .unlimited)
                         .foregroundStyle(colors.textSecondary)
                         .multilineTextAlignment(.leading)
@@ -352,7 +366,7 @@ private struct CloudStorageNoticeView: View {
                     NoticeLine(
                         symbol: "checkmark.circle.fill",
                         tint: colors.success,
-                        text: "You can use the app and log places right now"
+                        text: "You can use the app and scan flights right now"
                     )
                     NoticeLine(
                         symbol: "xmark.circle.fill",
@@ -362,7 +376,7 @@ private struct CloudStorageNoticeView: View {
                     NoticeLine(
                         symbol: "xmark.circle.fill",
                         tint: colors.error,
-                        text: "Nothing will be backed up — deleting the app deletes your log"
+                        text: "Nothing will be backed up — deleting the app deletes your flights"
                     )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
