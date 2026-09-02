@@ -1,8 +1,9 @@
-# SkyLine — Privacy Policy
+# Skyline Travel Log — Privacy Policy
 
 **Last updated: 30 August 2026**
 
-SkyLine logs the flights you have taken and draws them on a globe. This policy
+Skyline Travel Log ("SkyLine" on your Home screen) logs the flights you
+have taken and draws them on a globe. This policy
 describes exactly what the app does with your information. It is written against
 the app's actual behaviour, not a template.
 
