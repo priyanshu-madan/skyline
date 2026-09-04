@@ -314,8 +314,13 @@ struct SkyLineApp: App {
 // raster. The artwork itself is pure vector at these exact numbers, every one of
 // which was measured back off the PNGs before a line of this was written:
 //
-//   sphere   perfect circle, centre (645, 2140), r 900, one flat fill:
-//            #000011 dark / #EEF2FA light == `colors.globeBackground`, exactly
+//   sphere   perfect circle, centre (645, 2140), r 900, filled #000011 dark /
+//            #EEF2FA light == `colors.globeBackground`, exactly - and then the
+//            LAND on top of it, a dotted orthographic projection turning once
+//            every 40 seconds. That layer is a `<canvas>` in the design, so it
+//            does not appear in a still export of the artboard AT ALL - which is
+//            how a previous pass came to measure the sphere as one flat fill and
+//            ship a black disc. See `SplashGlobeLand`.
 //   halo     a disc of r 970 under a 60px Gaussian, tinted #4DA3FF at 40%
 //            (== `colors.globeAtmosphere`) dark / #DCE2EF (== `colors.border`)
 //            light, held at the SVG's static 0.55 in the export
@@ -495,6 +500,11 @@ struct SplashFrame {
     var globeOpacity: Double
     /// `sl-fade 500ms ease 60ms` on the sphere, inside the rising group.
     var sphereOpacity: Double
+    /// The meridian facing the camera, in radians - the design's `lon0`, which is
+    /// `-42° + (t / 40000) * 2π`. One full turn every 40 seconds, forever: this
+    /// is the only quantity here that never settles, because the globe is still
+    /// turning when the splash lifts and hands over to the WebKit one.
+    var globeSpin: Double
     /// `sl-breathe 4200ms ease-in-out 900ms infinite`, 0.45 <-> 0.75.
     var haloOpacity: Double
     /// `sl-rise 1000ms cubic-bezier(0.22, 0.9, 0.24, 1) 300ms`, 0 -> 1. Carries
@@ -527,6 +537,9 @@ struct SplashFrame {
         globeRise: 1,
         globeOpacity: 1,
         sphereOpacity: 1,
+        // Reduce Motion freezes the globe on its opening meridian rather than
+        // spinning it. Stopping it dead is the point; a slower spin is still spin.
+        globeSpin: SplashGlobeLand.restingLongitude,
         haloOpacity: 0.55,
         markRise: 1,
         markOpacity: 1,
@@ -545,6 +558,8 @@ extension SplashFrame {
             globeRise: Self.run(elapsed, delay: 0, duration: 1.5, easing: .globeRise),
             globeOpacity: Self.run(elapsed, delay: 0, duration: 1.5, easing: .globeRise),
             sphereOpacity: Self.run(elapsed, delay: 0.06, duration: 0.5, easing: .ease),
+            globeSpin: SplashGlobeLand.restingLongitude
+                + (elapsed / SplashGlobeLand.rotationPeriod) * 2 * .pi,
             haloOpacity: Self.loop(elapsed, delay: 0.9, duration: 4.2, easing: .easeInOut, low: 0.45, high: 0.75),
             markRise: Self.run(elapsed, delay: 0.3, duration: 1.0, easing: .markRise),
             markOpacity: Self.run(elapsed, delay: 0.3, duration: 1.0, easing: .markRise),
@@ -690,6 +705,142 @@ enum SplashStars {
     static var brightCount: Int { brightXY.count / 2 }
 }
 
+// MARK: Land
+
+/// The continents, sampled onto a lat/lon grid - one dot per land cell.
+///
+/// ## Where the grid comes from
+///
+/// `buildLand` in the design source rasterises Natural Earth 110m land into a
+/// 1440 x 720 equirectangular mask, then samples it at latitudes 1.7° apart,
+/// each row stepping longitude by `1.7 / max(0.2, cos(lat))` so the cells stay
+/// roughly square instead of crowding together at the poles. Reproduced here
+/// against the app's OWN `countries.geojson`, which is the same data - it is
+/// `ne_110m_admin_0_countries`, Natural Earth 110m, already in the bundle for
+/// the WebKit globe. The design fetched its copy from a CDN and this does not:
+/// the globe was deliberately made offline-safe, and the launch path is the last
+/// place to put a network dependency back.
+///
+/// ## Why it is baked instead of sampled at launch
+///
+/// Sampling it live was written and measured (`swiftc -O`, this machine, three
+/// runs): 9-14ms to `JSONSerialization` the 838 KB - which is 838 KB of country
+/// PROPERTIES, the geometry is only 10,654 ring coordinates - then 10-20ms to
+/// rasterise the mask through CoreGraphics and 0.1ms to sample it. 20-34ms,
+/// spent on the launch path, before the first frame of the splash can be drawn,
+/// and more than that on a real phone. Decoding what is below costs 0.12-0.17ms,
+/// measured the same way.
+///
+/// The coastline is static and so is the grid, so there is nothing to be gained
+/// by deriving it every launch.
+///
+/// ## The blob
+///
+/// The grid itself, little-endian: a `UInt16` row count, then per row a `UInt16`
+/// cell count followed by a bitmap of which of that row's cells are land, LSB
+/// first. 104 rows, 14,536 cells, 4,379 of them land, 2,075 bytes. Storing the
+/// cell count per row rather than recomputing it is what makes the decode
+/// immune to a last-bit disagreement in `cos` shifting every subsequent bit.
+enum SplashGlobeLand {
+    /// One land cell, holding what the frame loop cannot afford to recompute.
+    ///
+    /// `cosLon`/`sinLon` rather than the longitude itself. The projection needs
+    /// `cos(lon - lon0)` and `sin(lon - lon0)`; the angle-difference identities
+    /// turn those into four multiplies against the frame's own `cos lon0` and
+    /// `sin lon0`, which is the difference between two trigonometric calls per
+    /// frame and nine thousand of them.
+    struct Cell {
+        let cosLat: Float
+        let sinLat: Float
+        let cosLon: Float
+        let sinLon: Float
+    }
+
+    /// The design's opening meridian, `-42°`, in radians.
+    static let restingLongitude: Double = -42 * .pi / 180
+
+    /// Seconds per revolution. The design's `t / 40000` over a full `2π`.
+    static let rotationPeriod: Double = 40
+
+    /// Built on first use, which is the first frame the splash draws.
+    static let cells: [Cell] = decode()
+
+    private static func decode() -> [Cell] {
+        guard let data = Data(base64Encoded: bitmap) else { return [] }
+        let bytes = [UInt8](data)
+        var cursor = 0
+
+        func nextCount() -> Int? {
+            guard cursor + 1 < bytes.count else { return nil }
+            defer { cursor += 2 }
+            return Int(bytes[cursor]) | Int(bytes[cursor + 1]) << 8
+        }
+
+        guard let rows = nextCount() else { return [] }
+        let degree = Double.pi / 180
+        var cells: [Cell] = []
+        cells.reserveCapacity(4400)
+
+        for row in 0..<rows {
+            guard let count = nextCount() else { break }
+            let rowBytes = (count + 7) / 8
+            guard cursor + rowBytes <= bytes.count else { break }
+
+            // Row 0 is 88°S and every row is 1.7° north of the last.
+            let latitude = (-88 + 1.7 * Double(row)) * degree
+            let cosLat = cos(latitude)
+            let step = 1.7 / max(0.2, cosLat) * degree
+            let sinLat = sin(latitude)
+
+            for cell in 0..<count where (bytes[cursor + cell / 8] >> UInt8(cell % 8)) & 1 == 1 {
+                let longitude = -Double.pi + step * Double(cell)
+                cells.append(Cell(
+                    cosLat: Float(cosLat),
+                    sinLat: Float(sinLat),
+                    cosLon: Float(cos(longitude)),
+                    sinLon: Float(sin(longitude))
+                ))
+            }
+            cursor += rowBytes
+        }
+        return cells
+    }
+
+    private static let bitmap =
+            "aAArAP//////BysA//////8HKwDz/////wcrAPD/////ASsA+D/+//8BKwDwX/3//wEtAPg/+P//BzMA4P+A////" +
+            "ATkAgOcH/P//fwA/AAAAEMD///8/RQAAAGAA/P/+/wdLAAAAAAEA4M//fwBRAAAAAAAAAPj4/wMAVwAAAAAQAAAA" +
+            "ARAAAF0AAAAAgAAAAAAAAAAAYgAAAAAAAAAAAAAAAAAAaAAAAAAAAAAAAAAAAAAAbQAAAAAAAAAAAAAAAAAAAHMA" +
+            "AAAAAAAAAAAAAAAAAAAAeAAAAAAAIAAAAAAAAAAAAAB9AAAAAADgAAAAAAAAAAAAAACCAAAAAADAAQAAAAAAAAAA" +
+            "AAAAhwAAAAAAAAMAAAAAAAAAAAAAAIwAAAAAAAAOAAAAAAAAAAAAAAAAkAAAAAAAADgAAAAAAAAAAAAAAACVAAAA" +
+            "AAAAcAAAAAAAAAAAAAAAgAGZAAAAAAAAwAEAAAAAAAAAAAAAACAAngAAAAAAAIAHAAAAAAAAAAAAAMAABKIAAAAA" +
+            "AAAAHwAAAAAAAAAAAAAAAAAApgAAAAAAAAD+AAAAAAAAAAAAAABAABiqAAAAAAAAAPwDAAAAAAAAAAAAAIAPgACt" +
+            "AAAAAAAAAPAPAAAAAAAAAAAAAAB+AASxAAAAAAAAAOB/AAAAADwAAAAAAB74BwAAtAAAAAAAAACA/wEAAAD4AQAA" +
+            "AADw938AALgAAAAAAAAAAP8HAAAA4A8AAAAAwP//AwC7AAAAAAAAAAD+DwAAAMA/AAAAAAD+/x8AAL4AAAAAAAAA" +
+            "APw/AAAAgP8AAAAAAPj/fwAAwAAAAAAAAAAA+H8AAAAA/wMBAAAA4P//AwDDAAAAAAAAAADw/wMAAAD+HwYAAACA" +
+            "//8HAADFAAAAAAAAAADw/x8AAAD8PxgAAAAA/P8fIADHAAAAAAAAAADg/z8AAAD4f3AAAAAAwP8/AADKAAAAAAAA" +
+            "AADA/38AAADw/8MBAAAAAP5/AAABywABAAAAAAAA4P//AAAA8P+PAwAAAADw7wAQAM0AAAAAAAAAAPD//wEAAMD/" +
+            "PwwAAAAAwI8DIADPAAAAAAAAAADw//8DAACA/38IAAAAAAA8AgAA0AAAAAAAAAAA8P//BwAAAP//AAAAAAAAEAQA" +
+            "ANEAAAAAAAAAAPj//w8AAAD//wAAAAAAQAHAYAAA0gAAAAAAAAAA+P//HwAAAP7/AAAAAAAcAN5AAADTAAAAAAAA" +
+            "AAD8//8fAAAA/v8BAAAAgAUA+BIAANQAAAAAAAAAAPz//w8AAAD+/wEAAADAAAN+AAAA1AAAAAAAAAAA+P//BwAA" +
+            "AP//AwAAAMB5cz8IAADUAAAAAAAAAAD4//8AAAAA//8HAAAA4HiHAQAAANQAAAAAAAAAAPj/HwAAAAD//w8AAABg" +
+            "/C4AAAAA1AAAAAAAAAAA8P8fAAAAAP//HwAAAPDwIAAAAADUAAAAAAAAAADg/w8AAACA//8/AAAAaGAAAAAAANMA" +
+            "AAAAAAAAAPD/BwAA8OP//z8AAAA04AAAAAAA0wAAAAAAAAAA9P8AAAD8////fwAAAQAADAAAAADSAAAAAAAAAADv" +
+            "PwAAAP7///8/AMAARCAGAAAAANEAAAAAAAAAgOAbAAAA/////z8AcAByoAAAAAAAzwAAAAAAAADAAAAAAMD/////" +
+            "AQA4AHugAAAAAM4AAAAAAAAA+AAAAADA////fwcAHIA/MAAAAADMAAAAAAAAAH4AAAAA4P///98PAA/QDwQAAAAA" +
+            "ywAAAAAAAOAPAAAAAPD////nH4AP/AMCAAAAAMkAAAAAAAB8DDAAAAD4////+R/gD34CAAAAAADGAAAgAAAAPgwD" +
+            "AAAA/P////4P/Mc/AAAAAADEAAAAAAAAHtAAAAAA/v//P/8H////AQAAAADCAAAAAACgHwAAAAAA/v//7//g////" +
+            "AQAAAAC/AAAAAADQDxAAAAAA////++P///9/AAAAALwAAAAAAOwPCAAAAID////+/v///x8AAAAAuQAAAAAA+E8E" +
+            "AAAAAP///7//////DwAAAAC2AAAAAAD8/wMAAADA/+////////8BAAAAswAAAAAA//8DAAAA4P8R+P////8/DAAA" +
+            "AK8AAAAA4P//AwAAAPAfAP7/////owMAAKwAAAAA8P//AwAAAMgHsP////9/jAEAAKgAAAAA+P//AQAAAA9M/+f/" +
+            "///XIAAApAAAAAD8//8AAADAQ9r//f///woEAACgAAAAAP7//wAAAPDB/j//////QwAAnAAAAAD///8AAAB86AP3" +
+            "/////wwAAJcAAAAA////AwAA+P38/v///58AAJMAAACA////AAAA/v++/////wsAAI4AAADA//8/BwDA////////" +
+            "vwAAiQAAAOD//48AAPD///////8LAACFAAAA8P//PwAA9v//////PwAAgAAAAP7/9w8A4Pz//////4cBewBAAP7/" +
+            "/wMAEPv/////DxwAdQCAAP9/fAAAwvz/////4ABwAIDB/w8fAAAU/////w8GawDw8/+DBQCA1/////8nAGUA8P//" +
+            "cWAA8P7/////DmAA6P//ZhwA3P////9/WgDz//8dhwP//////wNUAOf/f84D4O////8PTgD5f63xA/h4//8/SQDw" +
+            "5Hr8AAb8/x8AQwAAvI4fAMj/GQA9AABE4wcA8EsANwAA3PgBEB4DMAAAoT8EQgArAAD7hwACACsAANQPCQEAKwAA" +
+            "+AcAAAArAAAAAgAAACsAAAAAAAAAKwAAAAAAAAA="
+}
+
 // MARK: Sky and globe
 
 /// Starfield and globe, in one `Canvas`.
@@ -738,6 +889,16 @@ struct SplashSkyLayer: View {
     private var starInkScale: Double {
         theme == .light ? 0.688 : 1
     }
+
+    /// The land dots.
+    ///
+    /// The design sets them in #E9EDF7 on the dark ground and #0E1626 on the
+    /// light one, and `text` is BOTH of those to the digit - it is the one token
+    /// that carries the design's globe ink in either palette. `globeCountries`
+    /// reads like the obvious choice and is not: it is #0E1626 on light, the same
+    /// value, but pure #FFFFFF on dark, which is a brighter dot than the design
+    /// draws and would out-shine the r 3.6 stars it sits among.
+    private var landInk: Color { theme.colors.text }
 
     /// The limb bloom.
     ///
@@ -836,7 +997,97 @@ struct SplashSkyLayer: View {
             lineWidth: board.length(3)
         )
 
+        // The land, on its own clipped copy of the context. `GraphicsContext` is
+        // a value type, so this is how you scope a clip - `context.clip` would
+        // hold for the rest of the drawing.
+        //
+        // It rides the same `sl-globe-rise` as the sphere and not the sphere's
+        // extra 60ms fade: in the design the dots are a separate `<canvas>` over
+        // the SVG, carrying `sl-globe-rise` alone.
+        var land = context
+        land.clip(to: Path(ellipseIn: sphereRect))
+        drawLand(into: &land, board: board, centre: centre, radius: sphere)
+
         context.opacity = 1
+    }
+
+    /// The continents, turning.
+    ///
+    /// `drawGlobe` from the design source, unchanged in its arithmetic: take each
+    /// land cell's longitude relative to the meridian facing the camera, tilt the
+    /// polar axis 26° toward the viewer, throw away everything on the far side,
+    /// and project what survives orthographically. `z` is how far the cell leans
+    /// toward the camera, and it drives BOTH the dot's alpha and its radius, so
+    /// the sphere reads as a sphere and the limb dissolves instead of ending in a
+    /// hard rim of full-strength dots. Continents roll over that limb as `lon0`
+    /// advances, which is the whole reason this is drawn rather than blitted.
+    ///
+    /// The design's `minY` reject is not reproduced because it cannot fire here:
+    /// it drops dots above artboard y 880 and this sphere's own top edge is at
+    /// 2140 - 900 = 1240.
+    private func drawLand(
+        into context: inout GraphicsContext,
+        board: SplashArtboard,
+        centre: CGPoint,
+        radius: CGFloat
+    ) {
+        let cells = SplashGlobeLand.cells
+        guard !cells.isEmpty, radius > 0 else { return }
+
+        let tilt = 26 * Double.pi / 180
+        let cosTilt = Float(cos(tilt))
+        let sinTilt = Float(sin(tilt))
+        let cosSpin = Float(cos(frame.globeSpin))
+        let sinSpin = Float(sin(frame.globeSpin))
+        let cx = Float(centre.x)
+        let cy = Float(centre.y)
+        let r = Float(radius)
+
+        // One `fill` per DEPTH BAND rather than per dot.
+        //
+        // Roughly 2,200 cells face the camera at any moment and the design fills
+        // each one on its own, which a `Canvas` cannot afford at 60Hz - it is a
+        // command per dot, every frame, over a booting WebKit globe. Quantising
+        // `z` into sixteen bands collapses that to sixteen fills. The bands step
+        // alpha by 0.04 and the dot radius by 0.15 ARTBOARD px - about a twentieth
+        // of a point on screen - across a scatter of 2pt dots, so the banding has
+        // nothing to show up against.
+        let bands = 16
+        var paths = [Path](repeating: Path(), count: bands)
+        let radii: [CGFloat] = (0..<bands).map {
+            board.length(3.6 * CGFloat(Self.shade(band: $0, of: bands)))
+        }
+
+        for cell in cells {
+            // cos(lon - lon0) and sin(lon - lon0), by the difference identities.
+            let cosDelta = cell.cosLon * cosSpin + cell.sinLon * sinSpin
+            let sinDelta = cell.sinLon * cosSpin - cell.cosLon * sinSpin
+
+            let z = sinTilt * cell.sinLat + cosTilt * cell.cosLat * cosDelta
+            // 0.04, not 0, so a cell exactly on the limb does not flicker as it
+            // crosses and so the far side never bleeds through.
+            if z <= 0.04 { continue }
+
+            let x = CGFloat(cx + r * cell.cosLat * sinDelta)
+            let y = CGFloat(cy - r * (cosTilt * cell.sinLat - sinTilt * cell.cosLat * cosDelta))
+
+            let band = min(bands - 1, max(0, Int(z * Float(bands))))
+            let dot = radii[band]
+            paths[band].addEllipse(in: CGRect(
+                x: x - dot, y: y - dot, width: dot * 2, height: dot * 2))
+        }
+
+        for band in 0..<bands where !paths[band].isEmpty {
+            context.fill(
+                paths[band],
+                with: .color(landInk.opacity(Self.shade(band: band, of: bands)))
+            )
+        }
+    }
+
+    /// The design's `0.35 + 0.65 * z`, evaluated at the middle of a depth band.
+    private static func shade(band: Int, of bands: Int) -> Double {
+        0.35 + 0.65 * ((Double(band) + 0.5) / Double(bands))
     }
 
     private func dot(at centre: CGPoint, radius: CGFloat) -> Path {
