@@ -42,9 +42,9 @@ p:first-of-type{color:var(--muted);font-family:var(--mono);font-size:13px}
 </head>
 <body>
 <div class="wrap">
-<h1>Skyline Travel Log — Privacy Policy</h1>
+<h1>Ghoomy — Privacy Policy</h1>
 <p><strong>Last updated: 5 September 2026</strong></p>
-<p>Skyline Travel Log (“SkyLine” on your Home screen) logs the flights you
+<p>Ghoomy (formerly Ghoomy) logs the flights you
 have taken and draws them on a globe. This policy
 describes exactly what the app does with your information. It is written against
 the app’s actual behaviour, not a template.</p>
@@ -58,7 +58,9 @@ your device</strong>. Nothing leaves your phone when that works.</li>
 <li>If there is no readable barcode, <strong>the image is sent to an AI service to be
 read</strong>. A boarding pass image can contain your name and booking reference.</li>
 <li>Deleting your account removes your data <strong>and revokes Sign in with Apple</strong>, so
-SkyLine stops appearing under your Apple Account. See below.</li>
+Ghoomy stops appearing under your Apple Account. See below.</li>
+<li>Feedback you choose to send is stored where we can read it, and is linked to
+your iCloud account. Nothing is sent unless you write and send it.</li>
 <li>We do not use analytics, advertising, or tracking of any kind.</li>
 </ul>
 <hr>
@@ -70,9 +72,9 @@ SkyLine stops appearing under your Apple Account. See below.</li>
 developer has no access to it, and it is covered by
 <a href="https://www.apple.com/legal/privacy/">Apple’s iCloud privacy terms</a>.</p>
 <p>Deleting the app does not delete this data. To remove it, use <strong>Settings →
-Delete Account</strong> inside SkyLine.</p>
+Delete Account</strong> inside Ghoomy.</p>
 <h3>Boarding pass and confirmation images</h3>
-<p>When you scan a pass, SkyLine tries three things in order:</p>
+<p>When you scan a pass, Ghoomy tries three things in order:</p>
 <ol>
 <li><strong>Barcode, on your device.</strong> Most printed boarding passes carry a PDF417
 barcode holding the flight details in a standard format. This is decoded
@@ -109,7 +111,7 @@ airline code. The two work differently, so they are described separately.</p>
 <strong>shipped inside the app</strong>. Looking one up sends nothing anywhere: it reads a
 file already on your phone, and it works with no network at all.</p>
 <p><strong>Airlines.</strong> Airline names come from a short list <strong>built into the app</strong>,
-covering the carriers SkyLine was built and tested against. A code that is not on
+covering the carriers Ghoomy was built and tested against. A code that is not on
 that list is looked up in the <strong>private database of your own iCloud account</strong> —
 the same storage your flights live in, described above — and once resolved it is
 written back there and cached on your device, so the lookup does not repeat. The
@@ -119,27 +121,41 @@ behalf, not to us.</p>
 <p><strong>No third-party service is contacted to identify an airport or an airline</strong>, and
 nothing about your flights is sent to one.</p>
 <h3>Sign in with Apple</h3>
-<p>SkyLine requires an account. Apple gives the app a stable identifier for you,
+<p>Ghoomy requires an account. Apple gives the app a stable identifier for you,
 and your name and email if you choose to share them. These are held on your
 device and in your own iCloud record. The identifier is also sent with image
 scans, as described above, for rate limiting.</p>
 <p>You can delete your account at any time from <strong>Settings → Delete Account</strong>. This
 removes your flights from iCloud and clears the app’s local data.</p>
-<p><strong>It also revokes your Sign in with Apple credential</strong>, so SkyLine stops being
+<p><strong>It also revokes your Sign in with Apple credential</strong>, so Ghoomy stops being
 listed under your Apple Account. Apple requires this, and it is not something an
 app can do by itself: revoking a credential has to be signed with a key that
 belongs to the developer account, and a key like that cannot safely live inside an
-app. So at the moment you confirm deletion, SkyLine asks Apple for a fresh,
+app. So at the moment you confirm deletion, Ghoomy asks Apple for a fresh,
 single-use authorization code and sends <strong>only that code</strong> to the same Cloudflare
 Worker described above, which holds the signing key and asks Apple to revoke. The
 code is used once and is not stored, by the Worker or by us. Nothing about your
 flights is involved.</p>
 <p>If that request fails — no network, say — the deletion still goes ahead and your
 data is still removed. The app tells you so, and you can finish the job yourself in
-the iOS <strong>Settings</strong> app → your name → <strong>Sign in with Apple</strong> → <strong>SkyLine</strong> →
+the iOS <strong>Settings</strong> app → your name → <strong>Sign in with Apple</strong> → <strong>Ghoomy</strong> →
 <strong>Stop using Apple ID</strong>.</p>
+<h3>Feedback you send</h3>
+<p>The <strong>Send Feedback</strong> button on the Profile screen opens a form inside the app.
+What you write there is stored in <strong>our</strong> area of iCloud — the public database of
+Ghoomy’s CloudKit container — which, unlike your flights, the developer can read.
+That is the point of it: a note filed somewhere only you could see would be a
+button that does nothing.</p>
+<p>Sent with your note, and nothing else: the app version, the build number, and
+your iOS version. No device identifier, no name, no email address.</p>
+<p><strong>Your note is linked to your iCloud account.</strong> CloudKit stamps every record with
+its creator and offers no way to turn that off, so the developer can see which
+account sent a given note. Nobody else can read it — the record type grants no
+public read access.</p>
+<p>Nothing about your flights is attached. If you want a reply, say so in the note
+and leave a way to reach you, because otherwise there is no address to answer.</p>
 <h3>Photos</h3>
-<p>SkyLine uses the system photo picker. It receives only the single image you
+<p>Ghoomy uses the system photo picker. It receives only the single image you
 choose. <strong>The app has no access to the rest of your photo library</strong> and never
 requests it.</p>
 <hr>
@@ -154,7 +170,7 @@ are never on it, and there is nothing there to sell.</li>
 </ul>
 <hr>
 <h2>Children</h2>
-<p>SkyLine is not directed at children under 13 and does not knowingly collect
+<p>Ghoomy is not directed at children under 13 and does not knowingly collect
 their information.</p>
 <h2>Changes</h2>
 <p>If this policy changes, the date at the top changes with it, and the updated
